@@ -1,0 +1,170 @@
+@page "/accounts"
+@inject AppState State
+
+<PageTitle>Accounts — Finance Blade</PageTitle>
+
+<div style="padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between">
+    <div>
+        <div style="font-size:12px;color:var(--text3)">Total Balance</div>
+        <div style="font-size:26px;font-weight:700">@State.TotalBalance.ToString("C")</div>
+    </div>
+    <div style="text-align:right">
+        <div style="font-size:12px;color:var(--text3)">Net Worth</div>
+        <div style="font-size:18px;font-weight:600;color:@(State.NetWorth>=0?"var(--green)":"var(--red)")">@State.NetWorth.ToString("C")</div>
+    </div>
+</div>
+
+@if (!State.Accounts.Any())
+{
+    <div class="empty-state" style="margin-top:40px">No accounts. Sync from your PC to load data.</div>
+}
+else
+{
+    @foreach (var typeGroup in State.Accounts.GroupBy(a => a.Type).OrderBy(g => (int)g.Key))
+    {
+        <div class="section-header" style="margin-top:8px">
+            <span class="section-title">@typeGroup.Key</span>
+            <span style="font-size:13px;color:var(--text2)">
+                @typeGroup.Sum(a => State.GetAccountBalance(a.Id)).ToString("C")
+            </span>
+        </div>
+        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            @foreach (var acct in typeGroup.OrderByDescending(a => State.GetAccountBalance(a.Id)))
+            {
+                var balance = State.GetAccountBalance(acct.Id);
+                var (acctAfterBills, acctAfterPay) = State.GetAccountForecast(acct.Id);
+                var billsDue = balance - acctAfterBills;
+                var isPayAcct = acct.Id == State.PayAccountId;
+                <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <div class="dot" style="background:@acct.ColorHex;width:12px;height:12px"></div>
+                        <div style="flex:1">
+                            <div style="font-size:15px;font-weight:500">@acct.Name</div>
+                        </div>
+                        <div style="text-align:right">
+                            <div style="font-size:17px;font-weight:600;color:@(balance>=0?"var(--text)":"var(--red)")">@balance.ToString("C")</div>
+                        </div>
+                    </div>
+                    @if (billsDue > 0 || (isPayAcct && State.HasPayEstimate))
+                    {
+                        <div style="display:flex;margin-top:8px;background:var(--surface2);border-radius:8px;overflow:hidden">
+                            <div style="flex:1;padding:6px 8px;text-align:center">
+                                <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Now</div>
+                                <div style="font-size:13px;font-weight:600;color:@(balance>=0?"var(--text)":"var(--red)")">@balance.ToString("C")</div>
+                            </div>
+                            @if (billsDue > 0)
+                            {
+                                <div style="width:1px;background:var(--border)"></div>
+                                <div style="flex:1;padding:6px 8px;text-align:center">
+                                    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Before Pay</div>
+                                    <div style="font-size:13px;font-weight:600;color:@(acctAfterBills>=0?"var(--text)":"var(--red)")">@acctAfterBills.ToString("C")</div>
+                                </div>
+                            }
+                            @if (isPayAcct && State.HasPayEstimate)
+                            {
+                                <div style="width:1px;background:var(--border)"></div>
+                                <div style="flex:1;padding:6px 8px;text-align:center">
+                                    <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">After Pay</div>
+                                    <div style="font-size:13px;font-weight:600;color:var(--green)">@acctAfterPay.ToString("C")</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (acct.TargetCents is not null)
+                    {
+                        var progress = acct.TargetDollars > 0 ? Math.Clamp(balance / acct.TargetDollars!.Value, 0, 1) : 0;
+                        <div class="progress-bar" style="margin-top:8px">
+                            <div class="progress-fill" style="width:@((int)(progress * 100))%;background:@acct.ColorHex"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
+                            <span>@((progress).ToString("P0")) of @acct.TargetDollars!.Value.ToString("C")</span>
+                            @if (acct.TargetDate is not null)
+                            {
+                                <span>by @acct.TargetDate.Value.ToString("dd MMM yy")</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+}
+
+<!-- Debts section -->
+@if (State.Debts.Any())
+{
+    <div class="section-header" style="margin-top:8px">
+        <span class="section-title">Debts</span>
+        <span style="font-size:13px;color:var(--red)">@State.DebtTotal.ToString("C")</span>
+    </div>
+    <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        @foreach (var debt in State.Debts.OrderByDescending(d => d.BalanceDollars))
+        {
+            var paidOff = Math.Max(debt.OriginalBalanceDollars - debt.BalanceDollars, 0);
+            var progress = debt.OriginalBalanceDollars > 0 ? Math.Clamp(paidOff / debt.OriginalBalanceDollars, 0, 1) : 0;
+            <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+                <div style="display:flex;align-items:center">
+                    <div style="flex:1">
+                        <div style="font-size:15px;font-weight:500">@debt.Name</div>
+                        <div style="font-size:12px;color:var(--text3)">@debt.MinimumPaymentDollars.ToString("C") @debt.PaymentPeriod.ToLowerInvariant()</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-size:17px;font-weight:600;color:var(--red)">@debt.BalanceDollars.ToString("C")</div>
+                        @if (debt.InterestRate is not null)
+                        {
+                            <div style="font-size:11px;color:var(--text3)">@debt.InterestRate.Value.ToString("0.##")% p.a.</div>
+                        }
+                    </div>
+                </div>
+                @if (debt.OriginalBalanceDollars > 0)
+                {
+                    <div class="progress-bar" style="margin-top:8px">
+                        <div class="progress-fill" style="width:@((int)(progress * 100))%;background:var(--green)"></div>
+                    </div>
+                    <div style="font-size:11px;color:var(--text3);margin-top:3px">
+                        @paidOff.ToString("C") paid off · @progress.ToString("P0")
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+<!-- Savings goals -->
+@if (State.SavingsGoals.Any())
+{
+    <div class="section-header" style="margin-top:8px"><span class="section-title">Savings Goals</span></div>
+    <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        @foreach (var goal in State.SavingsGoals)
+        {
+            var progress = goal.TargetDollars > 0 ? Math.Clamp(goal.CurrentDollars / goal.TargetDollars, 0, 1) : 0;
+            <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+                <div style="display:flex;align-items:center">
+                    <div style="flex:1">
+                        <div style="font-size:15px;font-weight:500">@goal.Name</div>
+                        @if (goal.WeeklyContributionDollars > 0)
+                        {
+                            <div style="font-size:12px;color:var(--text3)">@goal.WeeklyContributionDollars.ToString("C")/week</div>
+                        }
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-size:15px;font-weight:600">@goal.CurrentDollars.ToString("C")</div>
+                        <div style="font-size:11px;color:var(--text3)">of @goal.TargetDollars.ToString("C")</div>
+                    </div>
+                </div>
+                <div class="progress-bar" style="margin-top:8px">
+                    <div class="progress-fill" style="width:@((int)(progress * 100))%;background:var(--purple)"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
+                    <span>@progress.ToString("P0")</span>
+                    @if (goal.TargetDate is not null)
+                    {
+                        <span>@goal.TargetDate.Value.ToString("dd MMM yy")</span>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<div style="height:16px"></div>

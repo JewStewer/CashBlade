@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>FinanceBlade</AssemblyName>
+    <AssemblyTitle>Finance Blade</AssemblyTitle>
+    <Company>Finance Blade</Company>
+    <Product>Finance Blade</Product>
+    <ApplicationIcon>Assets\financeblade-app.ico</ApplicationIcon>
+    <Version>1.0.4</Version>
+    <FileVersion>1.0.4.0</FileVersion>
+    <AssemblyVersion>1.0.4.0</AssemblyVersion>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**;..\Standalone\**;..\.dotnet-home\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Helpers\" />
+    <Folder Include="Themes\" />
+    <Folder Include="Services\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\financeblade-app.ico" />
+    <Resource Include="Assets\finora-app.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.26" />
+  </ItemGroup>
+
+</Project>

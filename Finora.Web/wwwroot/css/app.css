@@ -1,0 +1,399 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg: #0B1120;
+    --surface: #1E293B;
+    --surface2: #263248;
+    --border: #334155;
+    --text: #F8FAFC;
+    --text2: #94A3B8;
+    --text3: #64748B;
+    --teal: #0D9488;
+    --teal-light: #14B8A6;
+    --green: #34D399;
+    --red: #F87171;
+    --amber: #F59E0B;
+    --blue: #3B82F6;
+    --purple: #7C3AED;
+    --nav-height: 64px;
+    --header-height: 56px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html {
+    height: 100%;
+    /* iOS PWA full-height fix */
+    height: -webkit-fill-available;
+}
+
+body {
+    height: 100%;
+    height: -webkit-fill-available;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+    /* Prevent text size adjustment on orientation change */
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Prevent double-tap zoom on interactive elements */
+button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
+}
+
+#app {
+    height: 100%;
+    height: -webkit-fill-available;
+}
+
+/* ── Layout ── */
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    height: -webkit-fill-available;
+    max-width: 480px;
+    margin: 0 auto;
+    /* Prevent the shell from sitting behind the iOS status bar */
+    padding-top: var(--safe-top);
+}
+
+.app-header {
+    height: var(--header-height);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 10px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.app-header .logo {
+    width: 28px; height: 28px;
+    background: var(--teal);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+
+.app-header .title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+}
+
+.page-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Enough bottom padding to clear the fixed nav + home indicator */
+    padding: 0 0 calc(var(--nav-height) + var(--safe-bottom) + 8px) 0;
+}
+
+.bottom-nav {
+    height: calc(var(--nav-height) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    padding-top: 8px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    /* Ensure the nav renders above content and is always touchable */
+    pointer-events: auto;
+}
+
+.nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-decoration: none;
+    color: var(--text3);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 4px 0;
+    transition: color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav-item.active { color: var(--teal-light); }
+.nav-item svg { width: 22px; height: 22px; }
+
+/* ── Cards ── */
+.card {
+    background: var(--surface);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    padding: 14px;
+}
+
+.card-sm {
+    background: var(--surface);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+}
+
+/* ── Section headers ── */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 8px;
+}
+
+.section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text3);
+}
+
+/* ── Stat tiles ── */
+.stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 0 16px;
+}
+
+.stat-tile {
+    background: var(--surface);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    padding: 12px;
+}
+
+.stat-label { font-size: 11px; color: var(--text3); font-weight: 500; }
+.stat-value { font-size: 20px; font-weight: 700; color: var(--text); margin-top: 2px; }
+.stat-value.green { color: var(--green); }
+.stat-value.red { color: var(--red); }
+.stat-value.amber { color: var(--amber); }
+.stat-sub { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+/* ── List rows ── */
+.list-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.list-row:last-child { border-bottom: none; }
+
+.row-icon {
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 15px;
+}
+
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { font-size: 12px; color: var(--text2); margin-top: 1px; }
+.row-amount { font-size: 15px; font-weight: 600; }
+.row-amount.neg { color: var(--red); }
+.row-amount.pos { color: var(--green); }
+
+/* ── Badges ── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.badge-green { background: rgba(52,211,153,0.15); color: var(--green); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); }
+.badge-amber { background: rgba(245,158,11,0.15); color: var(--amber); }
+.badge-teal { background: rgba(13,148,136,0.2); color: var(--teal-light); }
+.badge-gray { background: var(--surface2); color: var(--text3); }
+
+/* ── Progress bar ── */
+.progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--teal);
+    transition: width 0.3s ease;
+}
+
+/* ── Buttons ── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn:active { opacity: 0.75; }
+.btn-primary { background: var(--teal); color: #fff; }
+.btn-secondary { background: var(--surface2); color: var(--text); }
+.btn-danger { background: rgba(248,113,113,0.15); color: var(--red); }
+.btn-sm { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+.btn-full { width: 100%; }
+.btn-icon { padding: 8px; border-radius: 8px; background: var(--surface2); }
+
+/* ── Form inputs ── */
+.form-group { padding: 0 16px 14px; }
+.form-label { font-size: 12px; font-weight: 500; color: var(--text3); margin-bottom: 5px; display: block; }
+.form-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 15px;
+    color: var(--text);
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.form-input:focus { border-color: var(--teal); }
+.form-input::placeholder { color: var(--text3); }
+
+select.form-input { appearance: none; -webkit-appearance: none; }
+
+/* ── Modal/Sheet ── */
+.modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    display: flex;
+    align-items: flex-end;
+}
+
+.modal-sheet {
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding-bottom: calc(16px + var(--safe-bottom));
+}
+
+.modal-handle {
+    width: 36px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 10px auto 4px;
+}
+
+.modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    padding: 8px 16px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ── Pill tabs ── */
+.pill-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.pill-tabs::-webkit-scrollbar { display: none; }
+
+.pill {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pill-active { background: var(--teal); color: #fff; }
+.pill-inactive { background: var(--surface2); color: var(--text2); }
+
+/* ── Divider ── */
+.divider { height: 8px; background: rgba(0,0,0,0.2); }
+
+/* ── Color dot ── */
+.dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ── Empty state ── */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    gap: 10px;
+    color: var(--text3);
+    font-size: 14px;
+    text-align: center;
+}
+
+/* ── Loading spinner ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--teal);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+/* ── Blazor error UI ── */
+#blazor-error-ui {
+    background: rgba(248,113,113,0.9);
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0,0,0,0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+    color: #fff;
+    font-size: 14px;
+}
+
+#blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 1.25rem; top: 0.5rem; }

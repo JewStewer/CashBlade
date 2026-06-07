@@ -1,0 +1,227 @@
+@page "/transactions"
+@inject AppState State
+
+<PageTitle>Transactions — Finance Blade</PageTitle>
+
+<div class="pill-tabs">
+    @foreach (var f in new[]{"All","Income","Expenses","Transfers"})
+    {
+        <button class="pill @(filter==f?"pill-active":"pill-inactive")" @onclick="() => filter = f">@f</button>
+    }
+</div>
+
+<!-- Search + filters -->
+<div style="padding:0 16px 10px;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:8px">
+        <input class="form-input" style="flex:1" placeholder="Search…" @bind="search" @bind:event="oninput" />
+        @if (!string.IsNullOrEmpty(search))
+        {
+            <button class="btn btn-icon" @onclick="() => search = string.Empty">✕</button>
+        }
+    </div>
+    <div style="display:flex;gap:8px">
+        <select class="form-input" style="flex:1;height:34px;font-size:13px;padding:0 8px" @bind="dateRange">
+            <option value="all">All dates</option>
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="month">This month</option>
+        </select>
+        <select class="form-input" style="flex:1;height:34px;font-size:13px;padding:0 8px" @bind="filterAccountId">
+            <option value="0">All accounts</option>
+            @foreach (var a in State.Accounts)
+            {
+                <option value="@a.Id">@a.Name</option>
+            }
+        </select>
+        <select class="form-input" style="flex:1;height:34px;font-size:13px;padding:0 8px" @bind="filterCategoryId">
+            <option value="0">All categories</option>
+            @foreach (var c in State.Categories)
+            {
+                <option value="@c.Id">@c.Name</option>
+            }
+        </select>
+    </div>
+</div>
+
+<div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    @{var rows = GetFiltered();}
+    @if (!rows.Any())
+    {
+        <div class="empty-state">No transactions match.</div>
+    }
+    else
+    {
+        var grouped = rows.GroupBy(t => t.Date.Date).OrderByDescending(g => g.Key);
+        @foreach (var day in grouped)
+        {
+            <div style="padding:8px 16px 4px;background:var(--bg);border-bottom:1px solid var(--border)">
+                <span style="font-size:12px;font-weight:600;color:var(--text3)">
+                    @(day.Key == DateTime.Today ? "Today" :
+                      day.Key == DateTime.Today.AddDays(-1) ? "Yesterday" :
+                      day.Key.ToString("ddd dd MMM"))
+                </span>
+                <span style="float:right;font-size:12px;color:var(--text3)">
+                    @day.Sum(t => t.AmountDollars).ToString("C")
+                </span>
+            </div>
+            @foreach (var t in day.OrderByDescending(x => x.Id))
+            {
+                <div>
+                    <div class="list-row" style="cursor:pointer;@(t.IsUnnecessary ? "border-left:3px solid var(--amber)" : "")" @onclick="() => SelectTxn(t.Id)">
+                        <div class="row-icon" style="background:var(--surface2)">@GetEmoji(t.CategoryName)</div>
+                        <div class="row-main">
+                            <div class="row-title">@t.Description</div>
+                            <div class="row-sub">@t.AccountName · @t.CategoryName</div>
+                        </div>
+                        <div style="text-align:right">
+                            <div class="row-amount @(t.AmountCents>=0?"pos":"neg")">@t.AmountDollars.ToString("C")</div>
+                            @if (t.IsUnnecessary)
+                            {
+                                <div style="font-size:10px;color:var(--amber)">unnecessary</div>
+                            }
+                        </div>
+                    </div>
+                    @if (selectedId == t.Id)
+                    {
+                        var localT = t;
+                        <div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px" @onclick:stopPropagation="true">
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="font-size:12px;color:var(--text3);flex-shrink:0">Category</span>
+                                <select class="form-input" style="flex:1;height:34px;font-size:13px;padding:0 8px"
+                                        value="@localT.CategoryId.ToString()"
+                                        @onchange="e => OnCategoryChange(localT, e)">
+                                    @foreach (var c in State.Categories)
+                                    {
+                                        <option value="@c.Id">@c.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                <button class="btn btn-sm btn-secondary" @onclick="() => StartEdit(localT)" @onclick:stopPropagation="true">Edit</button>
+                                @if (localT.AmountCents < 0 && !IsTransfer(localT))
+                                {
+                                    <button class="btn btn-sm @(localT.IsUnnecessary ? "btn-primary" : "btn-secondary")"
+                                            style="@(localT.IsUnnecessary ? "background:rgba(245,158,11,0.2);color:var(--amber);border:1px solid var(--amber)" : "")"
+                                            @onclick="() => DoToggleUnnecessary(localT)" @onclick:stopPropagation="true">
+                                        @(localT.IsUnnecessary ? "✓ Unnecessary" : "Mark unnecessary")
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-danger" @onclick="() => DoDelete(localT)" @onclick:stopPropagation="true">Delete</button>
+                                <button class="btn btn-sm btn-secondary" style="margin-left:auto" @onclick="() => selectedId = 0" @onclick:stopPropagation="true">✕</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    }
+</div>
+
+<div style="height:16px"></div>
+
+<!-- FAB -->
+<button class="btn btn-primary" @onclick="() => showAdd = true"
+    style="position:fixed;bottom:calc(var(--nav-height)+var(--safe-bottom)+16px);right:16px;width:52px;height:52px;border-radius:50%;padding:0;font-size:22px;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:10">
+    +
+</button>
+
+@if (showAdd)
+{
+    <AddTransactionModal OnClose="() => showAdd = false" OnSaved="() => showAdd = false" />
+}
+
+@if (editingTxn is not null)
+{
+    <EditTransactionModal Transaction="editingTxn"
+        OnClose="() => editingTxn = null"
+        OnSaved="OnEditSaved" />
+}
+
+@code {
+    private string filter = "All";
+    private string search = string.Empty;
+    private string dateRange = "all";
+    private int filterAccountId;
+    private int filterCategoryId;
+    private bool showAdd;
+    private int selectedId;
+    private Transaction? editingTxn;
+
+    private void SelectTxn(int id) => selectedId = selectedId == id ? 0 : id;
+
+    private void StartEdit(Transaction t)
+    {
+        editingTxn = t;
+        selectedId = 0;
+    }
+
+    private Task OnEditSaved()
+    {
+        editingTxn = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnCategoryChange(Transaction t, ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var id) || id == 0 || id == t.CategoryId)
+            return Task.CompletedTask;
+        return State.UpdateTransactionCategoryAsync(t.Id, id);
+    }
+
+    private async Task DoToggleUnnecessary(Transaction t)
+    {
+        await State.ToggleUnnecessaryAsync(t.Id);
+        selectedId = 0;
+    }
+
+    private async Task DoDelete(Transaction t)
+    {
+        await State.DeleteTransactionAsync(t.Id);
+        selectedId = 0;
+    }
+
+    private List<Transaction> GetFiltered()
+    {
+        var q = State.RecentTransactions.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(t => t.Description.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                              t.CategoryName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                              t.AccountName.Contains(search, StringComparison.OrdinalIgnoreCase));
+
+        q = dateRange switch
+        {
+            "today" => q.Where(t => t.Date.Date == DateTime.Today),
+            "week"  => q.Where(t => t.Date.Date >= DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek)),
+            "month" => q.Where(t => t.Date.Month == DateTime.Today.Month && t.Date.Year == DateTime.Today.Year),
+            _ => q
+        };
+
+        if (filterAccountId != 0)
+            q = q.Where(t => t.AccountId == filterAccountId);
+
+        if (filterCategoryId != 0)
+            q = q.Where(t => t.CategoryId == filterCategoryId);
+
+        q = filter switch
+        {
+            "Income" => q.Where(t => t.AmountCents > 0),
+            "Expenses" => q.Where(t => t.AmountCents < 0 && !IsTransfer(t)),
+            "Transfers" => q.Where(t => IsTransfer(t)),
+            _ => q
+        };
+
+        return q.ToList();
+    }
+
+    private static bool IsTransfer(Transaction t) =>
+        t.CategoryName is "Transfer" or "Opening Balance" or "Balance Adjustment" ||
+        (t.TransferId is { } tid && tid != Guid.Empty);
+
+    private static string GetEmoji(string cat) => cat switch
+    {
+        "Income" => "💰", "Groceries" => "🛒", "Fuel" => "⛽", "Rent" => "🏠",
+        "Phone" => "📱", "Internet" => "📡", "Medical" => "💊", "Transfer" => "↔️",
+        _ => "💸"
+    };
+}

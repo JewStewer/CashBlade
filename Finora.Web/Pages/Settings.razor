@@ -1,0 +1,176 @@
+@page "/settings"
+@inject AppState State
+@inject SyncService Sync
+@implements IDisposable
+
+<PageTitle>Settings — Finance Blade</PageTitle>
+
+<div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+
+    <!-- Last synced / sync now -->
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:10px">Data Sync</div>
+
+        @if (Sync.LastSyncedAt is not null)
+        {
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+                <span class="badge badge-green">✓ Synced</span>
+                <span style="font-size:13px;color:var(--text3)">@Sync.LastSyncedAt.Value.ToLocalTime().ToString("dd MMM HH:mm")</span>
+            </div>
+        }
+        else
+        {
+            <div style="font-size:13px;color:var(--text3);margin-bottom:10px">Not synced yet.</div>
+        }
+
+        @if (State.HasPendingChanges)
+        {
+            <div style="font-size:13px;color:var(--amber);margin-bottom:8px">⚠ You have unsaved local changes.</div>
+        }
+
+        <button class="btn btn-primary btn-full" @onclick="DoAutoSync" disabled="@Sync.IsSyncing">
+            @(Sync.IsSyncing ? "Syncing…" : "Sync Now")
+        </button>
+
+        @if (!string.IsNullOrEmpty(Sync.LastError))
+        {
+            <div style="margin-top:8px;font-size:13px;color:var(--red)">@Sync.LastError</div>
+        }
+    </div>
+
+    <!-- Supabase cloud sync (recommended) -->
+    <div class="card" style="border-color:@(Sync.HasCloudSync?"var(--teal)":"var(--border)")">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div style="font-size:14px;font-weight:600">☁ Cloud Sync (Supabase)</div>
+            @if (Sync.HasCloudSync)
+            {
+                <span class="badge badge-teal">Active</span>
+            }
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+            Works without your PC being on. Free forever.
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+                <label class="form-label">Project URL</label>
+                <input class="form-input" @bind="supabaseUrl" placeholder="xxxx.supabase.co (https:// added automatically)" />
+            </div>
+            <div>
+                <label class="form-label">Anon Key</label>
+                <input class="form-input" @bind="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" type="password" />
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-secondary btn-sm" @onclick="TestSupabase" disabled="@testingSupabase">
+                @(testingSupabase ? "Testing…" : "Test")
+            </button>
+            <button class="btn btn-primary btn-sm" style="flex:1" @onclick="SaveSupabase">Save</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(supabaseStatus))
+        {
+            <div style="margin-top:8px;font-size:13px;color:@supabaseStatusColor">@supabaseStatus</div>
+        }
+        @if (!string.IsNullOrEmpty(Sync.LastTestDetail))
+        {
+            <div style="margin-top:4px;font-size:11px;color:var(--text3);word-break:break-all;font-family:monospace">@Sync.LastTestDetail</div>
+        }
+
+        <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--text3);line-height:1.6">
+            <strong style="color:var(--text2)">One-time setup:</strong><br/>
+            1. Create a free account at <strong>supabase.com</strong><br/>
+            2. New project → Settings → API → copy URL and anon key<br/>
+            3. In SQL Editor, run:<br/>
+            <code style="display:block;background:var(--surface2);padding:6px;border-radius:4px;margin-top:4px;font-size:11px;word-break:break-all">
+                CREATE TABLE finance_sync (id TEXT PRIMARY KEY, payload JSONB NOT NULL, synced_at TIMESTAMPTZ DEFAULT NOW()); ALTER TABLE finance_sync DISABLE ROW LEVEL SECURITY;
+            </code>
+            4. On your PC, create a file <strong>supabase.json</strong> next to FinanceBlade.exe with:
+            <code style="display:block;background:var(--surface2);padding:6px;border-radius:4px;margin-top:4px;font-size:11px">
+                @("{")@("{\"url\":\"https://xxxx.supabase.co\",")@("\"anonKey\":\"eyJ...\"}")
+            </code>
+        </div>
+    </div>
+
+
+    <!-- Payday -->
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px">Payday</div>
+        <div>
+            <label class="form-label">Next Pay Date</label>
+            <input class="form-input" type="date" @bind="nextPayDate" />
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:10px" @onclick="SavePayDate">Save</button>
+    </div>
+
+    <!-- Summary period -->
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px">Summary Period</div>
+        <div style="display:flex;gap:8px">
+            @foreach (var p in new[]{"Weekly","Monthly"})
+            {
+                <button class="pill @(State.SummaryPeriod==p?"pill-active":"pill-inactive")" @onclick="() => SetPeriod(p)">@p</button>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px">About</div>
+        <div style="font-size:13px;color:var(--text3)">Finance Blade Mobile — offline-first, syncs via Supabase</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Built @BuildDate</div>
+    </div>
+</div>
+
+@code {
+    private static readonly string BuildDate = DateTime.Now.ToString("dd MMM yyyy HH:mm");
+    private string supabaseUrl = string.Empty;
+    private string supabaseKey = string.Empty;
+    private DateTime nextPayDate = DateTime.Today;
+    private bool testingSupabase;
+    private string supabaseStatus = string.Empty, supabaseStatusColor = "var(--text3)";
+
+    protected override void OnInitialized()
+    {
+        supabaseUrl = Sync.SupabaseUrl ?? string.Empty;
+        supabaseKey = Sync.SupabaseKey ?? string.Empty;
+        nextPayDate = State.NextPayDate;
+        Sync.OnSyncStateChanged += StateHasChanged;
+    }
+
+    private async Task DoAutoSync()
+    {
+        await State.SyncAndReloadAsync();
+        StateHasChanged();
+    }
+
+    private async Task TestSupabase()
+    {
+        if (string.IsNullOrWhiteSpace(supabaseUrl) || string.IsNullOrWhiteSpace(supabaseKey)) return;
+        testingSupabase = true; supabaseStatus = string.Empty; StateHasChanged();
+        var ok = await Sync.TestSupabaseAsync(supabaseUrl, supabaseKey);
+        supabaseStatus = ok ? "✓ Supabase connection works" : "✕ Could not connect — check URL and key, and that the table exists";
+        supabaseStatusColor = ok ? "var(--green)" : "var(--red)";
+        testingSupabase = false; StateHasChanged();
+    }
+
+    private async Task SaveSupabase()
+    {
+        await Sync.SetSupabaseAsync(supabaseUrl, supabaseKey);
+        supabaseStatus = "Saved. Tap Sync Now to load data.";
+        supabaseStatusColor = "var(--green)";
+        StateHasChanged();
+    }
+
+    private async Task SavePayDate()
+    {
+        await State.SaveSettingAsync("NextPayDate", nextPayDate.ToString("O"));
+    }
+
+    private async Task SetPeriod(string period)
+    {
+        await State.SaveSettingAsync("SummaryPeriod", period);
+    }
+
+    public void Dispose() => Sync.OnSyncStateChanged -= StateHasChanged;
+}

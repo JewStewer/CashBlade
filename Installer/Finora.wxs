@@ -1,0 +1,52 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Cashglade"
+           Manufacturer="Cashglade"
+           Version="1.0.3.0"
+           UpgradeCode="C2C68088-24C4-4C8F-BEAF-3300E35C8038"
+           Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Cashglade is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="FinoraIcon" SourceFile="D:\Finora\Finora\Assets\finora-app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="FinoraIcon" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Cashglade" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Cashglade" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Cashglade" Level="1">
+      <ComponentGroupRef Id="FinoraFiles" />
+      <ComponentRef Id="ApplicationShortcutComponent" />
+    </Feature>
+
+    <ComponentGroup Id="FinoraFiles" Directory="INSTALLFOLDER">
+      <Component Id="FinoraExeComponent">
+        <File Id="FinoraExe"
+              Source="D:\Finora\LocalPublish\Cashglade.exe"
+              KeyPath="yes" />
+        <File Id="FinoraUpdaterConfig"
+              Source="D:\Finora\LocalPublish\Finora.updater.json" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="ApplicationShortcutComponent" Directory="ApplicationProgramsFolder">
+      <Shortcut Id="ApplicationStartMenuShortcut"
+                Name="Cashglade"
+                Description="Track spending, account balances, bills, and pay timing."
+                Target="[INSTALLFOLDER]Cashglade.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="FinoraIcon" />
+      <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Cashglade"
+                     Name="Installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+  </Package>
+</Wix>

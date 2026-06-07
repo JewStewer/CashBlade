@@ -1,0 +1,129 @@
+@page "/bills"
+@inject AppState State
+
+<PageTitle>Bills — Finance Blade</PageTitle>
+
+<div class="pill-tabs">
+    @foreach (var f in new[]{"Upcoming","All","Paid"})
+    {
+        <button class="pill @(filter==f?"pill-active":"pill-inactive")" @onclick="() => filter = f">@f</button>
+    }
+</div>
+
+<!-- Summary bar -->
+<div style="padding:0 16px 12px;display:flex;gap:8px">
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Due before payday</div>
+        <div style="font-size:18px;font-weight:700;color:var(--red)">@State.TotalBillsDue.ToString("C")</div>
+    </div>
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Payday</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">@State.NextPayDate.ToString("dd MMM")</div>
+    </div>
+</div>
+
+<div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    @{var bills = GetFiltered();}
+    @if (!bills.Any())
+    {
+        <div class="empty-state">No bills here.</div>
+    }
+    else
+    {
+        @foreach (var bill in bills)
+        {
+            var isPaid = State.IsBillPaid(bill);
+            var acctBal = State.GetAccountBalance(bill.AccountId);
+            var covered = acctBal >= bill.AmountDollars;
+            <div class="list-row" style="align-items:flex-start;gap:10px">
+                <div style="padding-top:2px">
+                    <button @onclick="() => TogglePaid(bill)" style="width:22px;height:22px;border-radius:50%;border:2px solid @(isPaid?"var(--green)":"var(--border)");background:@(isPaid?"var(--green)":"transparent");cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                        @if (isPaid) { <span style="color:#fff;font-size:12px">✓</span> }
+                    </button>
+                </div>
+                <div class="row-main" style="cursor:pointer" @onclick="() => StartEdit(bill)">
+                    <div class="row-title" style="@(isPaid?"opacity:0.5;text-decoration:line-through":"")">@bill.Name</div>
+                    <div class="row-sub">@bill.AccountName · @bill.Frequency · @bill.DueDate.ToString("dd MMM")</div>
+                    @if (!isPaid)
+                    {
+                        <div style="margin-top:4px">
+                            @if (covered)
+                            {
+                                <span class="badge badge-teal">Covered</span>
+                            }
+                            else
+                            {
+                                var shortfall = bill.AmountDollars - acctBal;
+                                <span class="badge badge-red">Short @shortfall.ToString("C")</span>
+                            }
+                            @if (bill.IsAutoPay)
+                            {
+                                <span class="badge badge-gray" style="margin-left:4px">Auto</span>
+                            }
+                            @{var danger = GetDangerBadge(bill);}
+                            @if (!string.IsNullOrEmpty(danger))
+                            {
+                                <span class="badge @(danger=="Danger"?"badge-red":"badge-amber")" style="margin-left:4px">@danger</span>
+                            }
+                        </div>
+                    }
+                </div>
+                <span class="row-amount neg" style="@(isPaid?"opacity:0.5":"")">@bill.AmountDollars.ToString("C")</span>
+            </div>
+        }
+    }
+</div>
+
+<div style="height:16px"></div>
+
+<!-- FAB -->
+<button class="btn btn-primary" @onclick="() => editingBill = new Bill()"
+    style="position:fixed;bottom:calc(var(--nav-height)+var(--safe-bottom)+16px);right:16px;width:52px;height:52px;border-radius:50%;padding:0;font-size:22px;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:10">
+    +
+</button>
+
+@if (editingBill is not null)
+{
+    <AddEditBillModal Bill="@(editingBill.Id == 0 ? null : editingBill)"
+        OnClose="() => editingBill = null"
+        OnSaved="OnBillSaved" />
+}
+
+@code {
+    private string filter = "Upcoming";
+    private Bill? editingBill;
+
+    private void StartEdit(Bill bill) => editingBill = bill;
+
+    private Task OnBillSaved()
+    {
+        editingBill = null;
+        return Task.CompletedTask;
+    }
+
+    private IEnumerable<Bill> GetFiltered()
+    {
+        var today = DateTime.Today;
+        var payEnd = State.NextPayDate.Date >= today ? State.NextPayDate.Date : today.AddDays(14);
+        return filter switch
+        {
+            "Upcoming" => State.Bills.Where(b => !State.IsBillPaid(b) && b.DueDate.Date <= payEnd).OrderBy(b => b.DueDate),
+            "Paid" => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.DueDate),
+            _ => State.Bills.OrderBy(b => b.DueDate)
+        };
+    }
+
+    private string GetDangerBadge(Bill bill)
+    {
+        var acctBal = State.GetAccountBalance(bill.AccountId);
+        if (acctBal < bill.AmountDollars && bill.DueDate.Date <= State.NextPayDate.Date) return "Danger";
+        if (acctBal < bill.AmountDollars) return "Short";
+        if (bill.DueDate.Date <= State.NextPayDate.Date) return "Ready";
+        return string.Empty;
+    }
+
+    private async Task TogglePaid(Bill bill)
+    {
+        await State.MarkBillPaidAsync(bill.Id, !State.IsBillPaid(bill));
+    }
+}

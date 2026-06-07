@@ -1,0 +1,137 @@
+@page "/daily"
+@inject AppState State
+
+<PageTitle>Daily — Finance Blade</PageTitle>
+
+@if (!State.IsLoaded)
+{
+    <div class="empty-state"><div class="spinner"></div><span>Loading…</span></div>
+}
+else
+{
+    @if (Streak > 0)
+    {
+        <div style="margin:12px 16px 0;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:12px">
+            <div style="font-size:26px">🔥</div>
+            <div>
+                <div style="font-size:15px;font-weight:600;color:var(--green)">@Streak day streak</div>
+                <div style="font-size:12px;color:var(--text3)">No unnecessary spending</div>
+            </div>
+        </div>
+    }
+
+    <div style="padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3)">@DateRangeLabel</span>
+        @if (AvgScore.HasValue)
+        {
+            <span style="font-size:13px;color:var(--text2)">avg <strong style="color:@GradeColor(AvgScore.Value)">@AvgScore.Value%</strong></span>
+        }
+    </div>
+
+    <div style="padding:0 12px">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px">
+            @foreach (var h in new[] { "M", "T", "W", "T", "F", "S", "S" })
+            {
+                <div style="text-align:center;font-size:11px;color:var(--text3);font-weight:500;padding:2px 0">@h</div>
+            }
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">
+            @for (var p = 0; p < PadStart; p++)
+            {
+                <div></div>
+            }
+            @foreach (var day in Scores)
+            {
+                <div style="aspect-ratio:1;border-radius:7px;@CellBg(day);position:relative;display:flex;align-items:center;justify-content:center;@(day.IsToday ? "outline:2px solid var(--teal);outline-offset:-2px" : "")">
+                    <span style="position:absolute;top:3px;left:4px;font-size:9px;color:@(day.HasSpending ? day.ColorHex : "var(--text3)")">@day.Date.Day</span>
+                    @if (day.HasSpending)
+                    {
+                        <span style="font-size:11px;font-weight:700;color:@day.ColorHex;margin-top:5px">@day.Grade</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div style="display:flex;gap:10px;padding:10px 16px;justify-content:center">
+        @foreach (var (g, c) in Legend)
+        {
+            <div style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text2)">
+                <div style="width:9px;height:9px;border-radius:2px;background:@c"></div>@g
+            </div>
+        }
+    </div>
+
+    <div class="stat-grid" style="margin-top:4px">
+        <div class="stat-tile">
+            <div class="stat-label">Unnecessary</div>
+            <div class="stat-value" style="font-size:18px;color:@(TotalUnnecessary > 0 ? "var(--red)" : "var(--green)")">@TotalUnnecessary.ToString("C")</div>
+            <div class="stat-sub">last 35 days</div>
+        </div>
+        <div class="stat-tile">
+            <div class="stat-label">Clean Days</div>
+            <div class="stat-value" style="font-size:18px;color:var(--green)">@CleanCount<span style="font-size:13px;color:var(--text3)"> / @SpendingDayCount</span></div>
+            <div class="stat-sub">spending days</div>
+        </div>
+    </div>
+
+    <div style="height:16px"></div>
+}
+
+@code {
+    private List<DailyScore> Scores => State.GetDailyScores(35);
+    private int Streak => State.GetCleanStreak();
+
+    private int PadStart
+    {
+        get
+        {
+            if (!Scores.Any()) return 0;
+            var dow = (int)Scores.First().Date.DayOfWeek;
+            return (dow - 1 + 7) % 7;
+        }
+    }
+
+    private int? AvgScore
+    {
+        get
+        {
+            var days = Scores.Where(d => d.HasSpending).ToList();
+            return days.Any() ? (int)days.Average(d => d.Score) : null;
+        }
+    }
+
+    private decimal TotalUnnecessary => Scores.Sum(d => d.UnnecessaryTotal);
+    private int CleanCount => Scores.Count(d => d.SpendingTotal > 0 && d.UnnecessaryTotal == 0);
+    private int SpendingDayCount => Scores.Count(d => d.SpendingTotal > 0);
+
+    private string DateRangeLabel
+    {
+        get
+        {
+            if (!Scores.Any()) return "";
+            var first = Scores.First().Date;
+            var last = Scores.Last().Date;
+            return first.Month == last.Month
+                ? $"{first.Day}–{last.Day} {last:MMM yyyy}"
+                : $"{first.Day} {first:MMM} – {last.Day} {last:MMM yyyy}";
+        }
+    }
+
+    private static string CellBg(DailyScore d) =>
+        $"background:{(d.HasSpending ? d.ColorHex + "28" : "var(--surface2)")}";
+
+    private static string GradeColor(int score) => score switch
+    {
+        >= 90 => "#34D399",
+        >= 80 => "#6EE7B7",
+        >= 60 => "#FBBF24",
+        >= 40 => "#F97316",
+        _ => "#F87171"
+    };
+
+    private static readonly (string Grade, string Color)[] Legend =
+    [
+        ("A+", "#34D399"), ("A/B", "#6EE7B7"), ("C", "#FBBF24"), ("D", "#F97316"), ("F", "#F87171")
+    ];
+}

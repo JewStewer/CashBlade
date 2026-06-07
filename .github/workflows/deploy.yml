@@ -1,0 +1,60 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install WASM tools (faster Blazor builds)
+        run: dotnet workload install wasm-tools
+
+      - name: Publish Finora.Web
+        run: dotnet publish Finora.Web/Finora.Web.csproj -c Release -o _site
+
+      - name: Fix base path for GitHub Pages (/CashBlade/)
+        run: |
+          BASE="/CashBlade/"
+          # Update <base href> in index.html
+          sed -i "s|<base href=\"/\" />|<base href=\"${BASE}\" />|g" _site/wwwroot/index.html
+          # Update start_url in PWA manifest
+          sed -i "s|\"start_url\": \"/\"|\"start_url\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest
+          # Copy index.html → 404.html so deep-links work after page refresh
+          cp _site/wwwroot/index.html _site/wwwroot/404.html
+          # Prevent Jekyll from processing _framework/ files
+          touch _site/wwwroot/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/wwwroot
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
