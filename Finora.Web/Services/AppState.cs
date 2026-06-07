@@ -220,11 +220,20 @@ public class AppState(IndexedDbService db, SyncService sync)
     public bool IsBillPaid(Bill bill)
     {
         if (bill.IsPaid) return true;
-        var status = BillStatuses
+        // First: check for a status that matches THIS occurrence's due date
+        var exactStatus = BillStatuses
+            .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == bill.DueDate.Date);
+        if (exactStatus is not null) return exactStatus.IsPaid;
+        // Fallback: use latest status only if it's from the current or future period
+        // (prevents last month's "paid" state bleeding into a new billing cycle)
+        var latest = BillStatuses
             .Where(s => s.BillId == bill.Id)
             .OrderByDescending(s => s.DueDate)
             .FirstOrDefault();
-        return status?.IsPaid == true;
+        if (latest is null) return false;
+        // Only trust the latest status if its DueDate is within the last 7 days
+        // (so a monthly bill paid on May 15 doesn't appear paid on June 7)
+        return latest.IsPaid && (DateTime.Today - latest.DueDate.Date).TotalDays <= 7;
     }
 
     public List<Transaction> GetTransactionsForPeriod(DateTime from, DateTime to) =>

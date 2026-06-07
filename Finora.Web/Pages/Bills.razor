@@ -4,7 +4,7 @@
 <PageTitle>Bills — Finance Blade</PageTitle>
 
 <div class="pill-tabs">
-    @foreach (var f in new[]{"Upcoming","All","Paid"})
+    @foreach (var f in new[]{"Unpaid","All","Paid"})
     {
         <button class="pill @(filter==f?"pill-active":"pill-inactive")" @onclick="() => filter = f">@f</button>
     }
@@ -90,7 +90,7 @@
 }
 
 @code {
-    private string filter = "Upcoming";
+    private string filter = "Unpaid";
     private Bill? editingBill;
 
     private void StartEdit(Bill bill) => editingBill = bill;
@@ -101,17 +101,12 @@
         return Task.CompletedTask;
     }
 
-    private IEnumerable<Bill> GetFiltered()
+    private IEnumerable<Bill> GetFiltered() => filter switch
     {
-        var today = DateTime.Today;
-        var payEnd = State.NextPayDate.Date >= today ? State.NextPayDate.Date : today.AddDays(14);
-        return filter switch
-        {
-            "Upcoming" => State.Bills.Where(b => !State.IsBillPaid(b) && b.DueDate.Date <= payEnd).OrderBy(b => b.DueDate),
-            "Paid" => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.DueDate),
-            _ => State.Bills.OrderBy(b => b.DueDate)
-        };
-    }
+        "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b)).OrderBy(b => b.DueDate),
+        "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.DueDate),
+        _        => State.Bills.OrderBy(b => b.DueDate)
+    };
 
     private string GetDangerBadge(Bill bill)
     {
