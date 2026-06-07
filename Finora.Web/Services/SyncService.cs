@@ -180,6 +180,45 @@ public class SyncService(HttpClient http, IndexedDbService db)
         catch { return false; }
     }
 
+    // ── Save push subscription to Supabase ───────────────────────────────────
+    public async Task<bool> SavePushSubscriptionAsync(string subscriptionJson)
+    {
+        if (!HasCloudSync) return false;
+        try
+        {
+            var baseUrl = NormaliseUrl(SupabaseUrl!);
+            // Use endpoint URL as stable id (last 48 chars, url-safe)
+            string endpoint = string.Empty;
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(subscriptionJson);
+                endpoint = parsed.GetProperty("endpoint").GetString() ?? string.Empty;
+            }
+            catch { }
+            var id = endpoint.Length > 48
+                ? endpoint[^48..].Replace("/", "_").Replace(":", "_")
+                : endpoint.Replace("/", "_").Replace(":", "_");
+            var body = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                id,
+                subscription = subscriptionJson,
+                created_at = DateTime.UtcNow
+            }, _opts);
+            var req = new HttpRequestMessage(HttpMethod.Post,
+                $"{baseUrl}/rest/v1/push_subscriptions")
+            {
+                Content = new System.Net.Http.StringContent(body,
+                    System.Text.Encoding.UTF8, "application/json")
+            };
+            AddSupabaseHeaders(req, SupabaseKey!);
+            req.Headers.Add("Prefer", "resolution=merge-duplicates");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var resp = await http.SendAsync(req, cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     // ── Push phone changes to PC ───────────────────────────────────────────────
     public async Task<bool> PushToPcAsync(PushPayload push)
     {

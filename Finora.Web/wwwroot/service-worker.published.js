@@ -23,6 +23,32 @@ self.addEventListener('activate', event => {
     })());
 });
 
+// ── Push notifications ──────────────────────────────────────────────────────
+self.addEventListener('push', event => {
+    let data = { title: 'Finance Blade', body: 'You have a bill due soon.' };
+    try { if (event.data) data = event.data.json(); } catch {}
+    event.waitUntil(
+        self.registration.showNotification(data.title, {
+            body: data.body,
+            icon: './icons/icon-192.png',
+            badge: './icons/icon-192.png',
+            tag: 'bill-reminder',
+            renotify: true,
+            data: { url: self.location.origin + '/CashBlade/' }
+        })
+    );
+});
+
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    const url = event.notification.data?.url || self.location.origin;
+    event.waitUntil(clients.matchAll({ type: 'window' }).then(list => {
+        const existing = list.find(c => c.url.startsWith(url));
+        if (existing) return existing.focus();
+        return clients.openWindow(url);
+    }));
+});
+
 self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET') return;
     event.respondWith((async () => {

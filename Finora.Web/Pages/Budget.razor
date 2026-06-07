@@ -111,13 +111,30 @@
                 @foreach (var (cat, amount) in TopCats)
                 {
                     var w = TopCatMax > 0 ? amount / TopCatMax : 0;
+                    var limitDollars = State.GetCategoryLimitDollars(cat);
+                    var hasLimit = limitDollars > 0;
+                    var limitPct = hasLimit ? amount / limitDollars : 0m;
+                    var barColor = hasLimit && limitPct >= 1m ? "var(--red)"
+                                 : hasLimit && limitPct >= 0.8m ? "var(--amber)"
+                                 : "var(--teal)";
                     <div style="margin-bottom:10px">
                         <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:3px">
-                            <span>@cat</span>
-                            <span style="font-weight:600">@amount.ToString("C")</span>
+                            <span style="display:flex;align-items:center;gap:6px">
+                                @cat
+                                @if (hasLimit && limitPct >= 0.8m)
+                                {
+                                    <span style="font-size:10px;padding:1px 5px;border-radius:8px;background:@(limitPct>=1?"rgba(248,113,113,0.15)":"rgba(245,158,11,0.15)");color:@(limitPct>=1?"var(--red)":"var(--amber)")">
+                                        @(limitPct >= 1 ? "Over limit" : "Near limit")
+                                    </span>
+                                }
+                            </span>
+                            <span style="font-weight:600;color:@(hasLimit && limitPct>=1?"var(--red)":"var(--text)")">
+                                @amount.ToString("C")
+                                @if (hasLimit) { <span style="font-size:11px;color:var(--text3);font-weight:400"> / @limitDollars.ToString("C")</span> }
+                            </span>
                         </div>
                         <div class="progress-bar">
-                            <div class="progress-fill" style="width:@((int)(w*100))%"></div>
+                            <div class="progress-fill" style="width:@((int)(Math.Clamp(hasLimit ? limitPct : w, 0, 1)*100))%;background:@barColor"></div>
                         </div>
                     </div>
                 }
@@ -148,6 +165,144 @@
                     <div style="background:var(--surface2);border-radius:4px;height:10px;overflow:hidden">
                         <div style="height:100%;border-radius:4px;background:@color;width:@($"{barW:F1}")%;transition:width 0.4s ease"></div>
                     </div>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Monthly spending history -->
+    @{
+        var trend = State.GetMonthlyTrend(6);
+        var trendMax = trend.Any() ? Math.Max(trend.Max(t => t.Spending), 1m) : 1m;
+    }
+    @if (trend.Any(t => t.Spending > 0 || t.Income > 0))
+    {
+        <div class="card" style="margin-top:12px">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Monthly History</div>
+            @foreach (var m in trend)
+            {
+                var spendW = trendMax > 0 ? (double)(m.Spending / trendMax) * 100.0 : 0;
+                var incomeW = trendMax > 0 ? (double)(m.Income / trendMax) * 100.0 : 0;
+                var isOver = m.Income > 0 && m.Spending > m.Income;
+                <div style="margin-bottom:10px">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+                        <span style="color:var(--text2)">@m.Month</span>
+                        <div style="display:flex;gap:10px">
+                            @if (m.Income > 0)
+                            {
+                                <span style="color:var(--green)">+@m.Income.ToString("C0")</span>
+                            }
+                            <span style="color:@(isOver ? "var(--red)" : "var(--text)");font-weight:600">-@m.Spending.ToString("C0")</span>
+                        </div>
+                    </div>
+                    <div style="position:relative;height:10px">
+                        @if (m.Income > 0)
+                        {
+                            <div style="position:absolute;inset:0;background:var(--surface2);border-radius:4px;overflow:hidden">
+                                <div style="height:100%;border-radius:4px;background:rgba(52,211,153,0.25);width:@($"{incomeW:F1}")%"></div>
+                            </div>
+                        }
+                        <div style="position:absolute;inset:0;background:transparent;border-radius:4px;overflow:hidden">
+                            <div style="height:100%;border-radius:4px;background:@(isOver?"var(--red)":"var(--teal)");opacity:0.85;width:@($"{spendW:F1}")%;transition:width 0.4s ease"></div>
+                        </div>
+                    </div>
+                </div>
+            }
+            <div style="display:flex;gap:16px;margin-top:6px;font-size:11px;color:var(--text3)">
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--teal);margin-right:4px;vertical-align:middle"></span>Spending</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(52,211,153,0.4);margin-right:4px;vertical-align:middle"></span>Income</span>
+            </div>
+        </div>
+    }
+
+    <!-- Debts -->
+    @if (State.Debts.Any())
+    {
+        <div class="card" style="margin-top:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                <div style="font-size:12px;color:var(--text3)">Debts</div>
+                <span style="font-size:13px;font-weight:700;color:var(--red)">@State.Debts.Sum(d => d.BalanceDollars).ToString("C") total</span>
+            </div>
+            @foreach (var debt in State.Debts)
+            {
+                var paidOff = debt.OriginalBalanceDollars > 0
+                    ? Math.Clamp(1m - debt.BalanceDollars / debt.OriginalBalanceDollars, 0m, 1m)
+                    : 0m;
+                <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+                        <span style="font-size:14px;font-weight:600">@debt.Name</span>
+                        <span style="font-size:15px;font-weight:700;color:var(--red)">@debt.BalanceDollars.ToString("C")</span>
+                    </div>
+                    @if (debt.InterestRate.HasValue && debt.InterestRate.Value > 0)
+                    {
+                        <div style="font-size:11px;color:var(--text3);margin-bottom:5px">
+                            @debt.InterestRate.Value.ToString("P1") APR
+                            @if (debt.MinimumPaymentDollars > 0)
+                            { <span> · Min @debt.MinimumPaymentDollars.ToString("C")/@debt.PaymentPeriod.ToLower()</span> }
+                        </div>
+                    }
+                    @if (debt.OriginalBalanceDollars > 0)
+                    {
+                        <div class="progress-bar" style="height:6px">
+                            <div class="progress-fill" style="width:@((int)(paidOff*100))%;background:#16A34A"></div>
+                        </div>
+                        <div style="font-size:11px;color:var(--text3);margin-top:3px">@paidOff.ToString("P0") paid off · started @debt.OriginalBalanceDollars.ToString("C")</div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Savings goals -->
+    @if (State.SavingsGoals.Any())
+    {
+        <div class="card" style="margin-top:12px">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Savings Goals</div>
+            @foreach (var goal in State.SavingsGoals)
+            {
+                var progress = goal.TargetDollars > 0
+                    ? Math.Clamp(goal.CurrentDollars / goal.TargetDollars, 0m, 1m)
+                    : 0m;
+                var remaining = goal.TargetDollars - goal.CurrentDollars;
+                var reached = remaining <= 0;
+                <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+                        <span style="font-size:14px;font-weight:600">@goal.Name</span>
+                        <span style="font-size:13px;color:@(reached?"var(--green)":"var(--teal)")">
+                            @goal.CurrentDollars.ToString("C") / @goal.TargetDollars.ToString("C")
+                        </span>
+                    </div>
+                    <div class="progress-bar" style="height:8px">
+                        <div class="progress-fill" style="width:@((int)(progress*100))%;background:@(reached?"var(--green)":"var(--teal)")"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:4px">
+                        <span>@progress.ToString("P0") saved</span>
+                        @if (reached)
+                        {
+                            <span style="color:var(--green);font-weight:600">Goal reached!</span>
+                        }
+                        else
+                        {
+                            <span>@remaining.ToString("C") to go</span>
+                        }
+                    </div>
+                    @if (goal.WeeklyContributionDollars > 0 && !reached)
+                    {
+                        var weeksLeft = goal.WeeklyContributionDollars > 0
+                            ? (int)Math.Ceiling((double)(remaining / goal.WeeklyContributionDollars))
+                            : 0;
+                        <div style="font-size:11px;color:var(--text3);margin-top:2px">
+                            @goal.WeeklyContributionDollars.ToString("C")/wk · ~@weeksLeft weeks to goal
+                        </div>
+                    }
+                    @if (goal.TargetDate.HasValue)
+                    {
+                        var daysLeft = (goal.TargetDate.Value.Date - DateTime.Today).Days;
+                        <div style="font-size:11px;color:@(daysLeft < 30 && !reached ? "var(--amber)" : "var(--text3)");margin-top:2px">
+                            Target: @goal.TargetDate.Value.ToString("d MMM yyyy")
+                            @if (!reached) { <span> (@daysLeft days left)</span> }
+                        </div>
+                    }
                 </div>
             }
         </div>

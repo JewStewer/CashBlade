@@ -284,6 +284,22 @@ public class AppState(IndexedDbService db, SyncService sync)
             .ToList();
     }
 
+    public string VapidPublicKey =>
+        AppSettings.FirstOrDefault(s => s.Key == "VapidPublicKey")?.Value ?? string.Empty;
+
+    public decimal GetCategoryLimitDollars(string categoryName)
+    {
+        var val = AppSettings.FirstOrDefault(s => s.Key == $"CategoryLimit:{categoryName}")?.Value;
+        return int.TryParse(val, out var cents) ? cents / 100m : 0m;
+    }
+
+    public List<Bill> GetUpcomingBills(int days = 3) =>
+        Bills.Where(b => !IsBillPaid(b) &&
+                         b.DueDate.Date >= DateTime.Today &&
+                         b.DueDate.Date <= DateTime.Today.AddDays(days))
+             .OrderBy(b => b.DueDate)
+             .ToList();
+
     public List<(string Month, decimal Income, decimal Spending)> GetMonthlyTrend(int months = 6)
     {
         var result = new List<(string, decimal, decimal)>();

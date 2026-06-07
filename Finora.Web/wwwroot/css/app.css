@@ -397,3 +397,40 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 }
 
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 1.25rem; top: 0.5rem; }
+
+/* ── Bill alert banner ── */
+.bill-alert-banner {
+    background: linear-gradient(90deg, #92400e, #78350f);
+    border-bottom: 1px solid var(--amber);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    color: #fef3c7;
+    flex-shrink: 0;
+}
+
+.bill-alert-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex: 1;
+    line-height: 1.5;
+}
+
+.bill-alert-close {
+    background: transparent;
+    border: none;
+    color: #fef3c7;
+    font-size: 18px;
+    padding: 0 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    line-height: 1;
+    opacity: 0.7;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.bill-alert-close:active { opacity: 1; }
