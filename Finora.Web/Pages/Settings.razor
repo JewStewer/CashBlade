@@ -8,6 +8,23 @@
 
 <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
 
+    <!-- App version / force update -->
+    <div class="card" style="border-color:rgba(99,102,241,0.4)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-size:14px;font-weight:600">App Update</div>
+            @if (_updateDone)
+            {
+                <span class="badge badge-green">✓ Reloading…</span>
+            }
+        </div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:10px">
+            If the app looks out of date, tap below to clear the cache and reload the latest version.
+        </div>
+        <button class="btn btn-primary btn-full" @onclick="ForceUpdate">
+            🔄 Clear cache &amp; reload
+        </button>
+    </div>
+
     <!-- Last synced / sync now -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:10px">Data Sync</div>
@@ -199,6 +216,7 @@
     private string supabaseStatus = string.Empty, supabaseStatusColor = "var(--text3)";
 
     // Push notifications
+    private bool _updateDone;
     private bool _pushSupported;
     private string _pushPermission = "default";
     private bool _pushSubscribed;
@@ -301,6 +319,24 @@
         _pushStatus = "Notifications disabled.";
         _pushStatusColor = "var(--text3)";
         _pushBusy = false; StateHasChanged();
+    }
+
+    private async Task ForceUpdate()
+    {
+        _updateDone = true;
+        StateHasChanged();
+        // Unregister the service worker so the next load fetches everything fresh from network
+        await JS.InvokeVoidAsync("eval", @"
+            (async () => {
+                if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    for (const r of regs) await r.unregister();
+                }
+                const cacheKeys = await caches.keys();
+                for (const k of cacheKeys) await caches.delete(k);
+                window.location.reload();
+            })()
+        ");
     }
 
     private async Task SavePayDate()

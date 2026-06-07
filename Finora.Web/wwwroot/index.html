@@ -35,8 +35,10 @@
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js');
-            // Updates are handled by the service worker itself (client.navigate in activate).
-            // No controllerchange listener needed — it caused double/triple reloads.
+            // Force the browser to check for a new service worker on every launch.
+            // Combined with network-first navigation, this ensures updates are picked
+            // up immediately without any forced page reloads.
+            navigator.serviceWorker.ready.then(r => r.update()).catch(() => {});
         }
     </script>
 </body>
