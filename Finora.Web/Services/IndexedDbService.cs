@@ -86,6 +86,16 @@ public class IndexedDbService(IJSRuntime js)
         return settings.FirstOrDefault(s => s.Key == key)?.Value;
     }
 
+    // ── Lent transactions (survive clearAll; phone-only tracking) ──────────────
+    public Task<List<LentTransaction>> GetLentTransactionsAsync() =>
+        GetAllAsync<LentTransaction>("lentTxns");
+
+    public Task SetLentTransactionAsync(LentTransaction lent) =>
+        PutAsync("lentTxns", lent);
+
+    public Task DeleteLentTransactionAsync(int id) =>
+        DeleteAsync("lentTxns", id);
+
     // ── Persistent bill overrides (survive clearAll, cleared only on push success) ──
     public Task<List<PendingBillOverride>> GetPendingBillOverridesAsync() =>
         GetAllAsync<PendingBillOverride>("pendingBillOverrides");
@@ -117,6 +127,14 @@ public class PendingBillOverride
 {
     public int Id { get; set; }   // = BillId (unique per bill)
     public bool IsPaid { get; set; }
+}
+
+public class LentTransaction
+{
+    public int Id { get; set; }          // = Transaction Id
+    public string Note { get; set; } = "";  // e.g. "Jake's rego"
+    public bool Repaid { get; set; }
+    public DateTime MarkedAt { get; set; } = DateTime.Now;
 }
 
 public class SyncMeta

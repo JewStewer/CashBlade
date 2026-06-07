@@ -17,14 +17,17 @@ self.addEventListener('activate', event => {
     event.waitUntil((async () => {
         // Remove old caches from previous versions
         const keys = await caches.keys();
-        await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+        const oldKeys = keys.filter(k => k !== CACHE);
+        const isUpdate = oldKeys.length > 0; // false on fresh install
+        await Promise.all(oldKeys.map(k => caches.delete(k)));
         await clients.claim();
-        // Reload all open windows so Blazor picks up the new version.
-        // Safe from loops: after the reload the SW is already active,
-        // so install/activate won't fire again on the fresh page load.
-        const all = await clients.matchAll({ type: 'window' });
-        for (const c of all) {
-            try { c.navigate(c.url); } catch {}
+        // Only reload open windows when this is a real update (not a fresh install).
+        // On fresh install there's nothing to reload — the page already has latest assets.
+        if (isUpdate) {
+            const all = await clients.matchAll({ type: 'window' });
+            for (const c of all) {
+                try { c.navigate(c.url); } catch {}
+            }
         }
     })());
 });

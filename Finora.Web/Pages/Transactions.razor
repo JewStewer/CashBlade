@@ -67,7 +67,15 @@
             @foreach (var t in day.OrderByDescending(x => x.Id))
             {
                 <div>
-                    <div class="list-row" style="cursor:pointer;@(t.IsUnnecessary ? "border-left:3px solid var(--amber)" : "")" @onclick="() => SelectTxn(t.Id)">
+                    @{
+                        var lentUnrepaid = State.IsUnrepaid(t.Id);
+                        var lentRepaid   = !lentUnrepaid && State.IsLent(t.Id);
+                        var rowBorder = lentUnrepaid ? "border-left:3px solid #818CF8"
+                                       : lentRepaid  ? "border-left:3px solid #34D399"
+                                       : t.IsUnnecessary ? "border-left:3px solid var(--amber)"
+                                       : "";
+                    }
+                    <div class="list-row" style="cursor:pointer;@rowBorder" @onclick="() => SelectTxn(t.Id)">
                         <div class="row-icon" style="background:var(--surface2)">@GetEmoji(t.CategoryName)</div>
                         <div class="row-main">
                             <div class="row-title">@t.Description</div>
@@ -75,7 +83,15 @@
                         </div>
                         <div style="text-align:right">
                             <div class="row-amount @(t.AmountCents>=0?"pos":"neg")">@t.AmountDollars.ToString("C")</div>
-                            @if (t.IsUnnecessary)
+                            @if (lentUnrepaid)
+                            {
+                                <div style="font-size:10px;color:#818CF8">🤝 lent out</div>
+                            }
+                            else if (lentRepaid)
+                            {
+                                <div style="font-size:10px;color:var(--green)">✓ repaid</div>
+                            }
+                            else if (t.IsUnnecessary)
                             {
                                 <div style="font-size:10px;color:var(--amber)">unnecessary</div>
                             }
@@ -84,6 +100,8 @@
                     @if (selectedId == t.Id)
                     {
                         var localT = t;
+                        var isLent = State.IsLent(localT.Id);
+                        var isUnrepaid = State.IsUnrepaid(localT.Id);
                         <div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px" @onclick:stopPropagation="true">
                             <div style="display:flex;align-items:center;gap:8px">
                                 <span style="font-size:12px;color:var(--text3);flex-shrink:0">Category</span>
@@ -105,6 +123,32 @@
                                             @onclick="() => DoToggleUnnecessary(localT)" @onclick:stopPropagation="true">
                                         @(localT.IsUnnecessary ? "✓ Unnecessary" : "Mark unnecessary")
                                     </button>
+                                    @if (isLent)
+                                    {
+                                        <button class="btn btn-sm" @onclick:stopPropagation="true"
+                                                style="background:rgba(99,102,241,0.15);color:#818CF8;border:1px solid #818CF8"
+                                                @onclick="() => DoUnmarkLent(localT.Id)">
+                                            🤝 @(isUnrepaid ? "Awaiting repayment" : "Repaid") ✕
+                                        </button>
+                                    }
+                                    else if (_lentPickId == localT.Id)
+                                    {
+                                        <div style="display:flex;gap:6px;align-items:center;width:100%">
+                                            <input class="form-input" style="flex:1;height:32px;font-size:13px" placeholder="Who? (optional)"
+                                                   @bind="_lentNote" @bind:event="oninput" @onclick:stopPropagation="true" />
+                                            <button class="btn btn-sm btn-primary" @onclick:stopPropagation="true"
+                                                    @onclick="() => DoMarkLent(localT.Id)">Confirm</button>
+                                            <button class="btn btn-sm btn-secondary" @onclick:stopPropagation="true"
+                                                    @onclick="() => _lentPickId = 0">✕</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-secondary" @onclick:stopPropagation="true"
+                                                @onclick="() => { _lentPickId = localT.Id; _lentNote = string.Empty; }">
+                                            🤝 Lent out
+                                        </button>
+                                    }
                                 }
                                 <button class="btn btn-sm btn-danger" @onclick="() => DoDelete(localT)" @onclick:stopPropagation="true">Delete</button>
                                 <button class="btn btn-sm btn-secondary" style="margin-left:auto" @onclick="() => selectedId = 0" @onclick:stopPropagation="true">✕</button>
@@ -146,6 +190,8 @@
     private bool showAdd;
     private int selectedId;
     private Transaction? editingTxn;
+    private int _lentPickId;
+    private string _lentNote = string.Empty;
 
     private void SelectTxn(int id) => selectedId = selectedId == id ? 0 : id;
 
@@ -179,6 +225,15 @@
         await State.DeleteTransactionAsync(t.Id);
         selectedId = 0;
     }
+
+    private async Task DoMarkLent(int txnId)
+    {
+        await State.MarkLentAsync(txnId, _lentNote.Trim());
+        _lentPickId = 0;
+        _lentNote = string.Empty;
+    }
+
+    private async Task DoUnmarkLent(int txnId) => await State.UnmarkLentAsync(txnId);
 
     private List<Transaction> GetFiltered()
     {

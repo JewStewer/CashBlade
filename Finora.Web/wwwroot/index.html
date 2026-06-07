@@ -35,16 +35,8 @@
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js');
-
-            // When a new service worker takes control (after skipWaiting),
-            // reload ONCE so Blazor loads the new version.
-            // sessionStorage guard prevents reload loops within the same session.
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (!sessionStorage.getItem('sw_reloaded')) {
-                    sessionStorage.setItem('sw_reloaded', '1');
-                    window.location.reload();
-                }
-            });
+            // Updates are handled by the service worker itself (client.navigate in activate).
+            // No controllerchange listener needed — it caused double/triple reloads.
         }
     </script>
 </body>

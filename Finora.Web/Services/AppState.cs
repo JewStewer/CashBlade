@@ -14,6 +14,9 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<SavingsGoal> SavingsGoals { get; private set; } = new();
     public List<WeeklyBudget> WeeklyBudgets { get; private set; } = new();
     public List<AppSetting> AppSettings { get; private set; } = new();
+    // Phone-only: transactions marked as lent (excluded from spending until repaid)
+    public List<LentTransaction> LentTransactions { get; private set; } = new();
+    private HashSet<int> _unrepaidLentIds = new();
 
     // ── Computed summaries ────────────────────────────────────────────────────
     public decimal TotalBalance { get; private set; }
@@ -73,6 +76,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         SavingsGoals = await db.GetSavingsGoalsAsync();
         WeeklyBudgets = await db.GetWeeklyBudgetsAsync();
         AppSettings = await db.GetAppSettingsAsync();
+        LentTransactions = await db.GetLentTransactionsAsync();
+        _unrepaidLentIds = LentTransactions.Where(l => !l.Repaid).Select(l => l.Id).ToHashSet();
 
         // Apply any phone-side bill paid/unpaid overrides that survived the last sync
         await ApplyPersistedBillOverridesAsync();
@@ -80,6 +85,38 @@ public class AppState(IndexedDbService db, SyncService sync)
         await sync.InitAsync();
         Compute();
         IsLoaded = true;
+        OnChange?.Invoke();
+    }
+
+    // ── Lent money tracking ──────────────────────────────────────────────────
+    public bool IsLent(int txnId) => LentTransactions.Any(l => l.Id == txnId);
+    public bool IsUnrepaid(int txnId) => _unrepaidLentIds.Contains(txnId);
+
+    public async Task MarkLentAsync(int txnId, string note)
+    {
+        LentTransactions.RemoveAll(l => l.Id == txnId);
+        var lent = new LentTransaction { Id = txnId, Note = note, Repaid = false, MarkedAt = DateTime.Now };
+        LentTransactions.Add(lent);
+        _unrepaidLentIds.Add(txnId);
+        await db.SetLentTransactionAsync(lent);
+        OnChange?.Invoke();
+    }
+
+    public async Task UnmarkLentAsync(int txnId)
+    {
+        LentTransactions.RemoveAll(l => l.Id == txnId);
+        _unrepaidLentIds.Remove(txnId);
+        await db.DeleteLentTransactionAsync(txnId);
+        OnChange?.Invoke();
+    }
+
+    public async Task MarkRepaidAsync(int txnId)
+    {
+        var lent = LentTransactions.FirstOrDefault(l => l.Id == txnId);
+        if (lent is null) return;
+        lent.Repaid = true;
+        _unrepaidLentIds.Remove(txnId);
+        await db.SetLentTransactionAsync(lent);
         OnChange?.Invoke();
     }
 
@@ -290,7 +327,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var (from, to) = GetCurrentPeriod();
         return Transactions
-            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0 && !IsTransfer(t))
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
+                        && !IsTransfer(t) && !_unrepaidLentIds.Contains(t.Id))
             .Sum(t => Math.Abs(t.AmountDollars));
     }
 
@@ -304,7 +342,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal GetDiscretionarySpendingForPeriod(DateTime from, DateTime to) =>
         Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsTransfer(t) && !IsBillCategory(t.CategoryName))
+                        && !IsTransfer(t) && !IsBillCategory(t.CategoryName)
+                        && !_unrepaidLentIds.Contains(t.Id))
             .Sum(t => Math.Abs(t.AmountDollars));
 
     // Weekly discretionary budget = essentials + unplanned
