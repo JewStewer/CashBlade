@@ -535,8 +535,8 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task SyncAndReloadAsync()
     {
-        // Push any phone-side changes to PC over Wi-Fi if possible
-        if (HasPendingChanges && sync.HasLocalSync)
+        // Push any phone-side changes — Wi-Fi first, Supabase as fallback
+        if (HasPendingChanges)
         {
             var push = new PushPayload
             {
@@ -547,9 +547,16 @@ public class AppState(IndexedDbService db, SyncService sync)
                 NewBills = new List<Bill>(_pendingNewBills),
                 UpdatedBills = new List<Bill>(_pendingUpdatedBills)
             };
-            if (await sync.PushToPcAsync(push))
+
+            bool pushed = false;
+            if (sync.HasLocalSync)
+                pushed = await sync.PushToPcAsync(push);
+
+            if (!pushed && sync.HasCloudSync)
+                pushed = await sync.PushToSupabaseAsync(push);
+
+            if (pushed)
             {
-                // Bill overrides pushed to PC — safe to clear them
                 foreach (var s in _pendingBillStatuses)
                     await db.ClearBillOverrideAsync(s.BillId);
                 _pendingNewTransactions.Clear();

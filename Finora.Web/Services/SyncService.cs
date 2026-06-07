@@ -154,6 +154,32 @@ public class SyncService(HttpClient http, IndexedDbService db)
         return false;
     }
 
+    // ── Push phone changes to Supabase (phone_push table) ─────────────────────
+    public async Task<bool> PushToSupabaseAsync(PushPayload push)
+    {
+        if (!HasCloudSync) return false;
+        try
+        {
+            var baseUrl = NormaliseUrl(SupabaseUrl!);
+            var body = JsonSerializer.Serialize(new
+            {
+                id = "main",
+                payload = JsonSerializer.Serialize(push, _opts),
+                pushed_at = DateTime.UtcNow
+            }, _opts);
+            var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/rest/v1/phone_push")
+            {
+                Content = new System.Net.Http.StringContent(body, System.Text.Encoding.UTF8, "application/json")
+            };
+            AddSupabaseHeaders(req, SupabaseKey!);
+            req.Headers.Add("Prefer", "resolution=merge-duplicates");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var resp = await http.SendAsync(req, cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     // ── Push phone changes to PC ───────────────────────────────────────────────
     public async Task<bool> PushToPcAsync(PushPayload push)
     {
