@@ -308,6 +308,50 @@
         </div>
     }
 
+    <!-- Can I afford it? -->
+    <div class="card" style="margin-top:12px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Can I Afford It?</div>
+        <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px;color:var(--text3);font-weight:300">$</span>
+            <input class="form-input" type="number" min="0" step="1"
+                   @bind="_affordAmount" @bind:event="oninput"
+                   placeholder="Enter amount…" style="flex:1;font-size:18px;font-weight:600" />
+        </div>
+        @if (_affordAmount > 0 && State.WeeklyIncome > 0)
+        {
+            var safe = State.SafeToSpendAmount;
+            var remaining = safe - _affordAmount;
+            var pct = safe > 0 ? _affordAmount / safe : (_affordAmount > 0 ? 1.5m : 0m);
+            var (verdict, verdictColor) =
+                remaining >= 0 && pct < 0.4m ? ("✓ Comfortably affordable", "var(--green)") :
+                remaining >= 0 && pct < 0.8m ? ("⚠ Affordable — watch your budget", "var(--amber)") :
+                remaining >= 0             ? ("⚠ Very tight — barely affordable", "var(--amber)") :
+                                             ("✕ Over budget", "var(--red)");
+            <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
+                <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px">@verdict</div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+                    <span style="color:var(--text3)">Safe to spend now</span>
+                    <span style="font-weight:600">@safe.ToString("C")</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+                    <span style="color:var(--text3)">This purchase</span>
+                    <span style="font-weight:600;color:var(--red)">−@_affordAmount.ToString("C")</span>
+                </div>
+                <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:14px">
+                    <span style="color:var(--text3)">Remaining after</span>
+                    <span style="font-weight:700;color:@verdictColor">@remaining.ToString("C")</span>
+                </div>
+                @if (State.WeeklyIncome > 0)
+                {
+                    var weeklyImpact = pct * 100m;
+                    <div style="font-size:11px;color:var(--text3);margin-top:6px">
+                        That's @weeklyImpact.ToString("0.0")% of your safe-to-spend budget
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
     <!-- Safe to spend / Over budget breakdown -->
     <div class="card" style="margin-top:12px;border-color:@(State.SafeToSpendAmount>0?"var(--teal)":"var(--red)")">
         <div style="font-size:12px;color:var(--text3)">Safe to Spend</div>
@@ -352,6 +396,8 @@
 <div style="height:16px"></div>
 
 @code {
+    private decimal _affordAmount;
+
     // Discretionary spend/budget: excludes bill categories (Debt, Rent, Phone, Insurance, etc.)
     // which are already tracked in the Bills page and weekly budget allocation.
     private decimal PeriodSpend => State.GetDiscretionarySpending();

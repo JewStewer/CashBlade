@@ -252,6 +252,38 @@ public class AppState(IndexedDbService db, SyncService sync)
                     DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month)));
     }
 
+    // ── Week spending helpers ──────────────────────────────────────────────────
+    /// <summary>Total spending for the ISO week N weeks ago (0 = current week).</summary>
+    public decimal GetWeekSpending(int weeksAgo = 0)
+    {
+        var today = DateTime.Today;
+        var dow = (int)today.DayOfWeek;
+        var monday = today.AddDays(-(dow == 0 ? 6 : dow - 1));
+        var from = monday.AddDays(-7 * weeksAgo);
+        var to = from.AddDays(6);
+        return Transactions
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0 && !IsTransfer(t))
+            .Sum(t => Math.Abs(t.AmountDollars));
+    }
+
+    /// <summary>Average daily spending over the last N days (excluding today if partial).</summary>
+    public decimal GetAvgDailySpending(int days = 30)
+    {
+        var from = DateTime.Today.AddDays(-(days - 1));
+        var total = Transactions
+            .Where(t => t.Date.Date >= from && t.Date.Date < DateTime.Today && t.AmountCents < 0 && !IsTransfer(t))
+            .Sum(t => Math.Abs(t.AmountDollars));
+        return days > 1 ? Math.Round(total / (days - 1), 2) : 0m;
+    }
+
+    /// <summary>All transactions for a specific date, in display order.</summary>
+    public List<Transaction> GetTransactionsForDate(DateTime date) =>
+        Transactions
+            .Where(t => t.Date.Date == date.Date)
+            .OrderByDescending(t => t.Date)
+            .ThenByDescending(t => t.Id)
+            .ToList();
+
     // ── Spending stats ─────────────────────────────────────────────────────────
     // Total spending (all categories) — used for dashboard/trend
     public decimal GetPeriodSpending()

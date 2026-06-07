@@ -3,6 +3,20 @@
 
 <PageTitle>Bills — Finance Blade</PageTitle>
 
+<div style="padding:10px 16px 0;display:flex;gap:8px;align-items:center">
+    <div style="position:relative;flex:1">
+        <input class="form-input" style="padding-left:32px;height:38px;font-size:14px"
+               @bind="_search" @bind:event="oninput" placeholder="Search bills…" />
+        <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text3)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        @if (!string.IsNullOrEmpty(_search))
+        {
+            <button @onclick="() => _search = string.Empty"
+                    style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+        }
+    </div>
+</div>
 <div class="pill-tabs">
     @foreach (var f in new[]{"Unpaid","All","Paid"})
     {
@@ -91,6 +105,7 @@
 
 @code {
     private string filter = "Unpaid";
+    private string _search = string.Empty;
     private Bill? editingBill;
 
     private void StartEdit(Bill bill) => editingBill = bill;
@@ -101,12 +116,18 @@
         return Task.CompletedTask;
     }
 
-    private IEnumerable<Bill> GetFiltered() => filter switch
+    private IEnumerable<Bill> GetFiltered()
     {
-        "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b)).OrderBy(b => b.DueDate),
-        "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.DueDate),
-        _        => State.Bills.OrderBy(b => b.DueDate)
-    };
+        IEnumerable<Bill> q = filter switch
+        {
+            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b)).OrderBy(b => b.DueDate),
+            "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.DueDate),
+            _        => State.Bills.OrderBy(b => b.DueDate)
+        };
+        if (!string.IsNullOrWhiteSpace(_search))
+            q = q.Where(b => b.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+        return q;
+    }
 
     private string GetDangerBadge(Bill bill)
     {

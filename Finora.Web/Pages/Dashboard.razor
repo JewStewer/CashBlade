@@ -56,8 +56,15 @@ else
             </div>
         </div>
         <div class="stat-tile">
-            <div class="stat-label">@State.SummaryPeriod Spending</div>
-            <div class="stat-value">@State.GetPeriodSpending().ToString("C")</div>
+            <div class="stat-label">This Week</div>
+            <div class="stat-value @(ThisWeek > LastWeek ? "red" : "green")">@ThisWeek.ToString("C")</div>
+            @if (LastWeek > 0)
+            {
+                var diff = ThisWeek - LastWeek;
+                <div class="stat-sub" style="color:@(diff>0?"var(--red)":"var(--green)")">
+                    @(diff >= 0 ? "▲" : "▼") @Math.Abs(diff).ToString("C") vs last wk
+                </div>
+            }
         </div>
         <div class="stat-tile">
             <div class="stat-label">Next Payday</div>
@@ -123,6 +130,35 @@ else
             {
                 <div style="padding:10px 16px;color:var(--text3);font-size:13px">
                     +@(State.BillsDueBeforePayday.Count - 5) more
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Upcoming 14-day timeline -->
+    @if (UpcomingTimeline.Any())
+    {
+        <div class="section-header" style="margin-top:8px">
+            <span class="section-title">Upcoming</span>
+            <span style="font-size:11px;color:var(--text3)">next 14 days</span>
+        </div>
+        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            @foreach (var item in UpcomingTimeline)
+            {
+                <div class="list-row">
+                    <div style="text-align:center;width:38px;flex-shrink:0">
+                        <div style="font-size:10px;color:@(item.IsToday?"var(--teal)":"var(--text3)")">@item.Date.ToString("ddd").ToUpper()</div>
+                        <div style="font-size:16px;font-weight:700;color:@(item.IsToday?"var(--teal)":"var(--text)")">@item.Date.Day</div>
+                        <div style="font-size:10px;color:var(--text3)">@item.Date.ToString("MMM")</div>
+                    </div>
+                    <div class="row-icon" style="background:@(item.IsIncome?"rgba(52,211,153,0.15)":"rgba(248,113,113,0.12)")">
+                        @(item.IsIncome ? "💰" : "📋")
+                    </div>
+                    <div class="row-main">
+                        <div class="row-title">@item.Name</div>
+                        @if (!string.IsNullOrEmpty(item.Sub)) { <div class="row-sub">@item.Sub</div> }
+                    </div>
+                    <span class="row-amount @(item.IsIncome?"pos":"neg")">@item.Amount.ToString("C")</span>
                 </div>
             }
         </div>
@@ -211,6 +247,34 @@ else
     private decimal TrendMax => Trend.Any() ? Math.Max(Trend.Max(m => Math.Max(m.Income, m.Spending)), 1m) : 1m;
 
     private int DaysUntilPayday() => Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0);
+    private decimal ThisWeek => State.GetWeekSpending(0);
+    private decimal LastWeek => State.GetWeekSpending(1);
+
+    private record UpcomingItem(DateTime Date, string Name, string Sub, decimal Amount, bool IsIncome, bool IsToday);
+
+    private List<UpcomingItem> UpcomingTimeline
+    {
+        get
+        {
+            var today = DateTime.Today;
+            var items = new List<UpcomingItem>();
+            // Unpaid bills in next 14 days
+            foreach (var b in State.Bills.Where(b => !State.IsBillPaid(b)
+                && b.DueDate.Date >= today && b.DueDate.Date <= today.AddDays(14)))
+            {
+                items.Add(new(b.DueDate.Date, b.Name, b.AccountName, b.AmountDollars,
+                    false, b.DueDate.Date == today));
+            }
+            // Payday in next 14 days
+            if (State.NextPayDate.Date >= today && State.NextPayDate.Date <= today.AddDays(14))
+            {
+                items.Add(new(State.NextPayDate.Date, "Payday",
+                    State.HasPayEstimate ? $"~{State.EstimatedPayAmount:C}" : "",
+                    State.EstimatedPayAmount, true, State.NextPayDate.Date == today));
+            }
+            return items.OrderBy(i => i.Date).ToList();
+        }
+    }
 
     private async Task OnTxnSaved()
     {
