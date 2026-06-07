@@ -4,9 +4,66 @@
 <PageTitle>Budget — Finance Blade</PageTitle>
 
 <div style="padding:16px">
+
+    <!-- WHERE'S MY MONEY? summary (always shown when budget is set) -->
+    @if (State.WeeklyIncome > 0)
+    {
+        var net = PeriodIncome - AllPeriodSpend;
+        var billsPct  = PeriodIncome > 0 ? BillsSpend  / PeriodIncome : 0m;
+        var discPct   = PeriodIncome > 0 ? PeriodSpend / PeriodIncome : 0m;
+        <div class="card">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.06em">This @State.SummaryPeriod — Where's My Money?</div>
+
+            <!-- Income row -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <span style="font-size:13px;color:var(--text2)">💰 Income (budgeted)</span>
+                <span style="font-size:14px;font-weight:600;color:var(--green)">+@PeriodIncome.ToString("C")</span>
+            </div>
+
+            <!-- Bills & Debt row -->
+            <div style="margin-bottom:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                    <span style="font-size:13px;color:var(--text2)">📋 Bills &amp; Debt (actual)</span>
+                    <span style="font-size:14px;font-weight:600">−@BillsSpend.ToString("C")</span>
+                </div>
+                <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+                    <div style="height:100%;border-radius:4px;background:#2563EB;width:@((int)(Math.Clamp(billsPct,0,1)*100))%"></div>
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">@billsPct.ToString("P0") of income · recurring bill transactions</div>
+            </div>
+
+            <!-- Everyday spending row -->
+            <div style="margin-bottom:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                    <span style="font-size:13px;color:var(--text2)">🛒 Everyday Spending</span>
+                    <span style="font-size:14px;font-weight:600;color:@(PeriodSpend > PeriodBudget ? "var(--red)" : "var(--text)")">−@PeriodSpend.ToString("C")</span>
+                </div>
+                <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
+                    <div style="height:100%;border-radius:4px;background:@(PeriodSpend > PeriodBudget ? "var(--red)" : "var(--teal)");width:@((int)(Math.Clamp(discPct,0,1)*100))%"></div>
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">
+                    @discPct.ToString("P0") of income · budget after bills: @PeriodBudget.ToString("C")
+                    @if (PeriodSpend > PeriodBudget)
+                    {
+                        <span style="color:var(--red);font-weight:600"> · @((PeriodSpend - PeriodBudget).ToString("C")) over!</span>
+                    }
+                </div>
+            </div>
+
+            <!-- Net -->
+            <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:13px;color:var(--text3)">Net this @State.SummaryPeriod.ToLower()</span>
+                <span style="font-size:17px;font-weight:700;color:@(net >= 0 ? "var(--green)" : "var(--red)")">
+                    @(net >= 0 ? "+" : "")@net.ToString("C")
+                </span>
+            </div>
+        </div>
+    }
+
     <!-- Budget overview card -->
-    <div class="card">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Weekly Budget</div>
+    <div class="card" style="margin-top:12px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Planned Weekly Budget</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">How you've told PC to split your income each week</div>
         @if (State.WeeklyIncome <= 0)
         {
             <div style="color:var(--text3);font-size:14px">No budget set up yet. Sync from your PC to load your budget.</div>
@@ -25,23 +82,30 @@
             @foreach (var (label, amount, color) in BudgetRows())
             {
                 var pct = State.WeeklyIncome > 0 ? amount / State.WeeklyIncome : 0;
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                var notSet = amount == 0;
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;@(notSet?"opacity:0.45":"")">
                     <div class="dot" style="background:@color"></div>
                     <div style="flex:1">
                         <div style="display:flex;justify-content:space-between">
                             <span style="font-size:14px">@label</span>
-                            <span style="font-size:14px;font-weight:600">@amount.ToString("C")</span>
+                            <span style="font-size:14px;font-weight:600">
+                                @if (notSet) { <span style="font-size:12px;color:var(--text3);font-weight:400">not set</span> }
+                                else { @amount.ToString("C") }
+                            </span>
                         </div>
-                        <div class="progress-bar" style="margin-top:4px">
-                            <div class="progress-fill" style="width:@((int)(Math.Clamp(pct,0,1)*100))%;background:@color"></div>
-                        </div>
-                        <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
+                        @if (!notSet)
+                        {
+                            <div class="progress-bar" style="margin-top:4px">
+                                <div class="progress-fill" style="width:@((int)(Math.Clamp(pct,0,1)*100))%;background:@color"></div>
+                            </div>
+                            <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
+                        }
                     </div>
                 </div>
             }
 
             <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">
-                <span style="font-size:14px;color:var(--text3)">Remaining</span>
+                <span style="font-size:14px;color:var(--text3)">Unallocated (your spending budget)</span>
                 <span style="font-size:16px;font-weight:700;color:@(State.BudgetLeftover>=0?"var(--green)":"var(--red)")">
                     @State.BudgetLeftover.ToString("C")
                 </span>
@@ -53,7 +117,8 @@
     @if (State.WeeklyIncome > 0)
     {
         <div class="card" style="margin-top:12px">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">This @State.SummaryPeriod · Essentials &amp; Unplanned</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Everyday Spending This @State.SummaryPeriod</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget = income minus bills (@PeriodBudget.ToString("C"))</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
                 <span style="font-size:22px;font-weight:700;color:@(PeriodSpend>PeriodBudget?"var(--red)":"var(--text)")">
                     @PeriodSpend.ToString("C")
@@ -87,12 +152,13 @@
             </div>
         </div>
 
-        <!-- Top transactions / categories -->
+        <!-- Biggest individual transactions when over budget -->
         @if (PeriodSpend > PeriodBudget && BiggestPeriodTxns.Any())
         {
             <div class="card" style="margin-top:12px">
-                <div style="font-size:12px;color:var(--text3);margin-bottom:12px">What's costing the most</div>
-                @foreach (var t in BiggestPeriodTxns)
+                <div style="font-size:12px;color:var(--text3);margin-bottom:4px">Biggest Transactions This @State.SummaryPeriod</div>
+                <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Top individual everyday purchases</div>
+                @foreach (var t in BiggestPeriodTxns.Take(6))
                 {
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                         <div style="flex:1;min-width:0">
@@ -104,69 +170,93 @@
                 }
             </div>
         }
-        else if (TopCats.Any())
-        {
-            <div class="card" style="margin-top:12px">
-                <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Top Spending Categories</div>
-                @foreach (var (cat, amount) in TopCats)
+    }
+
+    <!-- Unified spending breakdown: all categories with bills/everyday grouping -->
+    @{
+        var allCats    = State.GetTopCategories(12, excludeBills: false);
+        var billCats   = allCats.Where(c => AppState.IsBillCategory(c.Category)).ToList();
+        var discCats   = allCats.Where(c => !AppState.IsBillCategory(c.Category)).ToList();
+        var breakdownMax = allCats.Any() ? allCats.Max(c => c.Amount) : 1m;
+        var palette = new[]{"#2563EB","#16A34A","#D97706","#DC2626","#7C3AED","#0891B2","#BE185D","#65A30D","#B45309","#0F766E","#9333EA","#C2410C"};
+    }
+    @if (allCats.Any())
+    {
+        <div class="card" style="margin-top:12px">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Spending Breakdown</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">All categories this @State.SummaryPeriod.ToLower() · bar = % of largest category</div>
+
+            @if (billCats.Any())
+            {
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-bottom:8px">Bills &amp; Debt</div>
+                @for (var i = 0; i < billCats.Count; i++)
                 {
-                    var w = TopCatMax > 0 ? amount / TopCatMax : 0;
+                    var (cat, amt) = billCats[i];
+                    var barW  = breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0;
+                    var ofInc = PeriodIncome > 0 ? amt / PeriodIncome : 0m;
                     var limitDollars = State.GetCategoryLimitDollars(cat);
                     var hasLimit = limitDollars > 0;
-                    var limitPct = hasLimit ? amount / limitDollars : 0m;
-                    var barColor = hasLimit && limitPct >= 1m ? "var(--red)"
-                                 : hasLimit && limitPct >= 0.8m ? "var(--amber)"
-                                 : "var(--teal)";
-                    <div style="margin-bottom:10px">
-                        <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:3px">
-                            <span style="display:flex;align-items:center;gap:6px">
+                    var limitPct = hasLimit ? amt / limitDollars : 0m;
+                    var barColor = hasLimit && limitPct >= 1m ? "var(--red)" : hasLimit && limitPct >= 0.8m ? "var(--amber)" : "#2563EB";
+                    <div style="margin-bottom:9px">
+                        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
+                            <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">
                                 @cat
                                 @if (hasLimit && limitPct >= 0.8m)
                                 {
-                                    <span style="font-size:10px;padding:1px 5px;border-radius:8px;background:@(limitPct>=1?"rgba(248,113,113,0.15)":"rgba(245,158,11,0.15)");color:@(limitPct>=1?"var(--red)":"var(--amber)")">
-                                        @(limitPct >= 1 ? "Over limit" : "Near limit")
-                                    </span>
+                                    <span style="font-size:9px;margin-left:4px;padding:1px 4px;border-radius:6px;background:@(limitPct>=1?"rgba(248,113,113,0.15)":"rgba(245,158,11,0.15)");color:@(limitPct>=1?"var(--red)":"var(--amber)")">@(limitPct>=1?"over":"near")</span>
                                 }
                             </span>
-                            <span style="font-weight:600;color:@(hasLimit && limitPct>=1?"var(--red)":"var(--text)")">
-                                @amount.ToString("C")
-                                @if (hasLimit) { <span style="font-size:11px;color:var(--text3);font-weight:400"> / @limitDollars.ToString("C")</span> }
+                            <span style="flex-shrink:0;font-weight:600">
+                                @amt.ToString("C")
+                                <span style="font-size:10px;color:var(--text3);font-weight:400"> @ofInc.ToString("P0")</span>
                             </span>
                         </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width:@((int)(Math.Clamp(hasLimit ? limitPct : w, 0, 1)*100))%;background:@barColor"></div>
+                        <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden">
+                            <div style="height:100%;border-radius:4px;background:@barColor;width:@($"{barW:F1}")%;transition:width 0.4s ease"></div>
                         </div>
                     </div>
                 }
-            </div>
-        }
-    }
+            }
 
-    <!-- Spending chart -->
-    @if (TopCats.Any())
-    {
-        <div class="card" style="margin-top:12px">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Spending Breakdown</div>
-            @{
-                var chartCats = State.GetTopCategories(8, excludeBills: false);
-                var chartMax = chartCats.Any() ? chartCats.Max(c => c.Amount) : 1m;
-                var palette = new[]{"#2563EB","#16A34A","#D97706","#DC2626","#7C3AED","#0891B2","#BE185D","#65A30D"};
-            }
-            @for (var i = 0; i < chartCats.Count; i++)
+            @if (discCats.Any())
             {
-                var (cat, amt) = chartCats[i];
-                var barW = chartMax > 0 ? (double)(amt / chartMax) * 100.0 : 0;
-                var color = palette[i % palette.Length];
-                <div style="margin-bottom:8px">
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
-                        <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">@cat</span>
-                        <span style="font-weight:600;color:var(--text);flex-shrink:0">@amt.ToString("C")</span>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-top:@(billCats.Any()?"14px":"0");margin-bottom:8px">Everyday Spending</div>
+                @for (var i = 0; i < discCats.Count; i++)
+                {
+                    var (cat, amt) = discCats[i];
+                    var barW  = breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0;
+                    var ofInc = PeriodIncome > 0 ? amt / PeriodIncome : 0m;
+                    var limitDollars = State.GetCategoryLimitDollars(cat);
+                    var hasLimit = limitDollars > 0;
+                    var limitPct = hasLimit ? amt / limitDollars : 0m;
+                    var barColor = hasLimit && limitPct >= 1m ? "var(--red)" : hasLimit && limitPct >= 0.8m ? "var(--amber)" : palette[i % palette.Length];
+                    <div style="margin-bottom:9px">
+                        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
+                            <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">
+                                @cat
+                                @if (cat == "Misc") { <span style="font-size:10px;color:var(--text3)"> (uncategorised)</span> }
+                                @if (hasLimit && limitPct >= 0.8m)
+                                {
+                                    <span style="font-size:9px;margin-left:4px;padding:1px 4px;border-radius:6px;background:@(limitPct>=1?"rgba(248,113,113,0.15)":"rgba(245,158,11,0.15)");color:@(limitPct>=1?"var(--red)":"var(--amber)")">@(limitPct>=1?"over":"near")</span>
+                                }
+                            </span>
+                            <span style="flex-shrink:0;font-weight:600">
+                                @amt.ToString("C")
+                                <span style="font-size:10px;color:var(--text3);font-weight:400"> @ofInc.ToString("P0")</span>
+                            </span>
+                        </div>
+                        <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden">
+                            <div style="height:100%;border-radius:4px;background:@barColor;width:@($"{barW:F1}")%;transition:width 0.4s ease"></div>
+                        </div>
                     </div>
-                    <div style="background:var(--surface2);border-radius:4px;height:10px;overflow:hidden">
-                        <div style="height:100%;border-radius:4px;background:@color;width:@($"{barW:F1}")%;transition:width 0.4s ease"></div>
-                    </div>
-                </div>
+                }
             }
+
+            <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;display:flex;justify-content:space-between;font-size:12px;color:var(--text3)">
+                <span>Total spent</span>
+                <span style="font-weight:700;color:var(--text)">@AllPeriodSpend.ToString("C") <span style="font-weight:400">of @PeriodIncome.ToString("C") income</span></span>
+            </div>
         </div>
     }
 
@@ -399,12 +489,14 @@
     private decimal _affordAmount;
 
     // Discretionary spend/budget: excludes bill categories (Debt, Rent, Phone, Insurance, etc.)
-    // which are already tracked in the Bills page and weekly budget allocation.
-    private decimal PeriodSpend => State.GetDiscretionarySpending();
-    private decimal PeriodBudget => State.SummaryPeriod == "Monthly" ? State.WeeklyIncome * 4.33m : State.WeeklyIncome;
+    private decimal PeriodSpend    => State.GetDiscretionarySpending();
+    private decimal AllPeriodSpend => State.GetPeriodSpending();
+    private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
+    private decimal PeriodIncome   => State.SummaryPeriod == "Monthly" ? State.WeeklyIncome * 4.33m : State.WeeklyIncome;
+    // Budget for non-bill spending = income minus the bills allocation (not the full income)
+    private decimal PeriodBudget   => Math.Max(PeriodIncome - (State.SummaryPeriod == "Monthly" ? State.BudgetBills * 4.33m : State.BudgetBills), 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private List<(string Category, decimal Amount)> TopCats => State.GetTopCategories(5, excludeBills: true);
-    private decimal TopCatMax => TopCats.Any() ? Math.Max(TopCats.Max(c => c.Amount), 1m) : 1m;
 
     private List<Transaction> BiggestPeriodTxns
     {
