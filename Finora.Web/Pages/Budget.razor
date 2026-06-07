@@ -129,35 +129,52 @@
                 <div class="progress-fill" style="width:@((int)(Math.Min(PeriodSpendPct,1)*100))%;background:@(PeriodSpend>PeriodBudget?"var(--red)":"var(--teal)")"></div>
             </div>
             <div style="margin-top:6px">
+                @{
+                    var avg = AvgPreviousDiscretionary;
+                    var isSpike = avg > 0 && PeriodSpend > avg * 1.3m;
+                    var spikeAmount = PeriodSpend - avg;
+                }
                 @if (PeriodSpend > PeriodBudget)
                 {
-                    <div style="font-size:12px;color:var(--red);font-weight:600;margin-bottom:10px">@((PeriodSpend - PeriodBudget).ToString("C")) over budget</div>
-                    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Biggest drivers</div>
+                    <div style="font-size:12px;color:var(--red);font-weight:600;margin-bottom:8px">@((PeriodSpend - PeriodBudget).ToString("C")) over budget</div>
+                }
+                else
+                {
+                    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">@((PeriodBudget - PeriodSpend).ToString("C")) remaining</div>
+                }
+
+                @if (isSpike)
+                {
+                    <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:8px">
+                        <span style="color:var(--amber);font-weight:600">⚡ High-spend @State.SummaryPeriod.ToLower()</span>
+                        <span style="color:var(--text3)"> — @spikeAmount.ToString("C") above your usual @avg.ToString("C0") avg. Likely one-off expenses.</span>
+                    </div>
+                }
+
+                @if (TopCats.Any())
+                {
+                    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">By category</div>
                     @foreach (var (cat, amount) in TopCats.Take(4))
                     {
                         var share = PeriodSpend > 0 ? amount / PeriodSpend : 0;
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
                             <span style="font-size:13px;color:var(--text2)">@cat</span>
                             <div style="text-align:right">
-                                <span style="font-size:13px;font-weight:600;color:@(amount > PeriodBudget * 0.4m ? "var(--red)" : "var(--text)")">@amount.ToString("C")</span>
+                                <span style="font-size:13px;font-weight:600">@amount.ToString("C")</span>
                                 <span style="font-size:11px;color:var(--text3);margin-left:4px">@share.ToString("P0")</span>
                             </div>
                         </div>
                     }
                 }
-                else
-                {
-                    <span style="font-size:12px;color:var(--text3)">@((PeriodBudget - PeriodSpend).ToString("C")) remaining</span>
-                }
             </div>
         </div>
 
-        <!-- Biggest individual transactions when over budget -->
-        @if (PeriodSpend > PeriodBudget && BiggestPeriodTxns.Any())
+        <!-- Biggest individual transactions (always shown if there are any) -->
+        @if (BiggestPeriodTxns.Any())
         {
             <div class="card" style="margin-top:12px">
-                <div style="font-size:12px;color:var(--text3);margin-bottom:4px">Biggest Transactions This @State.SummaryPeriod</div>
-                <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Top individual everyday purchases</div>
+                <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Biggest Transactions This @State.SummaryPeriod</div>
+                <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Everyday purchases only (bills excluded)</div>
                 @foreach (var t in BiggestPeriodTxns.Take(6))
                 {
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
@@ -497,6 +514,37 @@
     private decimal PeriodBudget   => Math.Max(PeriodIncome - (State.SummaryPeriod == "Monthly" ? State.BudgetBills * 4.33m : State.BudgetBills), 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private List<(string Category, decimal Amount)> TopCats => State.GetTopCategories(5, excludeBills: true);
+
+    // Average discretionary spending over the previous 3 periods (for spike detection)
+    private decimal AvgPreviousDiscretionary
+    {
+        get
+        {
+            if (!State.IsLoaded) return 0m;
+            var sum = 0m;
+            if (State.SummaryPeriod == "Monthly")
+            {
+                for (var i = 1; i <= 3; i++)
+                {
+                    var d = DateTime.Today.AddMonths(-i);
+                    var from = new DateTime(d.Year, d.Month, 1);
+                    sum += State.GetDiscretionarySpendingForPeriod(from, from.AddMonths(1).AddDays(-1));
+                }
+            }
+            else
+            {
+                var today = DateTime.Today;
+                var dow = (int)today.DayOfWeek;
+                var monday = today.AddDays(-(dow == 0 ? 6 : dow - 1));
+                for (var i = 1; i <= 3; i++)
+                {
+                    var from = monday.AddDays(-7 * i);
+                    sum += State.GetDiscretionarySpendingForPeriod(from, from.AddDays(6));
+                }
+            }
+            return sum / 3;
+        }
+    }
 
     private List<Transaction> BiggestPeriodTxns
     {

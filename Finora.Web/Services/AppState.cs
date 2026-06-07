@@ -298,11 +298,14 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal GetDiscretionarySpending()
     {
         var (from, to) = GetCurrentPeriod();
-        return Transactions
+        return GetDiscretionarySpendingForPeriod(from, to);
+    }
+
+    public decimal GetDiscretionarySpendingForPeriod(DateTime from, DateTime to) =>
+        Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
                         && !IsTransfer(t) && !IsBillCategory(t.CategoryName))
             .Sum(t => Math.Abs(t.AmountDollars));
-    }
 
     // Weekly discretionary budget = essentials + unplanned
     public decimal DiscretionaryBudget => BudgetEssentials + BudgetUnplanned;
