@@ -1,27 +1,25 @@
-// Blazor PWA service worker — no integrity checks (compatible with Netlify CDN)
+// Blazor PWA service worker
 self.importScripts('./service-worker-assets.js');
 
-const CACHE = 'finblade-' + self.assetsManifest.version;
+const CACHE = 'cashblade-' + self.assetsManifest.version;
 
 self.addEventListener('install', event => {
     event.waitUntil((async () => {
-        self.skipWaiting();
         const cache = await caches.open(CACHE);
-        // Cache all assets without integrity checks so Netlify CDN doesn't break them
+        // Cache each asset individually — one 404 won't block the whole install
         const urls = self.assetsManifest.assets.map(a => a.url);
-        await cache.addAll(urls);
+        await Promise.all(urls.map(url => cache.add(url).catch(() => {})));
+        self.skipWaiting(); // activate immediately after caching is done
     })());
 });
 
 self.addEventListener('activate', event => {
     event.waitUntil((async () => {
-        // Delete old caches
+        // Remove old caches from previous versions
         const keys = await caches.keys();
         await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
         await clients.claim();
-        // Tell all open pages to reload so they immediately get the new version
-        const allClients = await clients.matchAll({ type: 'window' });
-        allClients.forEach(c => c.postMessage({ type: 'SW_UPDATED' }));
+        // No forced reload — user gets the new version next time they open the app
     })());
 });
 
@@ -30,15 +28,14 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => {
         const cache = await caches.open(CACHE);
 
-        // For page navigation always serve index.html from cache (enables offline + home screen)
+        // For page navigation: serve cached index.html so deep links work offline
         if (event.request.mode === 'navigate') {
             const cached = await cache.match('index.html');
             if (cached) return cached;
-            // Not cached yet — fetch from network
-            return fetch('index.html');
+            return fetch(event.request);
         }
 
-        // For all other assets: cache first, fall back to network
+        // For assets: cache first, fall back to network
         const cached = await cache.match(event.request);
         return cached ?? fetch(event.request);
     })());

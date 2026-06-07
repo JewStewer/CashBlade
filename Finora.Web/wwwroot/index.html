@@ -34,12 +34,6 @@
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js');
-            // Reload the page when the service worker activates a new version
-            navigator.serviceWorker.addEventListener('message', function(e) {
-                if (e.data && e.data.type === 'SW_UPDATED') {
-                    window.location.reload();
-                }
-            });
         }
     </script>
 </body>
