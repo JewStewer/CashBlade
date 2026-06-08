@@ -2823,6 +2823,18 @@ public class MainViewModel : ViewModelBase
             .Where(t => t.AmountCents < 0 && t.Date >= billStart.Date.AddDays(-5) && t.Date <= billEnd.Date.AddDays(5))
             .ToList();
 
+        // Total unpaid bills per account — so NeededNow reflects ALL bills for the account,
+        // not just one bill in isolation.
+        var unpaidTotalsByAccount = billOccurrences
+            .GroupBy(o => o.Bill.AccountId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Sum(o =>
+                {
+                    var paid = paidStatuses.TryGetValue((o.Bill.Id, o.Date.Date), out var st) && (st?.IsPaid ?? false);
+                    return paid ? 0m : o.Bill.AmountDollars;
+                }));
+
         foreach (var occurrence in billOccurrences)
         {
             var bill = occurrence.Bill;
@@ -2848,7 +2860,7 @@ public class MainViewModel : ViewModelBase
                 PeriodEnd = periodEnd,
                 PeriodType = SummaryPeriod,
                 AccountBalance = balance,
-                NeededNow = isPaid ? 0 : Math.Max(bill.AmountDollars - balance, 0),
+                NeededNow = isPaid ? 0 : Math.Max(unpaidTotalsByAccount.GetValueOrDefault(bill.AccountId) - balance, 0),
                 IsAutoPay = bill.IsAutoPay,
                 IsPaid = isPaid,
                 MatchNote = status?.MatchNote ?? matchNote

@@ -47,8 +47,8 @@
         @foreach (var bill in bills)
         {
             var isPaid = State.IsBillPaid(bill);
-            var acctBal = State.GetAccountBalance(bill.AccountId);
-            var covered = acctBal >= bill.AmountDollars;
+            var (acctAfterBills, _) = State.GetAccountForecast(bill.AccountId);
+            var covered = acctAfterBills >= 0;
             <div class="list-row" style="align-items:flex-start;gap:10px">
                 <div style="padding-top:2px">
                     <button @onclick="() => TogglePaid(bill)" style="width:22px;height:22px;border-radius:50%;border:2px solid @(isPaid?"var(--green)":"var(--border)");background:@(isPaid?"var(--green)":"transparent");cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -67,7 +67,7 @@
                             }
                             else
                             {
-                                var shortfall = bill.AmountDollars - acctBal;
+                                var shortfall = -acctAfterBills;
                                 <span class="badge badge-red">Short @shortfall.ToString("C")</span>
                             }
                             @if (bill.IsAutoPay)
@@ -131,9 +131,9 @@
 
     private string GetDangerBadge(Bill bill)
     {
-        var acctBal = State.GetAccountBalance(bill.AccountId);
-        if (acctBal < bill.AmountDollars && bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Danger";
-        if (acctBal < bill.AmountDollars) return "Short";
+        var (acctAfterBills, _) = State.GetAccountForecast(bill.AccountId);
+        if (acctAfterBills < 0 && bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Danger";
+        if (acctAfterBills < 0) return "Short";
         if (bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Ready";
         return string.Empty;
     }
