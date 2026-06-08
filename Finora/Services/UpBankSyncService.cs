@@ -118,9 +118,15 @@ public class UpBankSyncService
                         ?? GetCategory(db, GetCategoryName(description, amountCents, false));
                 var account = GetOrCreateUpAccount(db);
 
+                // Use CreatedAt (when the user made the purchase) rather than SettledAt
+                // (when the bank processed it) for the displayed date.  Settlement can happen
+                // overnight UTC — a 9 am AEST purchase settles at 2 am UTC the next day,
+                // which converts back to a June-9 AEST date even though the user made it on June-8.
+                var purchaseDate = upTransaction.Attributes.CreatedAt.LocalDateTime.Date;
+
                 db.Transactions.Add(new Transaction
                 {
-                    Date = occurredAt.LocalDateTime.Date,
+                    Date = purchaseDate,
                     Description = description,
                     AmountCents = amountCents,
                     Account = account,
@@ -140,7 +146,7 @@ public class UpBankSyncService
                         Debt = debt,
                         UpTransactionId = upTransaction.Id,
                         AmountCents = paymentCents,
-                        PaidOn = occurredAt.LocalDateTime.Date,
+                        PaidOn = purchaseDate,
                         Description = description
                     });
                     debtPayments++;
