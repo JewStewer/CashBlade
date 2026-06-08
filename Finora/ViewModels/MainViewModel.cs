@@ -2655,14 +2655,38 @@ public class MainViewModel : ViewModelBase
             var billsBeforePay = unpaidBillOccurrences
                 .Where(o => o.Bill.AccountId == account.Id)
                 .Sum(o => o.Bill.AmountDollars);
-            var neededNow = Math.Max(billsBeforePay - balance, 0);
+
+            // If no bills are due before payday, look at the next single occurrence of
+            // each bill so the card shows whether the account can cover its upcoming bills
+            // (e.g. monthly bills due after payday still need to be funded now).
+            var accountBillsDue = billsBeforePay;
+            IReadOnlyList<(DateTime Date, Bill Bill)>? upcomingOccs = null;
+            if (billsBeforePay == 0)
+            {
+                var accountBills = bills.Where(b => b.AccountId == account.Id).ToList();
+                if (accountBills.Count > 0)
+                {
+                    upcomingOccs = GetVisibleBillOccurrences(db, accountBills, DateTime.Today, DateTime.Today.AddDays(60))
+                        .Where(o => !IsBillOccurrencePaid(db, o.Bill.Id, o.Date))
+                        .GroupBy(o => o.Bill.Id)
+                        .SelectMany(g => g.OrderBy(o => o.Date).Take(1))
+                        .ToList();
+                    accountBillsDue = upcomingOccs.Sum(o => o.Bill.AmountDollars);
+                }
+            }
+
+            var neededNow = Math.Max(accountBillsDue - balance, 0);
 
             // Find the next upcoming unpaid bill for this account (on or after today).
-            // Uses the already-loaded unpaidBillOccurrences — no extra DB query.
             var nextBill = unpaidBillOccurrences
                 .Where(o => o.Bill.AccountId == account.Id && o.Date.Date >= DateTime.Today)
                 .OrderBy(o => o.Date)
                 .FirstOrDefault();
+            if (nextBill.Bill is null && upcomingOccs is not null)
+            {
+                var first = upcomingOccs.OrderBy(o => o.Date).FirstOrDefault();
+                if (first.Bill is not null) nextBill = first;
+            }
 
             return new AccountRow
             {
@@ -2672,7 +2696,7 @@ public class MainViewModel : ViewModelBase
                 Balance = balance,
                 ColorHex = account.ColorHex,
                 NeededNow = neededNow,
-                BillsDue = billsBeforePay,
+                BillsDue = accountBillsDue,
                 Target = account.TargetDollars,
                 TargetDate = account.TargetDate,
                 TargetStartDate = account.TargetStartDate,

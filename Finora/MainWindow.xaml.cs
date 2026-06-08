@@ -599,6 +599,7 @@ public partial class MainWindow : Window
         db.BillOccurrenceStatuses.RemoveRange(statuses);
         db.Bills.RemoveRange(bills);
         db.SaveChanges();
+        ViewModel.SyncBillsBudget();
         ViewModel.LoadDashboard();
         SelectBillAtOrBefore(nextSelectionIndex);
     }
@@ -1888,6 +1889,10 @@ public partial class MainWindow : Window
         window.Owner = this;
         if (window.ShowDialog() == true)
         {
+            if (window is BillWindow)
+            {
+                ViewModel.SyncBillsBudget();
+            }
             ViewModel.LoadDashboard();
         }
     }
