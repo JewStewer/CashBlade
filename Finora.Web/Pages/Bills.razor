@@ -57,7 +57,7 @@
                 </div>
                 <div class="row-main" style="cursor:pointer" @onclick="() => StartEdit(bill)">
                     <div class="row-title" style="@(isPaid?"opacity:0.5;text-decoration:line-through":"")">@bill.Name</div>
-                    <div class="row-sub">@bill.AccountName · @bill.Frequency · @bill.DueDate.ToString("dd MMM")</div>
+                    <div class="row-sub">@bill.AccountName · @bill.Frequency · @bill.EffectiveDueDate.ToString("dd MMM")</div>
                     @if (!isPaid)
                     {
                         <div style="margin-top:4px">
@@ -120,9 +120,9 @@
     {
         IEnumerable<Bill> q = filter switch
         {
-            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b)).OrderBy(b => b.DueDate),
-            "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.DueDate),
-            _        => State.Bills.OrderBy(b => b.DueDate)
+            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b)).OrderBy(b => b.EffectiveDueDate),
+            "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.EffectiveDueDate),
+            _        => State.Bills.OrderBy(b => b.EffectiveDueDate)
         };
         if (!string.IsNullOrWhiteSpace(_search))
             q = q.Where(b => b.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
@@ -132,9 +132,9 @@
     private string GetDangerBadge(Bill bill)
     {
         var acctBal = State.GetAccountBalance(bill.AccountId);
-        if (acctBal < bill.AmountDollars && bill.DueDate.Date <= State.NextPayDate.Date) return "Danger";
+        if (acctBal < bill.AmountDollars && bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Danger";
         if (acctBal < bill.AmountDollars) return "Short";
-        if (bill.DueDate.Date <= State.NextPayDate.Date) return "Ready";
+        if (bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Ready";
         return string.Empty;
     }
 

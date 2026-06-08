@@ -351,6 +351,18 @@ public class UpBankSyncService
         status.PaidOn = DateTime.Today;
         status.MatchedTransactionId = transactionId;
         status.MatchNote = matchNote;
+
+        // Advance bill.DueDate to the next occurrence — mirrors the manual "Mark Paid"
+        // behaviour in MainWindow and MainViewModel so the bill shows correctly in the
+        // next billing cycle on both the WPF and the phone app.
+        // Only advance if the bill's stored DueDate is at (or before) this occurrence;
+        // avoids double-advancing when the user already marked it paid manually.
+        var bill = db.Bills.Find(billId);
+        if (bill is not null && bill.DueDate.Date <= dueDate.Date.AddDays(1))
+        {
+            bill.IsPaid = false;  // reset for next cycle
+            bill.DueDate = GetNextBillDueDate(dueDate, bill.Frequency);
+        }
     }
 
     private static DateTimeOffset? GetLastSyncUtc(FinoraDbContext db)

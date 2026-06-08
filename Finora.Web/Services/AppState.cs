@@ -194,8 +194,41 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var accountMap = Accounts.ToDictionary(a => a.Id, a => a.Name);
         foreach (var b in Bills)
+        {
             b.AccountName = accountMap.GetValueOrDefault(b.AccountId, "");
+            b.EffectiveDueDate = GetEffectiveDueDate(b);
+        }
     }
+
+    // ── Due-date helpers ──────────────────────────────────────────────────────
+    /// <summary>
+    /// Advances bill.DueDate by the bill's frequency until it reaches the most
+    /// recent past (or today's) occurrence — the current billing cycle.
+    /// Required because Up Bank auto-payment matching records a BillOccurrenceStatus
+    /// without advancing bill.DueDate; this compensates on the phone side.
+    /// </summary>
+    private static DateTime GetEffectiveDueDate(Bill bill)
+    {
+        var dueDate = bill.DueDate.Date;
+        var today   = DateTime.Today;
+        while (dueDate < today)
+        {
+            var next = AdvanceDueDate(dueDate, bill.Frequency);
+            if (next > today) break;   // don't skip past today
+            dueDate = next;
+        }
+        return dueDate;
+    }
+
+    private static DateTime AdvanceDueDate(DateTime d, BillFrequency f) => f switch
+    {
+        BillFrequency.Weekly      => d.AddDays(7),
+        BillFrequency.Fortnightly => d.AddDays(14),
+        BillFrequency.Monthly     => d.AddMonths(1),
+        BillFrequency.Quarterly   => d.AddMonths(3),
+        BillFrequency.Yearly      => d.AddYears(1),
+        _                         => d.AddMonths(1)
+    };
 
     private void ComputeBalances()
     {
@@ -223,21 +256,14 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private void ComputeBillsDue()
     {
-        var today = DateTime.Today;
+        var today  = DateTime.Today;
         var payEnd = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
 
-        var statusMap = BillStatuses
-            .GroupBy(s => s.BillId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.DueDate).FirstOrDefault());
-
+        // Use EffectiveDueDate so bills whose DueDate wasn't advanced by auto-matching
+        // still appear when their current cycle falls before the next payday.
         BillsDueBeforePayday = Bills
-            .Where(b =>
-            {
-                var status = statusMap.GetValueOrDefault(b.Id);
-                var isPaid = status?.IsPaid == true || b.IsPaid;
-                return !isPaid && b.DueDate.Date <= payEnd;
-            })
-            .OrderBy(b => b.DueDate)
+            .Where(b => !IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd)
+            .OrderBy(b => b.EffectiveDueDate)
             .ToList();
 
         TotalBillsDue = BillsDueBeforePayday.Sum(b => b.AmountDollars);
@@ -256,15 +282,25 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public bool IsBillPaid(Bill bill)
     {
-        // 1. Exact-date status is the most reliable source — check it first.
-        //    This correctly handles recurring bills whose DueDate has been advanced
-        //    to the next cycle: if there's no status for the new date, the bill is unpaid.
+        // Use the pre-computed effective due date (current billing cycle).
+        // If not yet computed (called before DenormaliseBills), compute inline.
+        var effectiveDue = bill.EffectiveDueDate == default
+            ? GetEffectiveDueDate(bill)
+            : bill.EffectiveDueDate;
+
+        // 1. Exact status for the current-cycle due date is the most authoritative.
         var exactStatus = BillStatuses
-            .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == bill.DueDate.Date);
+            .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == effectiveDue.Date);
         if (exactStatus is not null) return exactStatus.IsPaid;
 
-        // 2. Latest status fallback (within 7 days) — covers the window where the PC
-        //    has a status but no exact date match due to minor date drift.
+        // 2. If the effective date has advanced past the stored DueDate, the bill has
+        //    cycled into a new period with no status yet → it is NOT paid.
+        //    (Happens when Up Bank auto-match set status for an old cycle without
+        //    advancing bill.DueDate to the next cycle.)
+        if (effectiveDue.Date > bill.DueDate.Date) return false;
+
+        // 3. Latest status within 7 days — handles minor date drift where the WPF
+        //    has a status but hasn't advanced DueDate yet (e.g. same-day manual pay).
         var latest = BillStatuses
             .Where(s => s.BillId == bill.Id)
             .OrderByDescending(s => s.DueDate)
@@ -272,10 +308,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (latest is not null)
             return latest.IsPaid && (DateTime.Today - latest.DueDate.Date).TotalDays <= 7;
 
-        // 3. No status history at all — fall back to bill.IsPaid flag.
-        //    Do NOT check bill.IsPaid before the status checks: the flag is never
-        //    automatically reset between billing cycles, so it goes stale and hides
-        //    bills that are actually due again in the current cycle.
+        // 4. No status history — fall back to bill.IsPaid. Never check this before
+        //    the status checks; the flag is never auto-reset between cycles and goes stale.
         return bill.IsPaid;
     }
 
@@ -384,9 +418,9 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public List<Bill> GetUpcomingBills(int days = 3) =>
         Bills.Where(b => !IsBillPaid(b) &&
-                         b.DueDate.Date >= DateTime.Today &&
-                         b.DueDate.Date <= DateTime.Today.AddDays(days))
-             .OrderBy(b => b.DueDate)
+                         b.EffectiveDueDate.Date >= DateTime.Today &&
+                         b.EffectiveDueDate.Date <= DateTime.Today.AddDays(days))
+             .OrderBy(b => b.EffectiveDueDate)
              .ToList();
 
     public List<(string Month, decimal Income, decimal Spending)> GetMonthlyTrend(int months = 6)
@@ -423,20 +457,20 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public (decimal Now, decimal AfterBills, decimal AfterPay) GetForecastTotals()
     {
-        var today = DateTime.Today;
-        var payEnd = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
-        var billsTotal = Bills.Where(b => !IsBillPaid(b) && b.DueDate.Date <= payEnd).Sum(b => b.AmountDollars);
+        var today      = DateTime.Today;
+        var payEnd     = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
+        var billsTotal = Bills.Where(b => !IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd).Sum(b => b.AmountDollars);
         var afterBills = TotalBalance - billsTotal;
         return (TotalBalance, afterBills, afterBills + EstimatedPayAmount);
     }
 
     public (decimal AfterBills, decimal AfterPay) GetAccountForecast(int accountId)
     {
-        var today = DateTime.Today;
-        var payEnd = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
-        var current = GetAccountBalance(accountId);
+        var today    = DateTime.Today;
+        var payEnd   = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
+        var current  = GetAccountBalance(accountId);
         var billsDue = Bills
-            .Where(b => b.AccountId == accountId && !IsBillPaid(b) && b.DueDate.Date <= payEnd)
+            .Where(b => b.AccountId == accountId && !IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd)
             .Sum(b => b.AmountDollars);
         var afterBills = current - billsDue;
         return (afterBills, afterBills + (accountId == PayAccountId ? EstimatedPayAmount : 0m));

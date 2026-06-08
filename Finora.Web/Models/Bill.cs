@@ -23,4 +23,14 @@ public class Bill
     public string PaymentMatchText { get; set; } = string.Empty;
     // Denormalised
     public string AccountName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Current-cycle due date, computed by AppState.DenormaliseBills().
+    /// Advances bill.DueDate by the bill's frequency until it reaches the current
+    /// billing period — needed when Up Bank auto-matching sets IsPaid on a status
+    /// record but does not advance the stored DueDate.
+    /// Falls back to DueDate before AppState has run.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime EffectiveDueDate { get; set; }
 }
