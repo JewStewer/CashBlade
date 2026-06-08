@@ -268,6 +268,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             .OrderByDescending(s => s.DueDate)
             .FirstOrDefault();
         if (latest is null) return false;
+        // A status from a previous occurrence must not mark the current cycle as paid.
+        // If the bill's DueDate has already advanced past the status's date, the status
+        // belongs to an older cycle (e.g. last week's payment vs this week's occurrence).
+        if (latest.DueDate.Date < bill.DueDate.Date) return false;
         // Only trust the latest status if its DueDate is within the last 7 days
         // (so a monthly bill paid on May 15 doesn't appear paid on June 7)
         return latest.IsPaid && (DateTime.Today - latest.DueDate.Date).TotalDays <= 7;
@@ -374,6 +378,17 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var val = AppSettings.FirstOrDefault(s => s.Key == $"CategoryLimit:{categoryName}")?.Value;
         return int.TryParse(val, out var cents) ? cents / 100m : 0m;
+    }
+
+    // Sum of bill amounts whose DueDate falls within the current period.
+    // Used by the Budget screen for weekly mode to show committed bill spend
+    // (matches the WPF PeriodBillsDue approach) rather than actual transactions.
+    public decimal GetBillsDueInPeriod()
+    {
+        var (from, to) = GetCurrentPeriod();
+        return Bills
+            .Where(b => b.DueDate.Date >= from && b.DueDate.Date <= to)
+            .Sum(b => b.AmountDollars);
     }
 
     public List<Bill> GetUpcomingBills(int days = 3) =>

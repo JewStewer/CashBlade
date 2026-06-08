@@ -8,7 +8,7 @@
     <!-- WHERE'S MY MONEY? summary (always shown when budget is set) -->
     @if (State.WeeklyIncome > 0)
     {
-        var net = PeriodIncome - AllPeriodSpend;
+        var net = PeriodIncome - BillsSpend - PeriodSpend;
         var billsPct  = PeriodIncome > 0 ? BillsSpend  / PeriodIncome : 0m;
         var discPct   = PeriodIncome > 0 ? PeriodSpend / PeriodIncome : 0m;
         <div class="card">
@@ -546,7 +546,12 @@
     // Discretionary spend/budget: excludes bill categories (Debt, Rent, Phone, Insurance, etc.)
     private decimal PeriodSpend    => State.GetDiscretionarySpending();
     private decimal AllPeriodSpend => State.GetPeriodSpending();
-    private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
+    // Weekly: use bills DUE this period (matches WPF PeriodBillsDue — shows committed spend
+    // even before transactions clear). Monthly: use actual bill-category transactions.
+    private decimal BillsSpend     =>
+        State.SummaryPeriod == "Weekly"
+            ? State.GetBillsDueInPeriod()
+            : AllPeriodSpend - PeriodSpend;
     private decimal PeriodIncome   => State.SummaryPeriod == "Monthly" ? State.WeeklyIncome * 4.33m : State.WeeklyIncome;
     // Budget for non-bill spending = income minus the bills allocation (not the full income)
     private decimal PeriodBudget   => Math.Max(PeriodIncome - (State.SummaryPeriod == "Monthly" ? State.BudgetBills * 4.33m : State.BudgetBills), 0m);
