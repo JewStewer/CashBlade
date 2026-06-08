@@ -95,7 +95,11 @@ public static class SyncServer
                 {
                     var entity = new Transaction
                     {
-                        Date = t.Date,
+                        // Normalise date: phone serialises DateTime.Today with a local-timezone
+                        // offset (e.g. +10:00). System.Text.Json converts that to UTC, which can
+                        // shift the calendar date. Taking .Date then re-specifying Unspecified
+                        // discards any time/offset so EF Core stores the correct local date.
+                        Date = DateTime.SpecifyKind(t.Date.Date, DateTimeKind.Unspecified),
                         Description = t.Description,
                         AmountCents = t.AmountCents,
                         AccountId = t.AccountId,
@@ -113,7 +117,7 @@ public static class SyncServer
                     if (existing is null) continue;
                     existing.Description = t.Description;
                     existing.AmountCents = t.AmountCents;
-                    existing.Date = t.Date;
+                    existing.Date = DateTime.SpecifyKind(t.Date.Date, DateTimeKind.Unspecified);
                     existing.AccountId = t.AccountId;
                     existing.CategoryId = t.CategoryId;
                     existing.IsUnnecessary = t.IsUnnecessary;
@@ -149,6 +153,9 @@ public static class SyncServer
                         existing.IsSkipped = s.IsSkipped;
                         existing.PaidOn = s.PaidOn;
                     }
+                    // Mirror paid status on the Bill entity itself (consistent with Supabase path)
+                    var bill = await db.Bills.FindAsync(s.BillId);
+                    if (bill is not null) bill.IsPaid = s.IsPaid;
                 }
 
                 // New bills from phone (negative temp IDs)

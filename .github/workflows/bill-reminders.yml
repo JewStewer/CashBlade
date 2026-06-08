@@ -2,9 +2,13 @@ name: Bill Reminders
 
 on:
   schedule:
-    # Every day at 8:00 AM UTC (adjust to your timezone offset)
+    # Every day at 8:00 AM UTC (6 PM AEST)
     - cron: '0 8 * * *'
   workflow_dispatch: # Allow manual trigger for testing
+
+# Opt into Node.js 24 for actions now — becomes mandatory June 16th 2026
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   send-reminders:
@@ -16,10 +20,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install web-push
-        run: npm install web-push node-fetch
+        run: npm install web-push
 
       - name: Send bill reminders
         env:

@@ -119,7 +119,8 @@ public static class SupabaseSyncService
             {
                 db.Transactions.Add(new Transaction
                 {
-                    Date = t.Date, Description = t.Description, AmountCents = t.AmountCents,
+                    Date = DateTime.SpecifyKind(t.Date.Date, DateTimeKind.Unspecified),
+                    Description = t.Description, AmountCents = t.AmountCents,
                     AccountId = t.AccountId, CategoryId = t.CategoryId,
                     TransferId = t.TransferId, IsUnnecessary = t.IsUnnecessary
                 });
@@ -132,7 +133,7 @@ public static class SupabaseSyncService
                 if (existing is null) continue;
                 existing.Description = t.Description;
                 existing.AmountCents = t.AmountCents;
-                existing.Date = t.Date;
+                existing.Date = DateTime.SpecifyKind(t.Date.Date, DateTimeKind.Unspecified);
                 existing.AccountId = t.AccountId;
                 existing.CategoryId = t.CategoryId;
                 existing.IsUnnecessary = t.IsUnnecessary;

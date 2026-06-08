@@ -256,21 +256,27 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public bool IsBillPaid(Bill bill)
     {
-        if (bill.IsPaid) return true;
-        // First: check for a status that matches THIS occurrence's due date
+        // 1. Exact-date status is the most reliable source — check it first.
+        //    This correctly handles recurring bills whose DueDate has been advanced
+        //    to the next cycle: if there's no status for the new date, the bill is unpaid.
         var exactStatus = BillStatuses
             .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == bill.DueDate.Date);
         if (exactStatus is not null) return exactStatus.IsPaid;
-        // Fallback: use latest status only if it's from the current or future period
-        // (prevents last month's "paid" state bleeding into a new billing cycle)
+
+        // 2. Latest status fallback (within 7 days) — covers the window where the PC
+        //    has a status but no exact date match due to minor date drift.
         var latest = BillStatuses
             .Where(s => s.BillId == bill.Id)
             .OrderByDescending(s => s.DueDate)
             .FirstOrDefault();
-        if (latest is null) return false;
-        // Only trust the latest status if its DueDate is within the last 7 days
-        // (so a monthly bill paid on May 15 doesn't appear paid on June 7)
-        return latest.IsPaid && (DateTime.Today - latest.DueDate.Date).TotalDays <= 7;
+        if (latest is not null)
+            return latest.IsPaid && (DateTime.Today - latest.DueDate.Date).TotalDays <= 7;
+
+        // 3. No status history at all — fall back to bill.IsPaid flag.
+        //    Do NOT check bill.IsPaid before the status checks: the flag is never
+        //    automatically reset between billing cycles, so it goes stale and hides
+        //    bills that are actually due again in the current cycle.
+        return bill.IsPaid;
     }
 
     public List<Transaction> GetTransactionsForPeriod(DateTime from, DateTime to) =>
@@ -505,6 +511,12 @@ public class AppState(IndexedDbService db, SyncService sync)
     // ── Write operations (store locally + queue for sync) ─────────────────────
     public async Task AddTransactionAsync(Transaction t)
     {
+        // Normalise date to DateTimeKind.Unspecified (date-only, no time, no offset).
+        // DateTime.Today in Blazor WASM has Kind=Local, which System.Text.Json serialises
+        // with the local offset (e.g. +10:00). The PC then converts it to UTC, shifting
+        // the date by the timezone offset. Stripping Kind here prevents that round-trip.
+        t.Date = new DateTime(t.Date.Year, t.Date.Month, t.Date.Day);
+
         // Assign a temp negative ID for phone-created records
         var minId = Transactions.Count > 0 ? Transactions.Min(x => x.Id) : 0;
         t.Id = Math.Min(minId - 1, -1);
@@ -533,7 +545,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var t = Transactions.FirstOrDefault(x => x.Id == updated.Id);
         if (t is null) return;
-        t.Date = updated.Date;
+        t.Date = new DateTime(updated.Date.Year, updated.Date.Month, updated.Date.Day);
         t.Description = updated.Description;
         t.AmountDollars = updated.AmountDollars;
         t.AccountId = updated.AccountId;

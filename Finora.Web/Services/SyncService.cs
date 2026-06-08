@@ -144,13 +144,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
         }
     }
 
-    // ── Auto-sync: try cloud first, then local ────────────────────────────────
+    // ── Auto-sync: try cloud first, fall back to local Wi-Fi if cloud fails ──────
     public async Task<bool> AutoSyncAsync()
     {
-        if (HasCloudSync) return await SyncFromSupabaseAsync();
+        if (HasCloudSync)
+        {
+            var ok = await SyncFromSupabaseAsync();
+            if (ok) return true;
+            // Cloud failed — fall through to local Wi-Fi if available
+        }
         if (HasLocalSync) return await SyncFromPcAsync();
-        LastError = "No sync configured. Add your Supabase details or PC address in Settings.";
-        OnSyncStateChanged?.Invoke();
+        if (!HasCloudSync)
+        {
+            LastError = "No sync configured. Add your Supabase details or PC address in Settings.";
+            OnSyncStateChanged?.Invoke();
+        }
         return false;
     }
 
