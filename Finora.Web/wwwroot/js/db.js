@@ -98,7 +98,46 @@ window.db = {
             const tx = db.transaction(STORES, 'readwrite');
             for (const s of STORES) tx.objectStore(s).clear();
             tx.oncomplete = () => resolve();
-            tx.onerror = e => reject(e.target.error);
+            tx.onerror  = e => reject(e.target.error);
+            tx.onabort  = () => reject(tx.error ?? new Error('clearAll aborted'));
+        });
+    },
+
+    // Atomic sync replace — clears all sync-managed stores AND writes the new data
+    // inside a SINGLE IndexedDB transaction.  If any write fails (e.g. Safari iOS
+    // storage quota or a bad record) the entire transaction rolls back automatically,
+    // so the existing data is preserved instead of being left in a half-wiped state.
+    async replaceAll(data) {
+        const db = await openDb();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORES, 'readwrite');
+            tx.oncomplete = () => resolve();
+            tx.onerror  = e => reject(e.target.error ?? tx.error ?? new Error('replaceAll failed'));
+            tx.onabort  = () => reject(tx.error ?? new Error('replaceAll aborted'));
+
+            // Clear every sync-managed store first (all inside the same transaction)
+            for (const s of STORES) tx.objectStore(s).clear();
+
+            // Write incoming records into each store
+            const storeMap = {
+                accounts:               data.accounts               ?? [],
+                categories:             data.categories             ?? [],
+                transactions:           data.transactions           ?? [],
+                bills:                  data.bills                  ?? [],
+                billOccurrenceStatuses: data.billOccurrenceStatuses ?? [],
+                debts:                  data.debts                  ?? [],
+                debtPayments:           data.debtPayments           ?? [],
+                savingsGoals:           data.savingsGoals           ?? [],
+                weeklyBudgets:          data.weeklyBudgets          ?? [],
+                appSettings:            data.appSettings            ?? [],
+            };
+            for (const [store, records] of Object.entries(storeMap)) {
+                const os = tx.objectStore(store);
+                for (const r of records) os.put(r);
+            }
+
+            // Restore sync meta (credentials + last-synced timestamp)
+            if (data.syncMeta) tx.objectStore('syncMeta').put(data.syncMeta);
         });
     }
 };

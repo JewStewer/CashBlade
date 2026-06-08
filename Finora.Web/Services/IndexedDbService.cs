@@ -58,26 +58,39 @@ public class IndexedDbService(IJSRuntime js)
 
     public async Task SaveSyncPayloadAsync(SyncPayload p)
     {
-        // Read config BEFORE clearing so we don't lose PC host / Supabase credentials
+        // Preserve PC host / Supabase credentials stored in syncMeta
         var existingMeta = await GetSyncMetaAsync();
         var meta = existingMeta.FirstOrDefault() ?? new SyncMeta { Id = 1 };
-
-        await ClearAllAsync();
-
-        await PutBulkAsync("accounts", p.Accounts);
-        await PutBulkAsync("categories", p.Categories);
-        await PutBulkAsync("transactions", p.Transactions);
-        await PutBulkAsync("bills", p.Bills);
-        await PutBulkAsync("billOccurrenceStatuses", p.BillOccurrenceStatuses);
-        await PutBulkAsync("debts", p.Debts);
-        await PutBulkAsync("debtPayments", p.DebtPayments);
-        await PutBulkAsync("savingsGoals", p.SavingsGoals);
-        await PutBulkAsync("weeklyBudgets", p.WeeklyBudgets);
-        await PutBulkAsync("appSettings", p.AppSettings);
-
-        // Restore config with updated sync timestamp
         meta.LastSyncedAt = p.SyncedAt;
-        await PutAsync("syncMeta", meta);
+
+        // Limit transactions to the last 12 months so iOS Safari doesn't hit
+        // storage-quota limits with multi-year datasets.
+        var cutoff = DateTime.Today.AddMonths(-12);
+        var recentTxns = p.Transactions.Where(t => t.Date >= cutoff).ToList();
+
+        // Single atomic IndexedDB transaction via db.replaceAll:
+        //   • clears all sync-managed stores
+        //   • writes new records for every store
+        // — all in one transaction so if anything fails, IndexedDB rolls back
+        //   automatically and the existing data is preserved (not left half-wiped).
+        var replacePayload = new
+        {
+            accounts               = p.Accounts,
+            categories             = p.Categories,
+            transactions           = recentTxns,
+            bills                  = p.Bills,
+            billOccurrenceStatuses = p.BillOccurrenceStatuses,
+            debts                  = p.Debts,
+            debtPayments           = p.DebtPayments,
+            savingsGoals           = p.SavingsGoals,
+            weeklyBudgets          = p.WeeklyBudgets,
+            appSettings            = p.AppSettings,
+            syncMeta               = meta
+        };
+
+        var json    = JsonSerializer.Serialize(replacePayload, _opts);
+        var element = JsonSerializer.Deserialize<JsonElement>(json);
+        await js.InvokeVoidAsync("db.replaceAll", element);
     }
 
     public async Task<string?> GetSettingAsync(string key)
