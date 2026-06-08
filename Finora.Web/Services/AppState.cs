@@ -211,12 +211,12 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var dueDate = bill.DueDate.Date;
         var today   = DateTime.Today;
+        // Advance until we reach the current or next upcoming occurrence.
+        // We deliberately advance PAST today — we want the upcoming cycle, not
+        // the most-recently-passed one, so unpaid June bills aren't hidden behind
+        // a "paid in May" status.
         while (dueDate < today)
-        {
-            var next = AdvanceDueDate(dueDate, bill.Frequency);
-            if (next > today) break;   // don't skip past today
-            dueDate = next;
-        }
+            dueDate = AdvanceDueDate(dueDate, bill.Frequency);
         return dueDate;
     }
 
@@ -299,17 +299,23 @@ public class AppState(IndexedDbService db, SyncService sync)
         //    advancing bill.DueDate to the next cycle.)
         if (effectiveDue.Date > bill.DueDate.Date) return false;
 
-        // 3. Latest status within 7 days — handles minor date drift where the WPF
-        //    has a status but hasn't advanced DueDate yet (e.g. same-day manual pay).
+        // 3. Tight date-drift fallback: a status within ±3 days of the effective due
+        //    date covers cases where the PC recorded a slightly different date (e.g.
+        //    same-day payment).  Intentionally narrow so a previous cycle's payment
+        //    (e.g. paid June 2, due June 9) is NOT treated as "paid for this cycle".
         var latest = BillStatuses
             .Where(s => s.BillId == bill.Id)
             .OrderByDescending(s => s.DueDate)
             .FirstOrDefault();
         if (latest is not null)
-            return latest.IsPaid && (DateTime.Today - latest.DueDate.Date).TotalDays <= 7;
+        {
+            var daysFromEffective = Math.Abs((latest.DueDate.Date - effectiveDue.Date).TotalDays);
+            if (daysFromEffective <= 3) return latest.IsPaid;
+        }
 
-        // 4. No status history — fall back to bill.IsPaid. Never check this before
-        //    the status checks; the flag is never auto-reset between cycles and goes stale.
+        // 4. No status history (or too far from effective date) — fall back to
+        //    bill.IsPaid.  Never check this before the status checks; the flag is
+        //    never auto-reset between billing cycles and goes stale.
         return bill.IsPaid;
     }
 
