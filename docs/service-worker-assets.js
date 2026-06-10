@@ -1,4 +1,4 @@
-﻿self.assetsManifest = {
+self.assetsManifest = {
   "assets": [
     {
       "hash": "sha256-gvHfnndfEu1tRf0rFb5988rWq7ITIotOaE8+AMbKYbc=",
@@ -38,7 +38,7 @@
     },
     {
       "hash": "sha256-0BTUVi1epunKqjEMrn4rv1jWrCdTwpYeOa+cmBNF7AE=",
-      "url": "_framework\/Finora.Web.wasm"
+      "url": "_framework\/finora.web.wasm"
     },
     {
       "hash": "sha256-aYUQ6JQ4VCRdymEdS5aDZbqm0wHwzVsEjB19gS8Y\/2g=",
