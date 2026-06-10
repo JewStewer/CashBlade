@@ -1,5 +1,6 @@
 @page "/accounts"
 @inject AppState State
+@inject NavigationManager Nav
 
 <PageTitle>Accounts — Finance Blade</PageTitle>
 
@@ -14,9 +15,33 @@
     </div>
 </div>
 
+@if (State.Accounts.Any())
+{
+    var billAccounts = State.Accounts.Where(a => a.Type == AccountType.Bills).ToList();
+    var savingsAccounts = State.Accounts.Where(a => a.Type == AccountType.Savings).ToList();
+    var billBalance = billAccounts.Sum(a => State.GetAccountBalance(a.Id));
+    <div class="metric-strip">
+        <div>
+            <span>Bills buckets</span>
+            <strong>@billBalance.ToString("C")</strong>
+        </div>
+        <div>
+            <span>Savings buckets</span>
+            <strong>@State.SavingsTotal.ToString("C")</strong>
+        </div>
+        <div>
+            <span>Open goals</span>
+            <strong>@State.SavingsGoals.Count</strong>
+        </div>
+    </div>
+}
+
 @if (!State.Accounts.Any())
 {
-    <div class="empty-state" style="margin-top:40px">No accounts. Sync from your PC to load data.</div>
+    <div class="empty-state" style="margin-top:40px">
+        <span>No accounts. Sync from your PC to load data.</span>
+        <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("settings")'>Open Sync Settings</button>
+    </div>
 }
 else
 {

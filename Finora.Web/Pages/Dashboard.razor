@@ -78,7 +78,7 @@ else
 
     <div class="section-header" style="margin-top:8px">
         <span class="section-title">Watchlist</span>
-        <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("/budget")' style="padding:4px 10px;font-size:12px">Open Budget</button>
+        <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("budget")' style="padding:4px 10px;font-size:12px">Open Budget</button>
     </div>
     <div style="padding:0 16px">
         <div class="card" style="padding:14px">
@@ -94,6 +94,24 @@ else
                 <div style="font-size:12px;color:var(--text3);margin-top:5px">The lowest forecast balance before payday and the bill causing it.</div>
             </div>
         </div>
+    </div>
+
+    <div class="quick-actions">
+        <button class="quick-action" @onclick='() => Nav.NavigateTo("transactions")'>
+            <span>+</span>
+            <strong>Transactions</strong>
+            <small>add or review</small>
+        </button>
+        <button class="quick-action" @onclick='() => Nav.NavigateTo("bills")'>
+            <span>$</span>
+            <strong>Bills</strong>
+            <small>@State.TotalBillsDue.ToString("C") due</small>
+        </button>
+        <button class="quick-action" @onclick='() => Nav.NavigateTo("accounts")'>
+            <span>%</span>
+            <strong>Accounts</strong>
+            <small>@State.Accounts.Count buckets</small>
+        </button>
     </div>
 
     <!-- Balance Forecast -->
@@ -155,7 +173,7 @@ else
                 </div>
             }
             <div style="padding:10px 16px;border-top:1px solid var(--border)">
-                <button class="btn btn-sm btn-secondary btn-full" @onclick='() => Nav.NavigateTo("/bills")'>Open Bills</button>
+                <button class="btn btn-sm btn-secondary btn-full" @onclick='() => Nav.NavigateTo("bills")'>Open Bills</button>
             </div>
         </div>
     }
@@ -192,14 +210,14 @@ else
     <!-- Recent transactions -->
     <div class="section-header" style="margin-top:8px">
         <span class="section-title">Recent</span>
-        <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("/transactions")' style="padding:4px 10px;font-size:12px">See all</button>
+        <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("transactions")' style="padding:4px 10px;font-size:12px">See all</button>
     </div>
     <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
         @if (State.RecentTransactions.Count == 0)
         {
             <div class="empty-state" style="padding:24px">
                 <span>No transactions yet. Sync from your PC to load data.</span>
-                <button class="btn btn-sm btn-primary" @onclick='() => Nav.NavigateTo("/settings")'>Open Sync Settings</button>
+                <button class="btn btn-sm btn-primary" @onclick='() => Nav.NavigateTo("settings")'>Open Sync Settings</button>
             </div>
         }
         else

@@ -1,5 +1,6 @@
 @page "/transactions"
 @inject AppState State
+@inject NavigationManager Nav
 
 <PageTitle>Transactions — Finance Blade</PageTitle>
 
@@ -47,7 +48,13 @@
     @{var rows = GetFiltered();}
     @if (!rows.Any())
     {
-        <div class="empty-state">No transactions match.</div>
+        <div class="empty-state">
+            <span>No transactions match.</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+                <button class="btn btn-primary btn-sm" @onclick="() => showAdd = true">Add Transaction</button>
+                <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("settings")'>Sync Settings</button>
+            </div>
+        </div>
     }
     else
     {

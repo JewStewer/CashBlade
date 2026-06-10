@@ -1,5 +1,6 @@
 @page "/bills"
 @inject AppState State
+@inject NavigationManager Nav
 
 <PageTitle>Bills — Finance Blade</PageTitle>
 
@@ -40,7 +41,13 @@
     @{var bills = GetFiltered();}
     @if (!bills.Any())
     {
-        <div class="empty-state">No bills here.</div>
+        <div class="empty-state">
+            <span>No bills here.</span>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">Add Bill</button>
+                <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("settings")'>Sync Settings</button>
+            </div>
+        </div>
     }
     else
     {
