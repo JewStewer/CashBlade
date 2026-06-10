@@ -1,5 +1,5 @@
 {
-  "mainAssemblyName": "Finora.Web",
+  "mainAssemblyName": "finora.web",
   "resources": {
     "hash": "sha256-tSEuNmJN/LtRnRCtEXKYVJ1fbwXFZa5Eu+uBdPEh3sY=",
     "jsModuleNative": {
