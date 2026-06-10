@@ -5694,21 +5694,55 @@ public class MainViewModel : ViewModelBase
         return true;
     }
 
-    public bool AddAccountTargetToBudget(int accountId)
+    /// <summary>
+    /// Adds an account's savings/funding target to the budget breakdown. Returns null on success,
+    /// or a user-facing message explaining why the target won't appear in the Budget tab.
+    /// </summary>
+    public string? AddAccountTargetToBudget(int accountId)
     {
         using var db = new FinoraDbContext();
-        var account = db.Accounts.FirstOrDefault(a => a.Id == accountId);
-        // Allow any account type with a target — Bills accounts are bill savers that need weekly funding
-        if (account is null || account.TargetCents is null)
+        var account = db.Accounts.Include(a => a.Transactions).FirstOrDefault(a => a.Id == accountId);
+        if (account is null)
         {
-            return false;
+            return "Account not found.";
+        }
+
+        if (account.TargetCents is null)
+        {
+            return "Set a target amount for this account first, then save, then add it to the budget.";
+        }
+
+        // The Budget tab only shows account targets for Savings/Bills accounts — Spending,
+        // Cash and Credit accounts are excluded even when a target is set.
+        if (account.Type != AccountType.Savings && account.Type != AccountType.Bills)
+        {
+            return $"\"{account.Name}\" is a {account.Type} account. Set its Account type to Savings or Bills (Edit Account) so its target appears in the budget.";
+        }
+
+        // Without a target date, no weekly contribution can be calculated, so the row would
+        // be hidden from the budget breakdown entirely.
+        if (account.TargetDate is null)
+        {
+            return $"Set a target date for \"{account.Name}\" (Edit Account) so Finora can work out a weekly contribution.";
+        }
+
+        var balance = account.Transactions.Sum(t => t.AmountDollars);
+        if (account.TargetDollars is null)
+        {
+            return $"Set a target amount for \"{account.Name}\" (Edit Account) so Finora can work out a weekly contribution.";
+        }
+
+        if (account.TargetDollars <= balance)
+        {
+            return $"\"{account.Name}\" already has {balance:C} saved, which covers its {account.TargetDollars:C} target — so there's no extra weekly amount to add right now. " +
+                "It'll reappear here once its balance drops back below the target (e.g. after the bill is paid from this account).";
         }
 
         // Always use "Savings" — this matches the ExclusionKey format the budget breakdown generates
         // for all account target rows (both Savings and Bills type accounts use "Savings::{name}")
         AddBudgetItemKey(db, BuildBudgetItemKey("Savings", BuildAccountBudgetName(account.Name)));
         db.SaveChanges();
-        return true;
+        return null;
     }
 
     /// <summary>

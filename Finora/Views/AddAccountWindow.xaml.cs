@@ -9,7 +9,7 @@ public partial class AddAccountWindow : Window
 {
     private readonly int? _accountId;
     private decimal _currentBalance;
-    private readonly Action<int>? _onAddToBudget;
+    private readonly Func<int, string?>? _onAddToBudget;
 
     public AddAccountWindow()
     {
@@ -18,7 +18,7 @@ public partial class AddAccountWindow : Window
         NameBox.Focus();
     }
 
-    public AddAccountWindow(int accountId, Action<int>? onAddToBudget = null) : this()
+    public AddAccountWindow(int accountId, Func<int, string?>? onAddToBudget = null) : this()
     {
         _accountId = accountId;
         _onAddToBudget = onAddToBudget;
@@ -227,17 +227,8 @@ public partial class AddAccountWindow : Window
             return;
         }
 
-        // Check the account has a target before adding
-        using var db = new FinoraDbContext();
-        var account = db.Accounts.FirstOrDefault(a => a.Id == _accountId.Value);
-        if (account?.TargetCents is null)
-        {
-            MessageBox.Show("Set a target amount first, then save, then add to budget.");
-            return;
-        }
-
-        _onAddToBudget(_accountId.Value);
-        MessageBox.Show($"{account.Name} target added to the budget.");
+        var error = _onAddToBudget(_accountId.Value);
+        MessageBox.Show(error ?? "Target added to the budget. Check the Budget tab to see it.");
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)

@@ -220,13 +220,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private void AddToBudgetCallback(int accountId)
+    private string? AddToBudgetCallback(int accountId)
     {
-        if (ViewModel.AddAccountTargetToBudget(accountId))
+        var error = ViewModel.AddAccountTargetToBudget(accountId);
+        if (error is null)
         {
             ViewModel.SaveSuggestedBudget();
             ViewModel.LoadDashboard();
         }
+
+        return error;
     }
 
     private void DeleteAccount_Click(object sender, RoutedEventArgs e)
@@ -242,14 +245,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!ViewModel.AddAccountTargetToBudget(ViewModel.SelectedAccount.Id))
+        var error = ViewModel.AddAccountTargetToBudget(ViewModel.SelectedAccount.Id);
+        if (error is not null)
         {
-            MessageBox.Show("This account needs a target amount set before it can be added to the budget.");
+            MessageBox.Show(error);
             return;
         }
 
         ViewModel.SaveSuggestedBudget();
         ViewModel.LoadDashboard();
+        MessageBox.Show($"\"{ViewModel.SelectedAccount.Name}\" target added to the budget. Check the Budget tab to see it.");
     }
 
     private void DeleteSelectedAccounts()
