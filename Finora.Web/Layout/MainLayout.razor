@@ -18,7 +18,7 @@
     </header>
 
     @{
-        var _upcomingBills = State.GetUpcomingBills(3);
+        var _upcomingBills = State.IsLoaded ? State.GetUpcomingBills(3) : Enumerable.Empty<Bill>();
     }
     @if (!_dismissedBillAlert && _upcomingBills.Any())
     {

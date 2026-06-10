@@ -25,6 +25,7 @@
     </div>
     <div id="blazor-error-ui">
         An unhandled error has occurred.
+        <div class="error-detail"></div>
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
@@ -33,6 +34,15 @@
     <script src="js/push.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>
+        (() => {
+            const showError = message => {
+                const detail = document.querySelector('#blazor-error-ui .error-detail');
+                if (detail) detail.textContent = String(message || '').slice(0, 500);
+            };
+            window.addEventListener('error', event => showError(event.error?.message || event.message));
+            window.addEventListener('unhandledrejection', event => showError(event.reason?.message || event.reason));
+        })();
+
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('service-worker.js');
             // Force the browser to check for a new service worker on every launch.

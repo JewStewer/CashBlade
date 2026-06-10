@@ -474,6 +474,13 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 
 #blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 1.25rem; top: 0.5rem; }
 
+#blazor-error-ui .error-detail {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.9;
+    word-break: break-word;
+}
+
 /* ── Bill alert banner ── */
 .bill-alert-banner {
     background: linear-gradient(90deg, #92400e, #78350f);

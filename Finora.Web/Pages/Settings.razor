@@ -335,7 +335,8 @@
                 }
                 const cacheKeys = await caches.keys();
                 for (const k of cacheKeys) await caches.delete(k);
-                window.location.reload();
+                const appRoot = new URL('.', document.baseURI).href;
+                window.location.replace(appRoot + '?refresh=' + Date.now());
             })()
         ");
     }
