@@ -14,6 +14,9 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -22,38 +25,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Install WASM tools (faster Blazor builds)
-        run: dotnet workload install wasm-tools
-
-      - name: Publish Finora.Web
-        run: dotnet publish Finora.Web/Finora.Web.csproj -c Release -o _site
-
-      - name: Fix base path for GitHub Pages (/CashBlade/)
+      - name: Verify Pages bundle
         run: |
-          BASE="/CashBlade/"
-          # Update <base href> in index.html
-          sed -i -E "s|<base href=\"[^\"]*\"[^>]*>|<base href=\"${BASE}\" />|g" _site/wwwroot/index.html
-          # Update start_url in PWA manifest
-          sed -i -E "s|\"start_url\": \"[^\"]*\"|\"start_url\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest
-          sed -i -E "s|\"scope\": \"[^\"]*\"|\"scope\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest
-          # GitHub Pages is case-sensitive. Some iOS/WebKit Blazor paths request the app assembly in lower-case.
-          mv _site/wwwroot/_framework/Finora.Web.wasm _site/wwwroot/_framework/finora.web.wasm
-          mv _site/wwwroot/_framework/Finora.Web.wasm.br _site/wwwroot/_framework/finora.web.wasm.br
-          mv _site/wwwroot/_framework/Finora.Web.wasm.gz _site/wwwroot/_framework/finora.web.wasm.gz
-          mv _site/wwwroot/_framework/Finora.Web.pdb.gz _site/wwwroot/_framework/finora.web.pdb.gz
-          sed -i "s|Finora.Web.wasm|finora.web.wasm|g; s|Finora.Web.pdb.gz|finora.web.pdb.gz|g" _site/wwwroot/_framework/blazor.boot.json
-          sed -i "s|Finora.Web.wasm|finora.web.wasm|g; s|Finora.Web.pdb.gz|finora.web.pdb.gz|g" _site/wwwroot/service-worker-assets.js
-          # Copy index.html → 404.html so deep-links work after page refresh
-          cp _site/wwwroot/index.html _site/wwwroot/404.html
-          # Prevent Jekyll from processing _framework/ files
-          touch _site/wwwroot/.nojekyll
+          test -f docs/index.html
+          test -f docs/404.html
+          test -f docs/.nojekyll
+          test -f docs/_framework/finora.web.wasm
+          ! grep -R "Finora.Web.wasm" docs/_framework/blazor.boot.json docs/service-worker-assets.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -61,9 +42,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site/wwwroot
+          path: docs
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
