@@ -39,9 +39,10 @@ jobs:
         run: |
           BASE="/CashBlade/"
           # Update <base href> in index.html
-          sed -i "s|<base href=\"/\" />|<base href=\"${BASE}\" />|g" _site/wwwroot/index.html
+          sed -i -E "s|<base href=\"[^\"]*\"[^>]*>|<base href=\"${BASE}\" id=\"app-base\" />|g" _site/wwwroot/index.html
           # Update start_url in PWA manifest
-          sed -i "s|\"start_url\": \"/\"|\"start_url\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest
+          sed -i -E "s|\"start_url\": \"[^\"]*\"|\"start_url\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest
+          sed -i -E "s|\"scope\": \"[^\"]*\"|\"scope\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest
           # Copy index.html → 404.html so deep-links work after page refresh
           cp _site/wwwroot/index.html _site/wwwroot/404.html
           # Prevent Jekyll from processing _framework/ files

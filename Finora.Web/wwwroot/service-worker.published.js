@@ -36,7 +36,7 @@ self.addEventListener('push', event => {
             badge: './icons/icon-192.png',
             tag: 'bill-reminder',
             renotify: true,
-            data: { url: self.location.origin + '/CashBlade/' }
+            data: { url: new URL('./', self.registration.scope).href }
         })
     );
 });
@@ -61,9 +61,11 @@ self.addEventListener('fetch', event => {
         // any forced reload tricks. Falls back to cache when offline.
         if (event.request.mode === 'navigate') {
             try {
-                return await fetch(event.request);
+                const response = await fetch(event.request);
+                if (response.ok) return response;
+                return (await cache.match('index.html')) ?? (await cache.match('./index.html')) ?? response;
             } catch {
-                return (await cache.match('index.html')) ?? Response.error();
+                return (await cache.match('index.html')) ?? (await cache.match('./index.html')) ?? Response.error();
             }
         }
 
