@@ -161,7 +161,7 @@ else
                     <div class="row-icon" style="background:rgba(248,113,113,0.15)">📋</div>
                     <div class="row-main">
                         <div class="row-title">@bill.Name</div>
-                        <div class="row-sub">@bill.AccountName · @bill.DueDate.ToString("dd MMM")</div>
+                        <div class="row-sub">@bill.AccountName · @bill.EffectiveDueDate.ToString("dd MMM")</div>
                     </div>
                     <span class="row-amount neg">@bill.AmountDollars.ToString("C")</span>
                 </div>
@@ -315,10 +315,10 @@ else
             var items = new List<UpcomingItem>();
             // Unpaid bills in next 14 days
             foreach (var b in State.Bills.Where(b => !State.IsBillPaid(b)
-                && b.DueDate.Date >= today && b.DueDate.Date <= today.AddDays(14)))
+                && b.EffectiveDueDate.Date >= today && b.EffectiveDueDate.Date <= today.AddDays(14)))
             {
-                items.Add(new(b.DueDate.Date, b.Name, b.AccountName, b.AmountDollars,
-                    false, b.DueDate.Date == today));
+                items.Add(new(b.EffectiveDueDate.Date, b.Name, b.AccountName, b.AmountDollars,
+                    false, b.EffectiveDueDate.Date == today));
             }
             // Payday in next 14 days
             if (State.NextPayDate.Date >= today && State.NextPayDate.Date <= today.AddDays(14))

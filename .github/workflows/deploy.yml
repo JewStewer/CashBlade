@@ -39,7 +39,7 @@ jobs:
         run: |
           BASE="/CashBlade/"
           # Update <base href> in index.html
-          sed -i -E "s|<base href=\"[^\"]*\"[^>]*>|<base href=\"${BASE}\" id=\"app-base\" />|g" _site/wwwroot/index.html
+          sed -i -E "s|<base href=\"[^\"]*\"[^>]*>|<base href=\"${BASE}\" />|g" _site/wwwroot/index.html
           # Update start_url in PWA manifest
           sed -i -E "s|\"start_url\": \"[^\"]*\"|\"start_url\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest
           sed -i -E "s|\"scope\": \"[^\"]*\"|\"scope\": \"${BASE}\"|g" _site/wwwroot/manifest.webmanifest

@@ -8,16 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Finance Blade" />
     <title>Finance Blade</title>
-    <base href="/" id="app-base" />
-    <script>
-        (() => {
-            const base = document.getElementById('app-base');
-            const firstSegment = location.pathname.split('/').filter(Boolean)[0];
-            if (base && firstSegment && firstSegment.toLowerCase() === 'cashblade') {
-                base.setAttribute('href', `/${firstSegment}/`);
-            }
-        })();
-    </script>
+    <base href="/" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />

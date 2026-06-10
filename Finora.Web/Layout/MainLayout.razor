@@ -30,9 +30,9 @@
                     <line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
                 <span><strong>Bills due:</strong> @string.Join(" · ", _upcomingBills.Select(b =>
-                    b.DueDate.Date == DateTime.Today ? $"{b.Name} (today)" :
-                    b.DueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} (tomorrow)" :
-                    $"{b.Name} (in {(b.DueDate.Date - DateTime.Today).Days}d)"))</span>
+                    b.EffectiveDueDate.Date == DateTime.Today ? $"{b.Name} (today)" :
+                    b.EffectiveDueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} (tomorrow)" :
+                    $"{b.Name} (in {(b.EffectiveDueDate.Date - DateTime.Today).Days}d)"))</span>
             </div>
             <button class="bill-alert-close" @onclick="() => _dismissedBillAlert = true">✕</button>
         </div>
