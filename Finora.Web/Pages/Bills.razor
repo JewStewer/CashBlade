@@ -37,6 +37,35 @@
     </div>
 </div>
 
+@if (DueSoonBills.Any())
+{
+    <div class="mini-timeline-wrap">
+        <div class="mini-timeline-head">
+            <span>Due Soon</span>
+            <button class="btn btn-sm btn-secondary" @onclick='() => filter = "Unpaid"'>Show unpaid</button>
+        </div>
+        <div class="mini-timeline">
+            @foreach (var bill in DueSoonBills)
+            {
+                var isPaid = State.IsBillPaid(bill);
+                var (acctAfterBills, _) = State.GetAccountForecast(bill.AccountId);
+                <button class="timeline-chip @(isPaid ? "is-paid" : acctAfterBills < 0 ? "is-danger" : "is-ready")" @onclick="() => StartEdit(bill)">
+                    <span>@DueLabel(bill.EffectiveDueDate)</span>
+                    <strong>@bill.Name</strong>
+                    <small>@bill.AmountDollars.ToString("C")</small>
+                </button>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div class="ios-section-note">
+        No bills are due in the next 7 days.
+        <button class="btn btn-sm btn-secondary" @onclick="() => editingBill = new Bill()">Add Bill</button>
+    </div>
+}
+
 <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
     @{var bills = GetFiltered();}
     @if (!bills.Any())
@@ -114,6 +143,11 @@
     private string filter = "Unpaid";
     private string _search = string.Empty;
     private Bill? editingBill;
+    private List<Bill> DueSoonBills => State.Bills
+        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today.AddDays(7))
+        .OrderBy(b => b.EffectiveDueDate)
+        .Take(8)
+        .ToList();
 
     private void StartEdit(Bill bill) => editingBill = bill;
 
@@ -148,5 +182,14 @@
     private async Task TogglePaid(Bill bill)
     {
         await State.MarkBillPaidAsync(bill.Id, !State.IsBillPaid(bill));
+    }
+
+    private static string DueLabel(DateTime date)
+    {
+        var days = (date.Date - DateTime.Today).Days;
+        if (days < 0) return "Overdue";
+        if (days == 0) return "Today";
+        if (days == 1) return "Tomorrow";
+        return $"{days} days";
     }
 }

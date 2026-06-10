@@ -95,6 +95,23 @@ else
                             }
                         </div>
                     }
+                    @if (isPayAcct || acctAfterBills < 0 || acct.TargetCents is not null)
+                    {
+                        <div class="attention-row">
+                            @if (isPayAcct)
+                            {
+                                <span class="attention-chip tone-blue">Pay lands here</span>
+                            }
+                            @if (acctAfterBills < 0)
+                            {
+                                <button class="attention-chip tone-red" @onclick='() => Nav.NavigateTo("bills")'>Short before payday</button>
+                            }
+                            @if (acct.TargetCents is not null)
+                            {
+                                <span class="attention-chip tone-green">Goal tracked</span>
+                            }
+                        </div>
+                    }
                     @if (acct.TargetCents is not null)
                     {
                         var progress = acct.TargetDollars > 0 ? Math.Clamp(balance / acct.TargetDollars!.Value, 0, 1) : 0;
