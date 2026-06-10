@@ -143,6 +143,16 @@ public partial class MainWindow : Window
             var result = await _upBankSyncService.SyncAsync();
             ViewModel.LoadDashboard();
 
+            // New transactions can change Reports/Insights too — refresh them so an
+            // automatic background sync is actually reflected wherever the user is
+            // looking, not just on the Dashboard.
+            if (result.ImportedTransactions > 0 || result.AppliedDebtPayments > 0
+                || result.AccountBalanceAdjustments > 0 || result.RenamedBillAdjustments > 0)
+            {
+                ViewModel.LoadReports(refreshRecurring: false);
+                ViewModel.LoadInsights();
+            }
+
             if (showSuccessMessage)
             {
                 MessageBox.Show($"Imported {result.ImportedTransactions} Up transactions, applied {result.AppliedDebtPayments} debt payments, updated {result.AccountBalanceAdjustments} account balances, renamed {result.RenamedBillAdjustments} bill adjustments, and found {result.AmbiguousBillMatches} ambiguous bill match{(result.AmbiguousBillMatches == 1 ? "" : "es")}.");
@@ -964,6 +974,25 @@ public partial class MainWindow : Window
         }
     }
 
+    private void UnmarkBillPayment_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not BillPaymentHistoryRow history)
+        {
+            return;
+        }
+
+        if (MessageBox.Show($"Mark '{history.BillName}' due {history.DueDate:dd/MM/yyyy} as unpaid again?",
+                "Mark unpaid", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!ViewModel.MarkBillOccurrenceUnpaid(history.BillId, history.DueDate))
+        {
+            MessageBox.Show("Could not find this bill payment to undo.");
+        }
+    }
+
     private void ExportBudget_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SaveFileDialog
@@ -1173,6 +1202,14 @@ public partial class MainWindow : Window
     private void NavTools_Click(object sender, RoutedEventArgs e) => ViewModel.SelectedNavSection = "Tools";
     private void NavGoals_Click(object sender, RoutedEventArgs e) => ViewModel.SelectedNavSection = "Goals";
     private void NavDaily_Click(object sender, RoutedEventArgs e) => ViewModel.SelectedNavSection = "Daily";
+
+    private void GoToNavTarget_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string target } && !string.IsNullOrWhiteSpace(target))
+        {
+            ViewModel.SelectedNavSection = target;
+        }
+    }
 
     private void IgnoreRecurringPayment_Click(object sender, RoutedEventArgs e)
     {

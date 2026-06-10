@@ -54,6 +54,7 @@ else
             <div class="stat-value @(State.SafeToSpendAmount>0?"green":"red")">
                 @State.SafeToSpendAmount.ToString("C")
             </div>
+            <div class="stat-sub">After bills, savings and essentials</div>
         </div>
         <div class="stat-tile">
             <div class="stat-label">This Week</div>
@@ -75,6 +76,26 @@ else
         </div>
     </div>
 
+    <div class="section-header" style="margin-top:8px">
+        <span class="section-title">Watchlist</span>
+        <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("/budget")' style="padding:4px 10px;font-size:12px">Open Budget</button>
+    </div>
+    <div style="padding:0 16px">
+        <div class="card" style="padding:14px">
+            <div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Cash Runway</div>
+                <div style="font-size:15px;font-weight:700;margin-top:4px">@CashRunwaySummary</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:5px">How long your Safe to Spend balance lasts at your recent daily spend rate.</div>
+            </div>
+            <div style="height:1px;background:var(--border);margin:12px 0"></div>
+            <div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Upcoming Squeeze</div>
+                <div style="font-size:15px;font-weight:700;margin-top:4px;color:@(UpcomingSqueezeBalance < 0 ? "var(--red)" : "var(--text)")">@UpcomingSqueezeSummary</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:5px">The lowest forecast balance before payday and the bill causing it.</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Balance Forecast -->
     <div class="section-header" style="margin-top:8px">
         <span class="section-title">Balance Forecast</span>
@@ -82,6 +103,7 @@ else
     </div>
     <div style="padding:0 16px">
         <div class="card" style="padding:12px">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Shows today's balance, then what remains after unpaid bills before payday, then estimated pay if available.</div>
             <div style="display:flex;align-items:stretch;gap:2px">
                 <div style="flex:1;text-align:center;padding:4px 0">
                     <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Now</div>
@@ -132,6 +154,9 @@ else
                     +@(State.BillsDueBeforePayday.Count - 5) more
                 </div>
             }
+            <div style="padding:10px 16px;border-top:1px solid var(--border)">
+                <button class="btn btn-sm btn-secondary btn-full" @onclick='() => Nav.NavigateTo("/bills")'>Open Bills</button>
+            </div>
         </div>
     }
 
@@ -172,7 +197,10 @@ else
     <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
         @if (State.RecentTransactions.Count == 0)
         {
-            <div class="empty-state" style="padding:24px">No transactions yet. Sync from your PC to load data.</div>
+            <div class="empty-state" style="padding:24px">
+                <span>No transactions yet. Sync from your PC to load data.</span>
+                <button class="btn btn-sm btn-primary" @onclick='() => Nav.NavigateTo("/settings")'>Open Sync Settings</button>
+            </div>
         }
         else
         {
@@ -249,6 +277,15 @@ else
     private int DaysUntilPayday() => Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0);
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
+    private decimal AvgDailySpend => State.GetAvgDailySpending();
+    private string CashRunwaySummary => AvgDailySpend <= 0
+        ? "No daily spend trend yet."
+        : $"{Math.Floor(State.SafeToSpendAmount / AvgDailySpend):0} days at {AvgDailySpend:C}/day.";
+    private (decimal Balance, string Description, DateTime Date) UpcomingSqueeze => GetUpcomingSqueeze();
+    private decimal UpcomingSqueezeBalance => UpcomingSqueeze.Balance;
+    private string UpcomingSqueezeSummary => State.BillsDueBeforePayday.Count == 0
+        ? "No unpaid bills before payday."
+        : $"{UpcomingSqueeze.Date:dd MMM}: {UpcomingSqueeze.Balance:C} after {UpcomingSqueeze.Description}.";
 
     private record UpcomingItem(DateTime Date, string Name, string Sub, decimal Amount, bool IsIncome, bool IsToday);
 
@@ -276,10 +313,32 @@ else
         }
     }
 
-    private async Task OnTxnSaved()
+    private Task OnTxnSaved()
     {
         showAddTxn = false;
         StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private (decimal Balance, string Description, DateTime Date) GetUpcomingSqueeze()
+    {
+        var balance = State.TotalBalance;
+        var lowest = balance;
+        var description = "today";
+        var date = DateTime.Today;
+
+        foreach (var bill in State.BillsDueBeforePayday.OrderBy(b => b.EffectiveDueDate))
+        {
+            balance -= bill.AmountDollars;
+            if (balance < lowest)
+            {
+                lowest = balance;
+                description = bill.Name;
+                date = bill.EffectiveDueDate;
+            }
+        }
+
+        return (lowest, description, date);
     }
 
     private static string GetCategoryEmoji(string cat) => cat switch

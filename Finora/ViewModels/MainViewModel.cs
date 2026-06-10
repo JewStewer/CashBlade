@@ -1,5 +1,6 @@
 using Finora.Data;
 using Finora.Models;
+using Finora.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
@@ -23,6 +24,7 @@ public class MainViewModel : ViewModelBase
     private const string AffordabilityWeeksSettingKey = "AffordabilityWeeks";
     private const string AffordabilitySafetyBufferSettingKey = "AffordabilitySafetyBuffer";
     private const string AffordabilityAccountNameSettingKey = "AffordabilityAccountName";
+    private const string EmergencyFundAccountNameSettingKey = "EmergencyFundAccountName";
     private const string ShowAllTransactionsSettingKey = "ShowAllTransactions";
     private const string IgnoredSubscriptionsSettingKey = "IgnoredSubscriptions";
     private const string SavingsBudgetRecommendationDeclinedSettingKey = "SavingsBudgetRecommendationDeclined";
@@ -448,6 +450,21 @@ public class MainViewModel : ViewModelBase
         "Debt plan idle" => "#FBBF24",
         _ => "#F87171"
     };
+    public string? CommandCenterNavTarget => CommandCenterStatus switch
+    {
+        "Funding attention" => "Bills",
+        "Plan over income" => "Budget",
+        "Forecast shortfall" => "Planning",
+        "Debt plan idle" => "Debts",
+        _ => null
+    };
+    public bool HasCommandCenterAction => !string.IsNullOrEmpty(CommandCenterNavTarget);
+    public string CommandCenterNavLabel => CommandCenterNavTarget switch
+    {
+        "Planning" => "Go to Insights",
+        null or "" => string.Empty,
+        _ => $"Go to {CommandCenterNavTarget}"
+    };
     public string CommandCenterPrimaryMove
     {
         get
@@ -504,6 +521,10 @@ public class MainViewModel : ViewModelBase
                 : $"{low.Date:dd MMM}: {low.ProjectedBalance:C} after {low.Description}.";
         }
     }
+    public string CashRunwayExplanation =>
+        "Days your Safe to Spend balance would last at your recent average daily spending. More days means more breathing room before payday.";
+    public string UpcomingSqueezeExplanation =>
+        "The lowest point your projected balance reaches in the cash flow forecast, and the bill or expense that causes it.";
     public decimal SubscriptionWeeklyTotal => RoundDollars(RecurringPayments.Sum(r => r.WeeklyAmount));
     public int SubscriptionsNotInBillsCount => RecurringPayments.Count(r => !r.IsAlreadyBill);
     public string SubscriptionCommandSummary => RecurringPayments.Count == 0
@@ -741,8 +762,11 @@ public class MainViewModel : ViewModelBase
     public decimal PaydayTransferTotal => BillFundingPlanRows.Sum(r => r.PaydayTransfer);
     public decimal BillsFundingShortfall => BillFundingPlanRows.Sum(r => r.NeededBeforePayday);
     // Subtracts the pre-payday funding shortfall so "safe to spend" doesn't count money
-    // that must be moved to bill accounts before the next pay arrives.
-    public decimal SafeToSpendAmount => Math.Max(WeeklyIncome - BudgetPlannerWeeklyTransfers - BudgetEssentials - BillsFundingShortfall, 0);
+    // that must be moved to bill accounts before the next pay arrives. Also subtracts any
+    // savings transfers already made this week beyond what the budget already plans for —
+    // ad-hoc money moved to savings is no longer available to spend, even if unbudgeted.
+    public decimal SafeToSpendAmount => Math.Max(WeeklyIncome - BudgetPlannerWeeklyTransfers - BudgetEssentials - BillsFundingShortfall
+        - Math.Max(SavingsTransfersThisWeek - BudgetPlannerWeeklySavers, 0), 0);
     public bool HasBillsFundingShortfall => BillsFundingShortfall > 0;
 
     // Pre-payday cashflow projection
@@ -870,11 +894,29 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    private string _emergencyFundAccountName = string.Empty;
+    public string EmergencyFundAccountName
+    {
+        get => _emergencyFundAccountName;
+        set
+        {
+            if (SetProperty(ref _emergencyFundAccountName, value ?? string.Empty))
+            {
+                SaveEmergencyFundAccountSetting();
+                OnPropertyChanged(nameof(EmergencyFundAccount));
+                LoadTransactions(refreshInsights: false, refreshRecurring: false, refreshDependentViews: false);
+            }
+        }
+    }
+
     public decimal AffordabilityWeeklyRequired => RoundDollars(AffordabilityAmount / Math.Max(AffordabilityWeeks, 1));
     public bool HasAffordabilityAccount => AffordabilityAccount is not null;
     public AccountRow? AffordabilityAccount => string.IsNullOrWhiteSpace(AffordabilityAccountName)
         ? null
         : _allAccountRows.FirstOrDefault(a => string.Equals(a.Name, AffordabilityAccountName, StringComparison.OrdinalIgnoreCase));
+    public AccountRow? EmergencyFundAccount => string.IsNullOrWhiteSpace(EmergencyFundAccountName)
+        ? null
+        : _allAccountRows.FirstOrDefault(a => string.Equals(a.Name, EmergencyFundAccountName, StringComparison.OrdinalIgnoreCase));
     public decimal AffordabilityAccountBillsDue => GetAffordabilityAccountBillsDue();
     public decimal AffordabilityAccountBudgetedWeeklyTransfer => GetAffordabilityAccountBudgetedWeeklyTransfer();
     public decimal AffordabilityAccountProjectedTopUps => RoundDollars(AffordabilityAccountBudgetedWeeklyTransfer * Math.Max(AffordabilityWeeks, 1));
@@ -1364,6 +1406,27 @@ public class MainViewModel : ViewModelBase
     private decimal _savingsRate;
     public decimal SavingsRate { get => _savingsRate; set => SetProperty(ref _savingsRate, value); }
 
+    private decimal _savingsAmountThisPeriod;
+    public decimal SavingsAmountThisPeriod { get => _savingsAmountThisPeriod; set => SetProperty(ref _savingsAmountThisPeriod, value); }
+
+    private decimal _savingsTransfersThisWeek;
+    /// <summary>
+    /// Money already moved into Savings-type accounts during the current pay week,
+    /// regardless of the SummaryPeriod filter. Used by SafeToSpendAmount so ad-hoc
+    /// savings transfers reduce what's left to spend even when not budgeted.
+    /// </summary>
+    public decimal SavingsTransfersThisWeek
+    {
+        get => _savingsTransfersThisWeek;
+        set
+        {
+            if (SetProperty(ref _savingsTransfersThisWeek, value))
+            {
+                OnPropertyChanged(nameof(SafeToSpendAmount));
+            }
+        }
+    }
+
     private string _largestSpendingCategory = "None";
     public string LargestSpendingCategory { get => _largestSpendingCategory; set => SetProperty(ref _largestSpendingCategory, value); }
 
@@ -1687,6 +1750,10 @@ public class MainViewModel : ViewModelBase
         if (!string.IsNullOrWhiteSpace(affordabilityAccountNameValue))
             _affordabilityAccountName = affordabilityAccountNameValue;
 
+        var emergencyFundAccountNameValue = db.AppSettings.Where(s => s.Key == EmergencyFundAccountNameSettingKey).Select(s => s.Value).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(emergencyFundAccountNameValue))
+            _emergencyFundAccountName = emergencyFundAccountNameValue;
+
         var showAllTransactionsValue = db.AppSettings.Where(s => s.Key == ShowAllTransactionsSettingKey).Select(s => s.Value).FirstOrDefault();
         _showAllTransactions = showAllTransactionsValue == "true";
 
@@ -1713,6 +1780,7 @@ public class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(AffordabilityWeeks));
         OnPropertyChanged(nameof(AffordabilitySafetyBuffer));
         OnPropertyChanged(nameof(AffordabilityAccountName));
+        OnPropertyChanged(nameof(EmergencyFundAccountName));
         OnPropertyChanged(nameof(ShowAllTransactions));
         OnPropertyChanged(nameof(ShowSavingsRecommendation));
     }
@@ -1724,6 +1792,13 @@ public class MainViewModel : ViewModelBase
         UpsertSetting(db, AffordabilityWeeksSettingKey, _affordabilityWeeks.ToString());
         UpsertSetting(db, AffordabilitySafetyBufferSettingKey, _affordabilitySafetyBuffer.ToString());
         UpsertSetting(db, AffordabilityAccountNameSettingKey, _affordabilityAccountName);
+        db.SaveChanges();
+    }
+
+    private void SaveEmergencyFundAccountSetting()
+    {
+        using var db = new FinoraDbContext();
+        UpsertSetting(db, EmergencyFundAccountNameSettingKey, _emergencyFundAccountName);
         db.SaveChanges();
     }
 
@@ -1873,10 +1948,29 @@ public class MainViewModel : ViewModelBase
         // Use budgeted savings / weekly income when a budget is configured —
         // the transaction-based formula (income − spending) / income inflates
         // the rate because transfers to bill savers aren't counted as spending.
+        // Otherwise, only count money that actually moved into Savings-type accounts —
+        // transfers into Bills-type sinking funds (Wifi, Subscriptions, etc.) are not "savings".
+        var transfersToSavings = periodTransactions
+            .Where(t => t.AmountDollars > 0
+                && t.Account?.Type == AccountType.Savings
+                && TransactionClassification.IsInternalMovement(t))
+            .Sum(t => t.AmountDollars);
         SavingsRate = WeeklyIncome > 0 && BudgetSavings > 0
             ? Math.Round(Math.Min(BudgetSavings / WeeklyIncome, 1m), 4)
             : PeriodIncome <= 0 ? 0
-            : Math.Round(Math.Max(PeriodIncome - PeriodSpending, 0) / PeriodIncome, 4);
+            : Math.Round(Math.Min(transfersToSavings / PeriodIncome, 1m), 4);
+        SavingsAmountThisPeriod = transfersToSavings;
+
+        // Independent of SummaryPeriod — always the current pay week, since
+        // SafeToSpendAmount is a weekly figure.
+        var currentWeekStart = GetCurrentPayWeekStart();
+        var currentWeekEnd = currentWeekStart.AddDays(6);
+        SavingsTransfersThisWeek = allTransactions
+            .Where(t => t.Date.Date >= currentWeekStart && t.Date.Date <= currentWeekEnd
+                && t.AmountDollars > 0
+                && t.Account?.Type == AccountType.Savings
+                && TransactionClassification.IsInternalMovement(t))
+            .Sum(t => t.AmountDollars);
         OnPropertyChanged(nameof(CashRunwaySummary));
         var largestCategory = periodTransactions
             .Where(IsSpendingTransaction)
@@ -2421,6 +2515,64 @@ public class MainViewModel : ViewModelBase
         return true;
     }
 
+    /// <summary>
+    /// Reverts a bill occurrence that was previously marked Paid or Skipped by mistake,
+    /// restoring it to "due" — undoing any transaction relabeling and rolling the bill's
+    /// due date back if it had auto-advanced past this occurrence.
+    /// </summary>
+    public bool MarkBillOccurrenceUnpaid(int billId, DateTime dueDate)
+    {
+        using var db = new FinoraDbContext();
+        var status = db.BillOccurrenceStatuses.FirstOrDefault(s => s.BillId == billId && s.DueDate == dueDate.Date);
+        if (status is null)
+        {
+            return false;
+        }
+
+        if (status.MatchedTransactionId is { } transactionId && status.OriginalTransactionDescription is not null)
+        {
+            var transaction = db.Transactions.FirstOrDefault(t => t.Id == transactionId);
+            if (transaction is not null)
+            {
+                transaction.Description = status.OriginalTransactionDescription;
+                if (status.OriginalTransactionCategoryId is not null)
+                {
+                    transaction.CategoryId = status.OriginalTransactionCategoryId.Value;
+                }
+
+                transaction.TransferId = Guid.TryParse(status.OriginalTransactionTransferId, out var transferId)
+                    ? transferId
+                    : null;
+            }
+        }
+
+        var bill = db.Bills.FirstOrDefault(b => b.Id == billId);
+        if (bill is not null)
+        {
+            DebtPaymentMatcher.ApplyBillDebtPaymentStatus(db, bill, status.DueDate, false);
+
+            // If marking this paid auto-advanced the bill's due date past this occurrence,
+            // move it back so the occurrence becomes the current/upcoming one again.
+            if (bill.DueDate.Date > status.DueDate.Date)
+            {
+                bill.DueDate = status.DueDate.Date;
+            }
+        }
+
+        status.IsPaid = false;
+        status.IsSkipped = false;
+        status.PaidOn = null;
+        status.MatchedTransactionId = null;
+        status.MatchNote = string.Empty;
+        status.OriginalTransactionDescription = null;
+        status.OriginalTransactionCategoryId = null;
+        status.OriginalTransactionTransferId = null;
+
+        db.SaveChanges();
+        RefreshAfterBillPaymentChange();
+        return true;
+    }
+
     private static void RelabelBillAdjustment(FinoraDbContext db, Transaction transaction, Bill bill, BillOccurrenceStatus status)
     {
         if (!transaction.Description.Equals("Up balance adjustment", StringComparison.OrdinalIgnoreCase))
@@ -2629,6 +2781,40 @@ public class MainViewModel : ViewModelBase
         return start;
     }
 
+    /// <summary>
+    /// Updates an ObservableCollection in place to match <paramref name="desired"/> using
+    /// targeted Insert/Remove/Move operations instead of Clear+rebuild. Clearing would emit
+    /// a Reset event that momentarily empties a bound ComboBox's Items, snapping its
+    /// two-way bound SelectedItem to null and overwriting the underlying selection.
+    /// </summary>
+    private static void SyncObservableCollection(ObservableCollection<string> target, IReadOnlyList<string> desired)
+    {
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(target[i]))
+            {
+                target.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            if (i < target.Count && target[i] == desired[i])
+            {
+                continue;
+            }
+
+            if (i < target.Count && target.Contains(desired[i]))
+            {
+                target.Move(target.IndexOf(desired[i]), i);
+            }
+            else
+            {
+                target.Insert(i, desired[i]);
+            }
+        }
+    }
+
     public void LoadAccounts()
     {
         Accounts.Clear();
@@ -2656,26 +2842,29 @@ public class MainViewModel : ViewModelBase
                 .Where(o => o.Bill.AccountId == account.Id)
                 .Sum(o => o.Bill.AmountDollars);
 
+            var accountBills = bills.Where(b => b.AccountId == account.Id).ToList();
+
             // If no bills are due before payday, look at the next single occurrence of
             // each bill so the card shows whether the account can cover its upcoming bills
             // (e.g. monthly bills due after payday still need to be funded now).
             var accountBillsDue = billsBeforePay;
             IReadOnlyList<(DateTime Date, Bill Bill)>? upcomingOccs = null;
-            if (billsBeforePay == 0)
+            if (billsBeforePay == 0 && accountBills.Count > 0)
             {
-                var accountBills = bills.Where(b => b.AccountId == account.Id).ToList();
-                if (accountBills.Count > 0)
-                {
-                    upcomingOccs = GetVisibleBillOccurrences(db, accountBills, DateTime.Today, DateTime.Today.AddDays(60))
-                        .Where(o => !IsBillOccurrencePaid(db, o.Bill.Id, o.Date))
-                        .GroupBy(o => o.Bill.Id)
-                        .SelectMany(g => g.OrderBy(o => o.Date).Take(1))
-                        .ToList();
-                    accountBillsDue = upcomingOccs.Sum(o => o.Bill.AmountDollars);
-                }
+                upcomingOccs = GetVisibleBillOccurrences(db, accountBills, DateTime.Today, DateTime.Today.AddDays(60))
+                    .Where(o => !IsBillOccurrencePaid(db, o.Bill.Id, o.Date))
+                    .GroupBy(o => o.Bill.Id)
+                    .SelectMany(g => g.OrderBy(o => o.Date).Take(1))
+                    .ToList();
+                accountBillsDue = upcomingOccs.Sum(o => o.Bill.AmountDollars);
             }
 
             var neededNow = Math.Max(accountBillsDue - balance, 0);
+
+            // How much should be saved by now toward this account's bill(s), based on each
+            // bill's weekly pace through its current cycle — used to decide if the account
+            // is genuinely behind rather than just short of the full upcoming bill amount.
+            var expectedContribution = accountBills.Sum(b => GetExpectedBillContribution(b, DateTime.Today));
 
             // Find the next upcoming unpaid bill for this account (on or after today).
             var nextBill = unpaidBillOccurrences
@@ -2697,6 +2886,7 @@ public class MainViewModel : ViewModelBase
                 ColorHex = account.ColorHex,
                 NeededNow = neededNow,
                 BillsDue = accountBillsDue,
+                ExpectedContribution = expectedContribution,
                 Target = account.TargetDollars,
                 TargetDate = account.TargetDate,
                 TargetStartDate = account.TargetStartDate,
@@ -2710,14 +2900,11 @@ public class MainViewModel : ViewModelBase
 
         ApplyAccountFilters();
 
-        BudgetTransferAccountOptions.Clear();
-        foreach (var accountName in accounts
+        SyncObservableCollection(BudgetTransferAccountOptions, accounts
             .OrderBy(a => a.Type)
             .ThenBy(a => a.Name)
-            .Select(a => a.Name))
-        {
-            BudgetTransferAccountOptions.Add(accountName);
-        }
+            .Select(a => a.Name)
+            .ToList());
 
         TotalBalance = _allAccountRows.Where(a => a.Type != AccountType.Credit.ToString()).Sum(a => a.Balance);
         BillsBalance = _allAccountRows.Where(a => a.Type == AccountType.Bills.ToString()).Sum(a => a.Balance);
@@ -3045,7 +3232,9 @@ public class MainViewModel : ViewModelBase
             .Sum(t => Math.Abs(t.AmountDollars));
         var avgWeeklySpending = monthlySpending / 13m;
         var hasSavingsAccount = _allAccountRows.Any(a => a.Type == AccountType.Savings.ToString());
-        var emergencyBuffer = hasSavingsAccount ? SavingsTotal : Math.Max(TotalBalance, 0);
+        var emergencyBuffer = EmergencyFundAccount is not null
+            ? Math.Max(EmergencyFundAccount.Balance, 0)
+            : hasSavingsAccount ? SavingsTotal : Math.Max(TotalBalance, 0);
         var emergencyWeeks = avgWeeklySpending <= 0 ? 0 : emergencyBuffer / avgWeeklySpending;
         var emergencyScore = (int)Math.Min(emergencyWeeks / 12m * 25, 25);
 
@@ -3083,13 +3272,16 @@ public class MainViewModel : ViewModelBase
             MaxScore = 25,
             Detail = emergencyWeeks < 0.1m
                 ? "No savings buffer detected"
-                : hasSavingsAccount
-                    ? $"{emergencyWeeksRounded} week{(emergencyWeeksRounded == 1 ? "" : "s")} of expenses covered"
-                    : $"{emergencyWeeksRounded} week{(emergencyWeeksRounded == 1 ? "" : "s")} of cash buffer covered",
+                : EmergencyFundAccount is not null
+                    ? $"{emergencyWeeksRounded} week{(emergencyWeeksRounded == 1 ? "" : "s")} of expenses covered by {EmergencyFundAccount.Name}"
+                    : hasSavingsAccount
+                        ? $"{emergencyWeeksRounded} week{(emergencyWeeksRounded == 1 ? "" : "s")} of expenses covered"
+                        : $"{emergencyWeeksRounded} week{(emergencyWeeksRounded == 1 ? "" : "s")} of cash buffer covered",
             Tip = emergencyScore >= 25
                 ? ""
                 : $"Build a buffer to cover 12 weeks of expenses - need {Math.Max(12 - emergencyWeeks, 0) * avgWeeklySpending:C} more",
-            ColorHex = ScoreColor(emergencyScore, 25)
+            ColorHex = ScoreColor(emergencyScore, 25),
+            NavTarget = "Goals"
         });
 
         // Debt
@@ -3107,7 +3299,8 @@ public class MainViewModel : ViewModelBase
                 : DebtTotal <= 0
                     ? ""
                     : "Pay down debt — aim for debt-to-annual-income below 10%",
-            ColorHex = ScoreColor(debtScore, 25)
+            ColorHex = ScoreColor(debtScore, 25),
+            NavTarget = "Debts"
         });
 
         // Budget adherence
@@ -3124,11 +3317,13 @@ public class MainViewModel : ViewModelBase
                 : totalRows == 0
                     ? "Set up a weekly budget to start tracking adherence"
                     : $"{totalRows - adheringRows} categor{(totalRows - adheringRows == 1 ? "y" : "ies")} over budget — review spending to get all on track",
-            ColorHex = ScoreColor(adherenceScore, 25)
+            ColorHex = ScoreColor(adherenceScore, 25),
+            NavTarget = "Budget"
         });
 
         // Savings rate
         var savingsRatePercent = Math.Round(SavingsRate * 100, 1);
+        var savingsPeriodLabel = SummaryPeriod == "Weekly" ? "this week" : SummaryPeriod == "All" ? "recently" : "this month";
         FinancialHealthComponents.Add(new FinancialHealthComponent
         {
             Name = "Savings rate",
@@ -3136,20 +3331,30 @@ public class MainViewModel : ViewModelBase
             MaxScore = 25,
             Detail = SavingsRate <= 0
                 ? "Not saving from income currently"
-                : $"{savingsRatePercent}% of income going to savings",
+                : $"{savingsRatePercent}% of income going to savings ({SavingsAmountThisPeriod:C} {savingsPeriodLabel})",
             Tip = savingsRateScore >= 25
                 ? ""
                 : SavingsRate <= 0
                     ? "Start saving — aim for 25% of income into savings/goals"
                     : $"Increase savings rate to 25%+ — currently {savingsRatePercent}%, need {25 - savingsRatePercent:0.#}% more",
-            ColorHex = ScoreColor(savingsRateScore, 25)
+            ColorHex = ScoreColor(savingsRateScore, 25),
+            NavTarget = "Goals"
         });
     }
 
     private void ComputeBudgetStreak(IReadOnlyList<Transaction> allTransactions)
     {
         var budget = GetWeeklyBudget();
-        if (budget is null || budget.UnplannedDollars <= 0)
+
+        // Prefer the dedicated Essentials+Unplanned allocation, but fall back to
+        // whatever's left of income after bills/savings — covers budgets that only
+        // have Income and Bills set, with no separate day-to-day spending split.
+        var weekBudget = budget is null ? 0
+            : budget.EssentialsDollars + budget.UnplannedDollars > 0
+                ? budget.EssentialsDollars + budget.UnplannedDollars
+                : Math.Max(budget.IncomeDollars - budget.BillsDollars - budget.SavingsDollars, 0);
+
+        if (weekBudget <= 0)
         {
             BudgetStreakWeeks = 0;
             BudgetStreakDisplay = "Set a budget to track your streak.";
@@ -3167,7 +3372,6 @@ public class MainViewModel : ViewModelBase
                 .Where(t => t.Date.Date >= weekStart && t.Date.Date <= weekEnd && IsSpendingTransaction(t))
                 .Sum(t => Math.Abs(t.AmountDollars));
 
-            var weekBudget = budget.UnplannedDollars + budget.EssentialsDollars;
             if (weekSpending <= weekBudget)
             {
                 streak++;
@@ -3508,6 +3712,7 @@ public class MainViewModel : ViewModelBase
                 : "";
             BillPaymentHistory.Add(new BillPaymentHistoryRow
             {
+                BillId = status.BillId,
                 BillName = status.Bill?.Name ?? "Bill",
                 DueDate = status.DueDate,
                 Status = status.IsSkipped ? "Skipped" : "Paid",
@@ -3709,6 +3914,44 @@ public class MainViewModel : ViewModelBase
             BillFrequency.Yearly      => dueDate.AddYears(1),
             _                         => dueDate.AddMonths(1)
         };
+    }
+
+    private static DateTime GetPreviousBillDueDate(DateTime dueDate, BillFrequency frequency)
+    {
+        return frequency switch
+        {
+            BillFrequency.Weekly      => dueDate.AddDays(-7),
+            BillFrequency.Fortnightly => dueDate.AddDays(-14),
+            BillFrequency.Monthly     => dueDate.AddMonths(-1),
+            BillFrequency.Quarterly   => dueDate.AddMonths(-3),
+            BillFrequency.Yearly      => dueDate.AddYears(-1),
+            _                         => dueDate.AddMonths(-1)
+        };
+    }
+
+    /// <summary>
+    /// How much of this bill's amount should have been saved by now, assuming an even
+    /// weekly contribution across its current billing cycle (from the previous due date
+    /// to the next/current due date). Used to judge whether a sinking-fund account is
+    /// actually behind pace, rather than just short of the full bill amount.
+    /// </summary>
+    private static decimal GetExpectedBillContribution(Bill bill, DateTime today)
+    {
+        var nextDue = bill.DueDate.Date;
+        while (nextDue < today.Date)
+        {
+            nextDue = GetNextBillDueDate(nextDue, bill.Frequency);
+        }
+
+        var cycleStart = GetPreviousBillDueDate(nextDue, bill.Frequency);
+        var totalDays = (nextDue - cycleStart).TotalDays;
+        if (totalDays <= 0)
+        {
+            return bill.AmountDollars;
+        }
+
+        var elapsedDays = Math.Clamp((today.Date - cycleStart).TotalDays, 0, totalDays);
+        return Math.Round(bill.AmountDollars * (decimal)(elapsedDays / totalDays), 2);
     }
 
     private static DateTime GetClosestBillDueDate(Bill bill, DateTime date)
@@ -4753,7 +4996,8 @@ public class MainViewModel : ViewModelBase
             BudgetInsightRows.Add(new BudgetInsightRow
             {
                 Title = "Bills funding",
-                Message = billFundingMessage
+                Message = billFundingMessage,
+                NavTarget = "Bills"
             });
             BillSaverInsights.Add(new BudgetInsightRow { Title = "Weekly bill transfers", Message = billFundingMessage });
         }
@@ -4765,7 +5009,8 @@ public class MainViewModel : ViewModelBase
             BudgetInsightRows.Add(new BudgetInsightRow
             {
                 Title = "Subscriptions",
-                Message = $"{RecurringPayments.Count} recurring payment{(RecurringPayments.Count == 1 ? "" : "s")} found, worth about {subscriptionTotal:C}/week."
+                Message = $"{RecurringPayments.Count} recurring payment{(RecurringPayments.Count == 1 ? "" : "s")} found, worth about {subscriptionTotal:C}/week.",
+                NavTarget = "Subscriptions"
             });
             SubscriptionInsights.Add(new BudgetInsightRow
             {
@@ -4786,7 +5031,8 @@ public class MainViewModel : ViewModelBase
             BudgetInsightRows.Add(new BudgetInsightRow
             {
                 Title = "Shortfall",
-                Message = $"Your weekly plan is {-BudgetPlannerIncomeGap:C} over income before any extra spending."
+                Message = $"Your weekly plan is {-BudgetPlannerIncomeGap:C} over income before any extra spending.",
+                NavTarget = "Budget"
             });
         }
         else
@@ -4794,7 +5040,8 @@ public class MainViewModel : ViewModelBase
             BudgetInsightRows.Add(new BudgetInsightRow
             {
                 Title = "Left to allocate",
-                Message = $"{BudgetPlannerIncomeGap:C} remains after planned transfers, essentials, and unplanned spending."
+                Message = $"{BudgetPlannerIncomeGap:C} remains after planned transfers, essentials, and unplanned spending.",
+                NavTarget = "Budget"
             });
         }
 
@@ -4874,6 +5121,14 @@ public class MainViewModel : ViewModelBase
         AddEmptyInsight(BudgetHealthInsights, "Budget health", "Make a budget to see whether the weekly plan fits your income.");
         AddEmptyInsight(GoalInsights, "Goals", "Add savings goals or saver targets to track progress.");
         AddEmptyInsight(CleanupInsights, "Account cleanup", "No cleanup prompts right now.");
+
+        SetInsightNavTargets(BillSaverInsights, "Bills");
+        SetInsightNavTargets(SubscriptionInsights, "Subscriptions");
+        SetInsightNavTargets(SpendingInsights, "Reports");
+        SetInsightNavTargets(BudgetHealthInsights, "Budget");
+        SetInsightNavTargets(GoalInsights, "Goals");
+        SetInsightNavTargets(CleanupInsights, "Transactions");
+
         LoadDashboardWidgets();
     }
 
@@ -4885,6 +5140,12 @@ public class MainViewModel : ViewModelBase
         LoadGoalMomentumRows();
         LoadAccountHealthRows();
         LoadDebtAcceleratorRows();
+
+        SetInsightNavTargets(SpendingLeakRows, "Reports");
+        SetInsightNavTargets(SubscriptionCleanupRows, "Subscriptions");
+        SetInsightNavTargets(GoalMomentumRows, "Goals");
+        SetInsightNavTargets(DebtAcceleratorRows, "Debts");
+
         OnPropertyChanged(nameof(CashRunwaySummary));
         OnPropertyChanged(nameof(UpcomingSqueezeSummary));
     }
@@ -4897,28 +5158,32 @@ public class MainViewModel : ViewModelBase
             Title = "Move bill money",
             Message = BillsFundingShortfall > 0
                 ? $"Move {BillsFundingShortfall:C} into bill savers before payday."
-                : "Bill savers look funded before payday."
+                : "Bill savers look funded before payday.",
+            NavTarget = "Bills"
         });
         PaydayChecklistRows.Add(new BudgetInsightRow
         {
             Title = "Plan payday transfer",
             Message = PaydayTransferTotal > 0
                 ? $"Set aside {PaydayTransferTotal:C} on payday across bill saver accounts."
-                : "No payday transfer is needed from the current bill plan."
+                : "No payday transfer is needed from the current bill plan.",
+            NavTarget = "Bills"
         });
         PaydayChecklistRows.Add(new BudgetInsightRow
         {
             Title = "Review recurring payments",
             Message = SubscriptionsNotInBillsCount > 0
                 ? $"{SubscriptionsNotInBillsCount} recurring payment{(SubscriptionsNotInBillsCount == 1 ? "" : "s")} can become bills."
-                : "Detected recurring payments already look covered."
+                : "Detected recurring payments already look covered.",
+            NavTarget = "Subscriptions"
         });
         PaydayChecklistRows.Add(new BudgetInsightRow
         {
             Title = "Debt extra",
             Message = DebtTotal > 0 && DebtStrategyMonthlyExtraPayment <= 0
                 ? "Add an extra debt payment to activate payoff acceleration."
-                : DebtTotal > 0 ? DebtStrategyExtraSummary : "No active debt payoff task."
+                : DebtTotal > 0 ? DebtStrategyExtraSummary : "No active debt payoff task.",
+            NavTarget = "Debts"
         });
     }
 
@@ -5238,6 +5503,15 @@ public class MainViewModel : ViewModelBase
         if (rows.Count == 0)
         {
             rows.Add(new BudgetInsightRow { Title = title, Message = message });
+        }
+    }
+
+    /// <summary>Stamps every row in a tip/insight list with the nav section its "Go to" button should open.</summary>
+    private static void SetInsightNavTargets(IEnumerable<BudgetInsightRow> rows, string? navTarget)
+    {
+        foreach (var row in rows)
+        {
+            row.NavTarget = navTarget;
         }
     }
 

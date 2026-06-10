@@ -17,4 +17,6 @@ public class Category
     public CategoryType Type { get; set; }
 
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
+
+    public override string ToString() => Name;
 }

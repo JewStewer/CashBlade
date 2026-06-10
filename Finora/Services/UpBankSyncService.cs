@@ -13,6 +13,8 @@ public class UpBankSyncService
 {
     public const string AccessTokenSettingKey = "UpBankAccessToken";
     private const string LastSyncSettingKey = "UpBankLastSyncUtc";
+    private const string LastCategoryBackfillSettingKey = "UpBankLastCategoryBackfillUtc";
+    private static readonly TimeSpan CategoryBackfillInterval = TimeSpan.FromHours(24);
     private const string ApiBaseUrl = "https://api.up.com.au/api/v1";
     private const string UpAccountName = "Spending";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -56,10 +58,20 @@ public class UpBankSyncService
 
         using var db = new FinoraDbContext();
         var sinceUtc = GetLastSyncUtc(db) ?? DateTimeOffset.UtcNow.AddDays(-90);
-        var categoryBackfillSinceUtc = DateTimeOffset.UtcNow.AddDays(-90);
-        if (sinceUtc > categoryBackfillSinceUtc)
+
+        // Re-scanning the last 90 days on every sync (so categories the user fixes in
+        // the Up app later get backfilled here too) is what makes routine syncs slow.
+        // Only widen the window for that backfill once a day; otherwise just fetch
+        // what's new since the last sync.
+        var lastBackfillUtc = GetLastCategoryBackfillUtc(db);
+        var dueForCategoryBackfill = lastBackfillUtc is null || DateTimeOffset.UtcNow - lastBackfillUtc.Value >= CategoryBackfillInterval;
+        if (dueForCategoryBackfill)
         {
-            sinceUtc = categoryBackfillSinceUtc;
+            var categoryBackfillSinceUtc = DateTimeOffset.UtcNow.AddDays(-90);
+            if (sinceUtc > categoryBackfillSinceUtc)
+            {
+                sinceUtc = categoryBackfillSinceUtc;
+            }
         }
         var imported = 0;
         var debtPayments = 0;
@@ -67,6 +79,13 @@ public class UpBankSyncService
         var renamedBillAdjustments = 0;
         var ambiguousBillMatches = 0;
         var newestSeenUtc = sinceUtc;
+
+        // Preload Up-linked transactions once instead of one query per transaction below —
+        // the dominant per-row cost during the wider backfill pass.
+        var existingByUpId = db.Transactions
+            .Include(t => t.Category)
+            .Where(t => t.UpTransactionId != null)
+            .ToDictionary(t => t.UpTransactionId!, t => t);
 
         using var http = new HttpClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -100,10 +119,7 @@ public class UpBankSyncService
                     continue;
                 }
 
-                var existingTransaction = db.Transactions
-                    .Include(t => t.Category)
-                    .FirstOrDefault(t => t.UpTransactionId == upTransaction.Id);
-                if (existingTransaction is not null)
+                if (existingByUpId.TryGetValue(upTransaction.Id, out var existingTransaction))
                 {
                     ApplyUpCategoryToExistingTransaction(db, existingTransaction, upTransaction.Relationships.Category.Data?.Id, amountCents);
                     continue;
@@ -124,7 +140,7 @@ public class UpBankSyncService
                 // which converts back to a June-9 AEST date even though the user made it on June-8.
                 var purchaseDate = upTransaction.Attributes.CreatedAt.LocalDateTime.Date;
 
-                db.Transactions.Add(new Transaction
+                var newTransaction = new Transaction
                 {
                     Date = purchaseDate,
                     Description = description,
@@ -133,7 +149,9 @@ public class UpBankSyncService
                     Category = category,
                     TransferId = null,
                     UpTransactionId = upTransaction.Id
-                });
+                };
+                db.Transactions.Add(newTransaction);
+                existingByUpId[upTransaction.Id] = newTransaction;
 
                 imported++;
 
@@ -162,6 +180,10 @@ public class UpBankSyncService
         renamedBillAdjustments = balanceSync.RenamedBillAdjustments;
         ambiguousBillMatches = balanceSync.AmbiguousBillMatches;
         SetLastSyncUtc(db, newestSeenUtc);
+        if (dueForCategoryBackfill)
+        {
+            SetLastCategoryBackfillUtc(db, DateTimeOffset.UtcNow);
+        }
         await db.SaveChangesAsync(cancellationToken);
 
         return new UpBankSyncResult(imported, debtPayments, accountBalanceAdjustments, renamedBillAdjustments, ambiguousBillMatches);
@@ -393,6 +415,30 @@ public class UpBankSyncService
         }
 
         setting.Value = lastSyncUtc.ToUniversalTime().ToString("O");
+    }
+
+    private static DateTimeOffset? GetLastCategoryBackfillUtc(FinoraDbContext db)
+    {
+        var value = db.AppSettings
+            .Where(s => s.Key == LastCategoryBackfillSettingKey)
+            .Select(s => s.Value)
+            .FirstOrDefault();
+
+        return DateTimeOffset.TryParse(value, out var lastBackfill)
+            ? lastBackfill.ToUniversalTime()
+            : null;
+    }
+
+    private static void SetLastCategoryBackfillUtc(FinoraDbContext db, DateTimeOffset lastBackfillUtc)
+    {
+        var setting = db.AppSettings.FirstOrDefault(s => s.Key == LastCategoryBackfillSettingKey);
+        if (setting is null)
+        {
+            setting = new AppSetting { Key = LastCategoryBackfillSettingKey };
+            db.AppSettings.Add(setting);
+        }
+
+        setting.Value = lastBackfillUtc.ToUniversalTime().ToString("O");
     }
 
     private static int ParseAmountCents(string value)

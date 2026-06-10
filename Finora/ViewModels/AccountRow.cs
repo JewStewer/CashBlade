@@ -2,6 +2,8 @@ namespace Finora.ViewModels;
 
 public class AccountRow
 {
+    public override string ToString() => Name;
+
     public int Id { get; set; }
 
     public string Name { get; set; } = string.Empty;
@@ -16,21 +18,39 @@ public class AccountRow
 
     public decimal BillsDue { get; set; }
 
+    /// <summary>
+    /// How much should have been saved by now toward this account's bill(s), based on
+    /// each bill's weekly pace through its current cycle. Used to judge whether the
+    /// account is genuinely behind, rather than just short of the full upcoming bill amount.
+    /// </summary>
+    public decimal ExpectedContribution { get; set; }
+
     public decimal RemainingAfterBills => Balance - BillsDue;
 
-    public string RemainingAfterBillsColorHex => RemainingAfterBills >= 0 ? "#34D399" : "#F87171";
+    /// <summary>How far behind the weekly contribution pace this account is. Zero if on pace or ahead.</summary>
+    public decimal ShortfallAmount => Math.Max(ExpectedContribution - Balance, 0);
+
+    /// <summary>True only when the balance is behind the weekly contribution pace for its bill(s).</summary>
+    public bool IsBehindSchedule => ShortfallAmount >= 0.005m;
+
+    public string RemainingAfterBillsColorHex => BillsDue <= 0
+        ? "#34D399"
+        : IsBehindSchedule ? "#F87171" : "#34D399";
 
     public string RemainingAfterBillsSummary => BillsDue <= 0
         ? string.Empty
-        : RemainingAfterBills >= 0
-            ? $"After bills: {RemainingAfterBills:C}"
-            : $"Short {-RemainingAfterBills:C} after bills";
+        : IsBehindSchedule
+            ? $"Behind {ShortfallAmount:C} on saving for bills"
+            : RemainingAfterBills >= 0
+                ? $"After bills: {RemainingAfterBills:C}"
+                : "On track for upcoming bills";
 
     public string BillsDueDisplay => BillsDue <= 0 ? string.Empty : $"Bills {BillsDue:C} due";
 
     public string BillsCoverageDisplay => BillsDue <= 0 ? string.Empty
+        : IsBehindSchedule ? $"Short {ShortfallAmount:C}"
         : RemainingAfterBills >= 0 ? $"{RemainingAfterBills:C} left"
-        : $"Short {-RemainingAfterBills:C}";
+        : "On track";
 
     public decimal? Target { get; set; }
 

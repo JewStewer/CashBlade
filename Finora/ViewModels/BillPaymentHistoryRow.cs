@@ -2,6 +2,8 @@ namespace Finora.ViewModels;
 
 public class BillPaymentHistoryRow
 {
+    public int BillId { get; set; }
+
     public string BillName { get; set; } = string.Empty;
 
     public DateTime DueDate { get; set; }

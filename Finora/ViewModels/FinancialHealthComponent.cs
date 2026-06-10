@@ -19,4 +19,16 @@ public class FinancialHealthComponent
     public decimal Progress => MaxScore <= 0 ? 0 : Math.Clamp((decimal)Score / MaxScore, 0, 1);
 
     public bool HasTip => !string.IsNullOrEmpty(Tip);
+
+    /// <summary>Nav section to jump to in order to act on this component's tip, e.g. "Goals".</summary>
+    public string? NavTarget { get; set; }
+
+    public bool HasNavTarget => HasTip && !string.IsNullOrEmpty(NavTarget);
+
+    public string NavLabel => NavTarget switch
+    {
+        "Planning" => "Go to Insights",
+        null or "" => string.Empty,
+        _ => $"Go to {NavTarget}"
+    };
 }

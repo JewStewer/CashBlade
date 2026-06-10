@@ -820,6 +820,13 @@
                                            FontSize="13"
                                            Foreground="#6E7681"
                                            Margin="0,5,0,0"/>
+                                <Button Content="{Binding CommandCenterNavLabel}"
+                                        Style="{StaticResource SmallButton}"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,12,0,0"
+                                        Tag="{Binding CommandCenterNavTarget}"
+                                        Click="GoToNavTarget_Click"
+                                        Visibility="{Binding HasCommandCenterAction, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </StackPanel>
                             <!-- Vertical divider -->
                             <Rectangle Grid.Column="1" Width="1" Fill="#30363D" Margin="28,0"/>
@@ -961,11 +968,13 @@
                                 <StackPanel Margin="0,0,0,0">
                                     <TextBlock Text="CASH RUNWAY" FontSize="10" FontWeight="SemiBold" Foreground="#6E7681"/>
                                     <TextBlock Text="{Binding CashRunwaySummary}" TextWrapping="Wrap" FontSize="13" FontWeight="SemiBold" Foreground="#E6EDF3" Margin="0,6,0,0"/>
+                                    <TextBlock Text="{Binding CashRunwayExplanation}" TextWrapping="Wrap" FontSize="11" Foreground="#8B949E" Margin="0,6,0,0"/>
                                 </StackPanel>
                                 <Rectangle Height="1" Fill="#30363D" Margin="0,14"/>
                                 <StackPanel>
                                     <TextBlock Text="UPCOMING SQUEEZE" FontSize="10" FontWeight="SemiBold" Foreground="#6E7681"/>
                                     <TextBlock Text="{Binding UpcomingSqueezeSummary}" TextWrapping="Wrap" FontSize="13" FontWeight="SemiBold" Foreground="#E6EDF3" Margin="0,6,0,0"/>
+                                    <TextBlock Text="{Binding UpcomingSqueezeExplanation}" TextWrapping="Wrap" FontSize="11" Foreground="#8B949E" Margin="0,6,0,0"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -1391,6 +1400,7 @@
                                 <StackPanel>
                                     <TextBlock Text="Cash runway" FontSize="11" FontWeight="SemiBold" Foreground="#6E7681" Margin="0,0,0,10"/>
                                     <TextBlock Text="{Binding CashRunwaySummary}" TextWrapping="Wrap" Foreground="#8B949E"/>
+                                    <TextBlock Text="{Binding CashRunwayExplanation}" TextWrapping="Wrap" Foreground="#6E7681" FontSize="11" Margin="0,6,0,0"/>
                                     <TextBlock Text="{Binding PeriodSpending, StringFormat=Period spending {0:C}}" Foreground="#8B949E" Margin="0,8,0,0"/>
                                 </StackPanel>
                             </Border>
@@ -1398,6 +1408,7 @@
                                 <StackPanel>
                                     <TextBlock Text="Upcoming squeeze" FontSize="11" FontWeight="SemiBold" Foreground="#6E7681" Margin="0,0,0,10"/>
                                     <TextBlock Text="{Binding UpcomingSqueezeSummary}" TextWrapping="Wrap" Foreground="#8B949E"/>
+                                    <TextBlock Text="{Binding UpcomingSqueezeExplanation}" TextWrapping="Wrap" Foreground="#6E7681" FontSize="11" Margin="0,6,0,0"/>
                                     <TextBlock Text="{Binding ForecastEventSummary}" Foreground="#8B949E" Margin="0,8,0,0"/>
                                 </StackPanel>
                             </Border>
@@ -1414,6 +1425,13 @@
                                                     <StackPanel>
                                                         <TextBlock Text="{Binding Title}" FontWeight="Bold" Foreground="#BAE6FD"/>
                                                         <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="#8B949E" Margin="0,4,0,0"/>
+                                                        <Button Content="{Binding NavLabel}"
+                                                                Style="{StaticResource SmallButton}"
+                                                                HorizontalAlignment="Left"
+                                                                Margin="0,8,0,0"
+                                                                Tag="{Binding NavTarget}"
+                                                                Click="GoToNavTarget_Click"
+                                                                Visibility="{Binding HasNavTarget, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>
@@ -2456,6 +2474,23 @@
                                                            VerticalAlignment="Bottom"/>
                                             </Grid>
 
+                                            <!-- Emergency fund account selector -->
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="10"/>
+                                                    <ColumnDefinition Width="200"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="Emergency fund account"
+                                                           Foreground="#8B949E"
+                                                           FontSize="11"
+                                                           VerticalAlignment="Center"/>
+                                                <ComboBox Grid.Column="2"
+                                                          ItemsSource="{Binding BudgetTransferAccountOptions}"
+                                                          SelectedItem="{Binding EmergencyFundAccountName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          FontSize="11"/>
+                                            </Grid>
+
                                             <!-- Component rows -->
                                             <ItemsControl ItemsSource="{Binding FinancialHealthComponents}">
                                                 <ItemsControl.ItemTemplate>
@@ -2502,6 +2537,13 @@
                                                                             </Style>
                                                                         </TextBlock.Style>
                                                                     </TextBlock>
+                                                                    <Button Content="{Binding NavLabel}"
+                                                                            Style="{StaticResource SmallButton}"
+                                                                            HorizontalAlignment="Left"
+                                                                            Margin="0,8,0,0"
+                                                                            Tag="{Binding NavTarget}"
+                                                                            Click="GoToNavTarget_Click"
+                                                                            Visibility="{Binding HasNavTarget, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                                                 </StackPanel>
 
                                                                 <!-- Progress bar -->
@@ -3254,12 +3296,18 @@
                                                             <ColumnDefinition Width="74"/>
                                                             <ColumnDefinition Width="1.6*"/>
                                                             <ColumnDefinition Width="2*"/>
+                                                            <ColumnDefinition Width="74"/>
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Text="{Binding BillName}" Foreground="#8B949E" TextTrimming="CharacterEllipsis"/>
                                                         <TextBlock Grid.Column="1" Text="{Binding DueDate, StringFormat=dd/MM/yyyy}" Foreground="#8B949E"/>
                                                         <TextBlock Grid.Column="2" Text="{Binding Status}" Foreground="#E6EDF3"/>
                                                         <TextBlock Grid.Column="3" Text="{Binding MatchedTransaction}" Foreground="#8B949E" TextTrimming="CharacterEllipsis"/>
                                                         <TextBlock Grid.Column="4" Text="{Binding MatchNote}" Foreground="#8B949E" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
+                                                        <Button Grid.Column="5"
+                                                                Content="Unmark"
+                                                                Height="24"
+                                                                Style="{StaticResource SmallButton}"
+                                                                Click="UnmarkBillPayment_Click"/>
                                                     </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -4587,6 +4635,13 @@
                                                                                    TextWrapping="Wrap"
                                                                                    Foreground="#8B949E"
                                                                                    Margin="0,4,0,0"/>
+                                                                        <Button Content="{Binding NavLabel}"
+                                                                                Style="{StaticResource SmallButton}"
+                                                                                HorizontalAlignment="Left"
+                                                                                Margin="0,8,0,0"
+                                                                                Tag="{Binding NavTarget}"
+                                                                                Click="GoToNavTarget_Click"
+                                                                                Visibility="{Binding HasNavTarget, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                                                     </StackPanel>
                                                                 </Border>
                                                             </DataTemplate>
