@@ -7,42 +7,45 @@ var dbPath = Path.Combine(
 using var conn = new SqliteConnection($"Data Source={dbPath}");
 conn.Open();
 
-// Check Rego's transactions
-var cmd = conn.CreateCommand();
-cmd.CommandText = "SELECT COUNT(*), SUM(AmountCents) FROM Transactions WHERE AccountId = 8";
-using var r = cmd.ExecuteReader();
-r.Read();
-var count = r.GetInt32(0);
-var sum = r.IsDBNull(1) ? 0 : r.GetInt64(1);
-Console.WriteLine($"Rego (Id=8): {count} transaction(s), balance = ${sum / 100m:F2}");
+// Find the "Balance Adjustment" category id
+var catCmd = conn.CreateCommand();
+catCmd.CommandText = "SELECT Id FROM Categories WHERE Name = 'Balance Adjustment' LIMIT 1";
+var balanceAdjustmentCategoryId = (long)(catCmd.ExecuteScalar() ?? throw new Exception("Balance Adjustment category not found"));
+Console.WriteLine($"Balance Adjustment category id = {balanceAdjustmentCategoryId}");
 
-// Check bills
-var cmd2 = conn.CreateCommand();
-cmd2.CommandText = "SELECT COUNT(*) FROM Bills WHERE AccountId = 8";
-var billCount = (long)(cmd2.ExecuteScalar() ?? 0L);
-Console.WriteLine($"Rego bills: {billCount}");
+// Recategorize the two duplicate "Nissan" reconciliation transactions in the 🚗 Car account
+var upd = conn.CreateCommand();
+upd.CommandText = "UPDATE Transactions SET CategoryId = $cat WHERE Id IN (991, 1089) AND Description = 'Nissan'";
+upd.Parameters.AddWithValue("$cat", balanceAdjustmentCategoryId);
+var rows = upd.ExecuteNonQuery();
+Console.WriteLine($"Updated {rows} transaction(s).");
 
-if (count == 0 || (count <= 5 && Math.Abs(sum) <= 100))
+// Verify
+Console.WriteLine("\n=== After fix ===");
+var verify = conn.CreateCommand();
+verify.CommandText = @"SELECT t.Id, t.Date, t.Description, t.AmountCents, c.Name FROM Transactions t
+                        LEFT JOIN Categories c ON c.Id = t.CategoryId
+                        WHERE t.Id IN (991, 1089)";
+using (var r = verify.ExecuteReader())
 {
-    Console.WriteLine("\nSafe to delete. Removing Rego account and its transactions...");
-    using var tx = conn.BeginTransaction();
-
-    var del1 = conn.CreateCommand();
-    del1.CommandText = "DELETE FROM Transactions WHERE AccountId = 8";
-    del1.Transaction = tx;
-    var rows = del1.ExecuteNonQuery();
-    Console.WriteLine($"Deleted {rows} transaction(s).");
-
-    var del2 = conn.CreateCommand();
-    del2.CommandText = "DELETE FROM Accounts WHERE Id = 8";
-    del2.Transaction = tx;
-    del2.ExecuteNonQuery();
-    Console.WriteLine("Deleted Rego account.");
-
-    tx.Commit();
-    Console.WriteLine("Done.");
+    while (r.Read())
+    {
+        Console.WriteLine($"Id={r.GetInt32(0)} Date={r.GetDateTime(1):yyyy-MM-dd} Desc='{r.GetString(2)}' Amount={r.GetInt32(3) / 100m:F2} Cat='{(r.IsDBNull(4) ? "" : r.GetString(4))}'");
+    }
 }
-else
+
+// Check for other historical instances of the same "balance sync" bill-match pattern,
+// to see if this bug affected other bills too (informational only, not auto-fixed).
+Console.WriteLine("\n=== Other 'balance sync' bill matches (for awareness) ===");
+var others = conn.CreateCommand();
+others.CommandText = @"SELECT bos.Id, bos.BillId, b.Name, bos.DueDate, bos.MatchNote FROM BillOccurrenceStatuses bos
+                        JOIN Bills b ON b.Id = bos.BillId
+                        WHERE bos.MatchNote LIKE '%balance sync%'
+                        ORDER BY bos.DueDate DESC";
+using (var r = others.ExecuteReader())
 {
-    Console.WriteLine("\nAccount has significant transactions — not auto-deleting. Delete manually from the app.");
+    while (r.Read())
+    {
+        Console.WriteLine($"BillOccId={r.GetInt32(0)} BillId={r.GetInt32(1)} BillName='{r.GetString(2)}' DueDate={r.GetDateTime(3):yyyy-MM-dd} Note='{r.GetString(4)}'");
+    }
 }

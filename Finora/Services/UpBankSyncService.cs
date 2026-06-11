@@ -229,9 +229,11 @@ public class UpBankSyncService
                 var description = matchedBill is null
                     ? "Up balance adjustment"
                     : matchedBill.Name;
-                var category = matchedBill is null
-                    ? GetCategory(db, "Balance Adjustment")
-                    : GetBillAccountCategory(db, matchedBill);
+                // Always "Balance Adjustment" so this reconciliation entry is treated as an
+                // internal movement and excluded from spending totals — even when it's named
+                // after a matched bill, the bill's actual payment is already counted via the
+                // real Up Bank transaction on the paying account.
+                var category = GetCategory(db, "Balance Adjustment");
 
                 db.Transactions.Add(new Transaction
                 {
@@ -240,7 +242,7 @@ public class UpBankSyncService
                     AmountCents = adjustmentCents,
                     Account = account,
                     Category = category,
-                    TransferId = matchedBill is null ? Guid.Empty : null
+                    TransferId = Guid.Empty
                 });
                 if (matchedBill is not null)
                 {
@@ -303,7 +305,6 @@ public class UpBankSyncService
     private static List<(Bill Bill, DateTime DueDate)> FindMatchingUnpaidBills(FinoraDbContext db, Account account, DateTime date, int amountCents)
     {
         return db.Bills
-            .Include(b => b.Account)
             .AsEnumerable()
             .Select(b => new { Bill = b, DueDate = GetClosestBillDueDate(b, date) })
             .Where(match =>
@@ -314,17 +315,6 @@ public class UpBankSyncService
             .OrderBy(match => Math.Abs((match.DueDate.Date - date.Date).TotalDays))
             .Select(match => (match.Bill, match.DueDate))
             .ToList();
-    }
-
-    private static Category GetBillAccountCategory(FinoraDbContext db, Bill bill)
-    {
-        var accountName = bill.Account?.Name;
-        if (!string.IsNullOrWhiteSpace(accountName))
-        {
-            return GetCategory(db, accountName);
-        }
-
-        return GetCategory(db, "Misc");
     }
 
     private static DateTime GetClosestBillDueDate(Bill bill, DateTime date)
