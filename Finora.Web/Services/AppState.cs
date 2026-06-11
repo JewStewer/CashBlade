@@ -43,6 +43,12 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<Bill> _pendingNewBills = new();
     private readonly List<Bill> _pendingUpdatedBills = new();
 
+    // Debounce + re-entrancy guard for ScheduleSyncSoon/SyncAndReloadAsync —
+    // iOS suspends a backgrounded PWA almost immediately, so the 5-minute
+    // periodic timer rarely survives long enough to push an edit on its own.
+    private CancellationTokenSource? _syncDebounceCts;
+    private bool _syncInProgress;
+
     public bool HasPendingChanges =>
         _pendingNewTransactions.Count > 0 ||
         _pendingUpdatedTransactions.Count > 0 ||
@@ -129,15 +135,9 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (bill is null) continue;
             bill.IsPaid = ov.IsPaid;
 
-            var status = BillStatuses
-                .Where(s => s.BillId == ov.Id)
-                .OrderByDescending(s => s.DueDate)
-                .FirstOrDefault();
-            if (status is not null)
-            {
-                status.IsPaid = ov.IsPaid;
-                status.PaidOn = ov.IsPaid ? status.PaidOn : null;
-            }
+            var status = GetOrCreateCurrentStatus(bill);
+            status.IsPaid = ov.IsPaid;
+            status.PaidOn = ov.IsPaid ? (status.PaidOn ?? DateTime.Now) : null;
         }
     }
 
@@ -229,6 +229,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         BillFrequency.Yearly      => d.AddYears(1),
         _                         => d.AddMonths(1)
     };
+
+    // Find (or create) the BillOccurrenceStatus for a bill's current billing
+    // cycle, keyed by EffectiveDueDate to match IsBillPaid's primary check —
+    // otherwise a status keyed on the (possibly stale) bill.DueDate never
+    // matches and IsBillPaid falls through to "effectiveDue > DueDate → false".
+    private BillOccurrenceStatus GetOrCreateCurrentStatus(Bill bill)
+    {
+        var effectiveDue = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+        var status = BillStatuses.FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == effectiveDue.Date);
+        if (status is null)
+        {
+            status = new BillOccurrenceStatus { Id = -(BillStatuses.Count + 1), BillId = bill.Id, DueDate = effectiveDue };
+            BillStatuses.Add(status);
+        }
+        return status;
+    }
 
     private void ComputeBalances()
     {
@@ -567,6 +583,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.PutAsync("transactions", t);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     public async Task ToggleUnnecessaryAsync(int transactionId)
@@ -579,6 +596,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             _pendingUpdatedTransactions.Add(t);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     public async Task UpdateTransactionFullAsync(Transaction updated)
@@ -598,6 +616,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             _pendingUpdatedTransactions.Add(t);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     public async Task AddBillAsync(Bill b)
@@ -610,6 +629,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.PutAsync("bills", b);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     public async Task UpdateBillAsync(Bill b)
@@ -628,6 +648,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             _pendingUpdatedBills.Add(existing);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     public async Task UpdateTransactionCategoryAsync(int transactionId, int categoryId)
@@ -641,6 +662,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             _pendingUpdatedTransactions.Add(t);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     public async Task DeleteTransactionAsync(int id)
@@ -650,6 +672,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.DeleteAsync("transactions", id);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     public async Task MarkBillPaidAsync(int billId, bool paid)
@@ -659,21 +682,42 @@ public class AppState(IndexedDbService db, SyncService sync)
         bill.IsPaid = paid;
         await db.PutAsync("bills", bill);
 
-        var status = BillStatuses
-            .Where(s => s.BillId == billId)
-            .OrderByDescending(s => s.DueDate)
-            .FirstOrDefault() ??
-            new BillOccurrenceStatus { Id = -(BillStatuses.Count + 1), BillId = billId, DueDate = bill.DueDate };
+        var status = GetOrCreateCurrentStatus(bill);
         status.IsPaid = paid;
         status.PaidOn = paid ? DateTime.Now : null;
 
-        if (!BillStatuses.Contains(status)) BillStatuses.Add(status);
         _pendingBillStatuses.Add(status);
         await db.PutAsync("billOccurrenceStatuses", status);
         // Persist the override so it survives sync's clearAll and app restarts
         await db.SetBillOverrideAsync(billId, paid);
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    // Push phone edits to the cloud a couple of seconds after they happen,
+    // instead of waiting for the 5-minute periodic timer in MainLayout —
+    // iOS suspends a backgrounded "Add to Home Screen" PWA almost
+    // immediately, so that timer rarely gets a chance to fire. Debounced so
+    // a burst of edits results in one sync, not one per edit.
+    private void ScheduleSyncSoon()
+    {
+        _syncDebounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _syncDebounceCts = cts;
+        _ = DebouncedSyncAsync(cts.Token);
+    }
+
+    private async Task DebouncedSyncAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), token);
+        }
+        catch (OperationCanceledException) { return; }
+        if (token.IsCancellationRequested) return;
+        try { await SyncAndReloadAsync(); }
+        catch { /* SyncService records LastError for the Settings page */ }
     }
 
     public async Task SaveSettingAsync(string key, string value)
@@ -746,63 +790,78 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task SyncAndReloadAsync()
     {
-        // Push any phone-side changes — Wi-Fi first, Supabase as fallback
-        if (HasPendingChanges)
+        // Re-entrancy guard: ScheduleSyncSoon (after every edit) and the
+        // 5-minute periodic timer can otherwise overlap and race on
+        // _pendingXxx / IndexedDB.
+        if (_syncInProgress) return;
+        _syncInProgress = true;
+        try
         {
-            var push = new PushPayload
+            // Push any phone-side changes — Wi-Fi first, Supabase as fallback
+            if (HasPendingChanges)
             {
-                NewTransactions = new List<Transaction>(_pendingNewTransactions),
-                UpdatedTransactions = new List<Transaction>(_pendingUpdatedTransactions),
-                DeletedTransactionIds = new List<int>(_pendingDeletedTransactionIds),
-                UpdatedBillStatuses = new List<BillOccurrenceStatus>(_pendingBillStatuses),
-                NewBills = new List<Bill>(_pendingNewBills),
-                UpdatedBills = new List<Bill>(_pendingUpdatedBills)
-            };
+                var push = new PushPayload
+                {
+                    NewTransactions = new List<Transaction>(_pendingNewTransactions),
+                    UpdatedTransactions = new List<Transaction>(_pendingUpdatedTransactions),
+                    DeletedTransactionIds = new List<int>(_pendingDeletedTransactionIds),
+                    UpdatedBillStatuses = new List<BillOccurrenceStatus>(_pendingBillStatuses),
+                    NewBills = new List<Bill>(_pendingNewBills),
+                    UpdatedBills = new List<Bill>(_pendingUpdatedBills)
+                };
 
-            bool pushed = false;
-            if (sync.HasLocalSync)
-                pushed = await sync.PushToPcAsync(push);
+                bool pushed = false;
+                if (sync.HasLocalSync)
+                    pushed = await sync.PushToPcAsync(push);
 
-            if (!pushed && sync.HasCloudSync)
-            {
-                pushed = await sync.PushToSupabaseAsync(push);
+                if (!pushed && sync.HasCloudSync)
+                {
+                    pushed = await sync.PushToSupabaseAsync(push);
 
-                // Also merge straight into finance_sync (the canonical cloud
-                // snapshot) so the cloud is current even if the PC never comes
-                // back online to drain phone_push. Best-effort: phone_push
-                // above is what WPF reconciles from, so a failure here can't
-                // regress anything.
+                    // Also merge straight into finance_sync (the canonical cloud
+                    // snapshot) so the cloud is current even if the PC never comes
+                    // back online to drain phone_push. Best-effort: phone_push
+                    // above is what WPF reconciles from, so a failure here can't
+                    // regress anything.
+                    if (pushed)
+                    {
+                        var merged = await BuildMergedCloudPayloadAsync(push);
+                        if (merged is not null)
+                            await sync.PushFullSyncAsync(merged);
+                    }
+                }
+
                 if (pushed)
                 {
-                    var merged = await BuildMergedCloudPayloadAsync(push);
-                    if (merged is not null)
-                        await sync.PushFullSyncAsync(merged);
+                    foreach (var s in push.UpdatedBillStatuses)
+                        await db.ClearBillOverrideAsync(s.BillId);
+                    // Remove only what was actually sent (by count, not Clear) —
+                    // an edit made while this push was in flight appends to
+                    // these lists and must survive for the next sync.
+                    _pendingNewTransactions.RemoveRange(0, push.NewTransactions.Count);
+                    _pendingUpdatedTransactions.RemoveRange(0, push.UpdatedTransactions.Count);
+                    _pendingDeletedTransactionIds.RemoveRange(0, push.DeletedTransactionIds.Count);
+                    _pendingBillStatuses.RemoveRange(0, push.UpdatedBillStatuses.Count);
+                    _pendingNewBills.RemoveRange(0, push.NewBills.Count);
+                    _pendingUpdatedBills.RemoveRange(0, push.UpdatedBills.Count);
                 }
             }
 
-            if (pushed)
+            // Pull data — cloud first, then local Wi-Fi
+            var ok = await sync.AutoSyncAsync();
+            if (ok)
             {
-                foreach (var s in _pendingBillStatuses)
-                    await db.ClearBillOverrideAsync(s.BillId);
-                _pendingNewTransactions.Clear();
-                _pendingUpdatedTransactions.Clear();
-                _pendingDeletedTransactionIds.Clear();
-                _pendingBillStatuses.Clear();
-                _pendingNewBills.Clear();
-                _pendingUpdatedBills.Clear();
+                await LoadAsync();
+                // Sync wipes IndexedDB and replaces with server data; reapply any
+                // phone-side changes that weren't pushed so they aren't lost.
+                await ReapplyPendingChangesAsync();
             }
+            else OnChange?.Invoke();
         }
-
-        // Pull data — cloud first, then local Wi-Fi
-        var ok = await sync.AutoSyncAsync();
-        if (ok)
+        finally
         {
-            await LoadAsync();
-            // Sync wipes IndexedDB and replaces with server data; reapply any
-            // phone-side changes that weren't pushed so they aren't lost.
-            await ReapplyPendingChangesAsync();
+            _syncInProgress = false;
         }
-        else OnChange?.Invoke();
     }
 
     private async Task ReapplyPendingChangesAsync()
@@ -850,21 +909,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             bill.IsPaid = ps.IsPaid;
             await db.PutAsync("bills", bill);
 
-            var existing = BillStatuses
-                .Where(s => s.BillId == ps.BillId)
-                .OrderByDescending(s => s.DueDate)
-                .FirstOrDefault();
-            if (existing is not null)
-            {
-                existing.IsPaid = ps.IsPaid;
-                existing.PaidOn = ps.PaidOn;
-                await db.PutAsync("billOccurrenceStatuses", existing);
-            }
-            else
-            {
-                BillStatuses.Add(ps);
-                await db.PutAsync("billOccurrenceStatuses", ps);
-            }
+            var existing = GetOrCreateCurrentStatus(bill);
+            existing.IsPaid = ps.IsPaid;
+            existing.PaidOn = ps.PaidOn;
+            await db.PutAsync("billOccurrenceStatuses", existing);
             changed = true;
         }
 
