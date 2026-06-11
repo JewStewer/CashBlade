@@ -47,9 +47,14 @@
             <div style="font-size:13px;color:var(--amber);margin-bottom:8px">⚠ You have unsaved local changes.</div>
         }
 
-        <button class="btn btn-primary btn-full" @onclick="DoAutoSync" disabled="@Sync.IsSyncing">
+        <button class="btn btn-primary btn-full" @onclick="DoAutoSync" disabled="@(Sync.IsSyncing || UpSync.IsSyncing)">
             @(Sync.IsSyncing ? "Syncing…" : "Sync Now")
         </button>
+
+        @if (!string.IsNullOrEmpty(syncStatus))
+        {
+            <div style="margin-top:8px;font-size:13px;color:@syncStatusColor">@syncStatus</div>
+        }
 
         @if (!string.IsNullOrEmpty(Sync.LastError))
         {
@@ -262,6 +267,7 @@
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
     private string upBankStatus = string.Empty, upBankStatusColor = "var(--text3)";
+    private string syncStatus = string.Empty, syncStatusColor = "var(--text3)";
     private DateTime nextPayDate = DateTime.Today;
     private bool testingSupabase;
     private string supabaseStatus = string.Empty, supabaseStatusColor = "var(--text3)";
@@ -303,6 +309,10 @@
 
     private async Task DoAutoSync()
     {
+        syncStatus = "Syncing...";
+        syncStatusColor = "var(--text3)";
+        StateHasChanged();
+
         var token = await UpSync.GetAccessTokenAsync();
         if (!string.IsNullOrWhiteSpace(token))
         {
@@ -310,13 +320,28 @@
             await State.LoadAsync();
             if (result is not null)
             {
+                if (result.CloudSnapshotPushed)
+                    await State.MarkPendingChangesSyncedAsync();
+                syncStatus = result.CloudSnapshotPushed
+                    ? $"Synced Up Bank: imported {result.ImportedTransactions}, adjustments {result.BalanceAdjustments}, matched bills {result.MatchedBills}."
+                    : $"Imported from Up Bank, but cloud push did not complete.";
+                syncStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
                 upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, added {result.BalanceAdjustments} balance adjustment{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
-                upBankStatusColor = "var(--green)";
+                upBankStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
+            }
+            else
+            {
+                syncStatus = "Sync failed. Check the Up Bank message below.";
+                syncStatusColor = "var(--red)";
             }
         }
         else
         {
             await State.SyncAndReloadAsync();
+            syncStatus = string.IsNullOrEmpty(Sync.LastError)
+                ? $"Synced at {DateTime.Now:HH:mm}."
+                : "Sync failed.";
+            syncStatusColor = string.IsNullOrEmpty(Sync.LastError) ? "var(--green)" : "var(--red)";
         }
         StateHasChanged();
     }
@@ -359,8 +384,10 @@
         }
 
         await State.LoadAsync();
+        if (result.CloudSnapshotPushed)
+            await State.MarkPendingChangesSyncedAsync();
         upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, added {result.BalanceAdjustments} balance adjustment{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
-        upBankStatusColor = "var(--green)";
+        upBankStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
         StateHasChanged();
     }
 

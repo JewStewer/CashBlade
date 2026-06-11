@@ -598,7 +598,7 @@
             return State.Transactions
                 .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0)
                 .Where(t => !State.IsInternalMovement(t) &&
-                            !AppState.IsBillCategory(t.CategoryName))
+                            !State.IsBudgetedBillTransaction(t))
                 .OrderBy(t => t.AmountCents)
                 .Take(10)
                 .ToList();

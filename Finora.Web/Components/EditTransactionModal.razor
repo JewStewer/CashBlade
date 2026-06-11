@@ -107,7 +107,8 @@
             AccountId = accountId,
             CategoryId = categoryId,
             IsUnnecessary = unnecessary,
-            TransferId = Transaction.TransferId
+            TransferId = Transaction.TransferId,
+            UpTransactionId = Transaction.UpTransactionId
         };
         await State.UpdateTransactionFullAsync(updated);
         saving = false;

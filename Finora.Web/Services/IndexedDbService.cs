@@ -114,6 +114,22 @@ public class IndexedDbService(IJSRuntime js)
     public Task ClearBillOverrideAsync(int billId) =>
         DeleteAsync("pendingBillOverrides", billId);
 
+    // ── Persistent transaction edits (survive cloud replace until pushed) ─────
+    public Task<List<PendingTransactionOverride>> GetPendingTransactionOverridesAsync() =>
+        GetAllAsync<PendingTransactionOverride>("transactionOverrides");
+
+    public Task SetTransactionOverrideAsync(Transaction transaction) =>
+        PutAsync("transactionOverrides", new PendingTransactionOverride { Id = transaction.Id, Transaction = transaction });
+
+    public Task ClearTransactionOverrideAsync(int transactionId) =>
+        DeleteAsync("transactionOverrides", transactionId);
+
+    public Task ClearTransactionOverridesAsync() =>
+        ClearAsync("transactionOverrides");
+
+    public Task ClearBillOverridesAsync() =>
+        ClearAsync("pendingBillOverrides");
+
     public async Task SaveSettingAsync(string key, string value)
     {
         var settings = await GetAppSettingsAsync();
@@ -135,6 +151,12 @@ public class PendingBillOverride
 {
     public int Id { get; set; }   // = BillId (unique per bill)
     public bool IsPaid { get; set; }
+}
+
+public class PendingTransactionOverride
+{
+    public int Id { get; set; } // = Transaction Id
+    public Transaction Transaction { get; set; } = new();
 }
 
 public class LentTransaction

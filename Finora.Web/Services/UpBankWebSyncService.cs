@@ -155,9 +155,9 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             foreach (var status in billStatuses) await db.PutAsync("billOccurrenceStatuses", status);
 
             await SaveSettingValueAsync(appSettings, LastSyncSettingKey, newestSeenUtc.ToUniversalTime().ToString("O"));
-            await PushCurrentSnapshotToCloudAsync();
+            var pushedSnapshot = await PushCurrentSnapshotToCloudAsync();
 
-            return new UpBankWebSyncResult(imported, balanceAdjustments, matchedBills);
+            return new UpBankWebSyncResult(imported, balanceAdjustments, matchedBills, pushedSnapshot);
         }
         catch (Exception ex)
         {
@@ -203,9 +203,9 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         else setting.Value = value;
     }
 
-    private async Task PushCurrentSnapshotToCloudAsync()
+    private async Task<bool> PushCurrentSnapshotToCloudAsync()
     {
-        if (!sync.HasCloudSync) return;
+        if (!sync.HasCloudSync) return false;
 
         var payload = new SyncPayload
         {
@@ -222,7 +222,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             SyncedAt = DateTime.UtcNow
         };
 
-        await sync.PushFullSyncAsync(payload);
+        return await sync.PushFullSyncAsync(payload);
     }
 
     private bool TryMarkMatchingBillPaid(List<Bill> bills, List<BillOccurrenceStatus> statuses, int accountId, DateTime paidOn, int amountCents, int transactionId)
@@ -459,4 +459,4 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
     }
 }
 
-public record UpBankWebSyncResult(int ImportedTransactions, int BalanceAdjustments, int MatchedBills);
+public record UpBankWebSyncResult(int ImportedTransactions, int BalanceAdjustments, int MatchedBills, bool CloudSnapshotPushed);

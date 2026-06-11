@@ -1,13 +1,13 @@
 // IndexedDB helper — called via JS interop from Blazor
 const DB_NAME = 'FinanceBlade';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORES = [
     'accounts', 'categories', 'transactions', 'bills',
     'billOccurrenceStatuses', 'debts', 'debtPayments',
     'savingsGoals', 'weeklyBudgets', 'appSettings', 'syncMeta'
 ];
 // Stores that survive clearAll (phone-side overrides, lent money tracking)
-const PERSISTENT_STORES = ['pendingBillOverrides', 'lentTxns'];
+const PERSISTENT_STORES = ['pendingBillOverrides', 'lentTxns', 'transactionOverrides'];
 const ALL_STORES = [...STORES, ...PERSISTENT_STORES];
 
 let _db = null;

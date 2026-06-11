@@ -88,7 +88,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         LentTransactions = await db.GetLentTransactionsAsync();
         _unrepaidLentIds = LentTransactions.Where(l => !l.Repaid).Select(l => l.Id).ToHashSet();
 
-        // Apply any phone-side bill paid/unpaid overrides that survived the last sync
+        // Apply any phone-side overrides that survived a cloud replace or app restart.
+        await ApplyPersistedTransactionOverridesAsync();
         await ApplyPersistedBillOverridesAsync();
 
         await sync.InitAsync();
@@ -141,6 +142,21 @@ public class AppState(IndexedDbService db, SyncService sync)
             var status = GetOrCreateCurrentStatus(bill);
             status.IsPaid = ov.IsPaid;
             status.PaidOn = ov.IsPaid ? (status.PaidOn ?? DateTime.Now) : null;
+        }
+    }
+
+    private async Task ApplyPersistedTransactionOverridesAsync()
+    {
+        var overrides = await db.GetPendingTransactionOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var updated = ov.Transaction;
+            var transaction = Transactions.FirstOrDefault(t => t.Id == updated.Id);
+            if (transaction is null) continue;
+
+            ApplyTransactionEdit(transaction, updated);
+            await db.PutAsync("transactions", transaction);
+            QueueUpdatedTransaction(transaction);
         }
     }
 
@@ -441,7 +457,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal GetDiscretionarySpendingForPeriod(DateTime from, DateTime to) =>
         Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsInternalMovement(t) && !IsBillCategory(t.CategoryName)
+                        && !IsInternalMovement(t) && !IsBudgetedBillTransaction(t)
                         && !_unrepaidLentIds.Contains(t.Id))
             .Sum(t => Math.Abs(t.AmountDollars));
 
@@ -458,7 +474,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         var (from, to) = GetCurrentPeriod();
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsInternalMovement(t) && (!excludeBills || !IsBillCategory(t.CategoryName)))
+                        && !IsInternalMovement(t) && (!excludeBills || !IsBudgetedBillTransaction(t)))
             .GroupBy(t => t.CategoryName)
             .Select(g => (g.Key, g.Sum(t => Math.Abs(t.AmountDollars))))
             .OrderByDescending(x => x.Item2)
@@ -540,6 +556,35 @@ public class AppState(IndexedDbService db, SyncService sync)
         TransactionClassification.HasLinkedTransferId(t) ||
         TransactionClassification.IsCoverMovementDescription(t.Description) ||
         _matchedInternalMovementIds.Contains(t.Id);
+
+    public bool IsBudgetedBillTransaction(Transaction t) =>
+        IsBillCategory(t.CategoryName) ||
+        MatchesKnownBudgetedPayment(t) ||
+        MatchesBillRecord(t);
+
+    private bool MatchesBillRecord(Transaction t)
+    {
+        if (t.AmountCents >= 0) return false;
+        var amount = Math.Abs(t.AmountCents);
+        return Bills.Any(b =>
+            Math.Abs(b.AmountCents - amount) <= 1 &&
+            (string.Equals(b.AccountName, t.AccountName, StringComparison.OrdinalIgnoreCase) || b.AccountId == t.AccountId) &&
+            (TextContainsToken(t.Description, b.Name) || TextContainsToken(t.Description, b.PaymentMatchText)));
+    }
+
+    private static bool MatchesKnownBudgetedPayment(Transaction t)
+    {
+        if (t.AmountCents >= 0) return false;
+        var description = t.Description ?? string.Empty;
+        return description.Contains("Nissan Financial", StringComparison.OrdinalIgnoreCase) ||
+            description.Contains("Skyline Car Finance", StringComparison.OrdinalIgnoreCase) ||
+            description.Contains("Australian College of Commerce", StringComparison.OrdinalIgnoreCase) ||
+            description.Contains("Swoosh Finance", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TextContainsToken(string text, string? token) =>
+        !string.IsNullOrWhiteSpace(token) &&
+        text.Contains(token.Trim(), StringComparison.OrdinalIgnoreCase);
 
     // ── Daily tracker ─────────────────────────────────────────────────────────
     public List<DailyScore> GetDailyScores(int days = 35)
@@ -631,8 +676,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (t is null) return;
         t.IsUnnecessary = !t.IsUnnecessary;
         await db.PutAsync("transactions", t);
-        if (transactionId > 0 && !_pendingUpdatedTransactions.Any(x => x.Id == transactionId))
-            _pendingUpdatedTransactions.Add(t);
+        if (transactionId > 0)
+        {
+            QueueUpdatedTransaction(t);
+            await db.SetTransactionOverrideAsync(t);
+        }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -642,17 +690,13 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var t = Transactions.FirstOrDefault(x => x.Id == updated.Id);
         if (t is null) return;
-        t.Date = new DateTime(updated.Date.Year, updated.Date.Month, updated.Date.Day);
-        t.Description = updated.Description;
-        t.AmountDollars = updated.AmountDollars;
-        t.AccountId = updated.AccountId;
-        t.AccountName = Accounts.FirstOrDefault(a => a.Id == updated.AccountId)?.Name ?? "";
-        t.CategoryId = updated.CategoryId;
-        t.CategoryName = Categories.FirstOrDefault(c => c.Id == updated.CategoryId)?.Name ?? "";
-        t.IsUnnecessary = updated.IsUnnecessary;
+        ApplyTransactionEdit(t, updated);
         await db.PutAsync("transactions", t);
-        if (t.Id > 0 && !_pendingUpdatedTransactions.Any(x => x.Id == t.Id))
-            _pendingUpdatedTransactions.Add(t);
+        if (t.Id > 0)
+        {
+            QueueUpdatedTransaction(t);
+            await db.SetTransactionOverrideAsync(t);
+        }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -697,8 +741,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         t.CategoryId = categoryId;
         t.CategoryName = Categories.FirstOrDefault(c => c.Id == categoryId)?.Name ?? "";
         await db.PutAsync("transactions", t);
-        if (transactionId > 0 && !_pendingUpdatedTransactions.Any(x => x.Id == transactionId))
-            _pendingUpdatedTransactions.Add(t);
+        if (transactionId > 0)
+        {
+            QueueUpdatedTransaction(t);
+            await db.SetTransactionOverrideAsync(t);
+        }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -709,6 +756,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Transactions.RemoveAll(t => t.Id == id);
         if (id > 0) _pendingDeletedTransactionIds.Add(id);
         await db.DeleteAsync("transactions", id);
+        await db.ClearTransactionOverrideAsync(id);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -757,6 +805,27 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (token.IsCancellationRequested) return;
         try { await SyncAndReloadAsync(); }
         catch { /* SyncService records LastError for the Settings page */ }
+    }
+
+    private void ApplyTransactionEdit(Transaction target, Transaction updated)
+    {
+        target.Date = new DateTime(updated.Date.Year, updated.Date.Month, updated.Date.Day);
+        target.Description = updated.Description;
+        target.AmountDollars = updated.AmountDollars;
+        target.AccountId = updated.AccountId;
+        target.AccountName = Accounts.FirstOrDefault(a => a.Id == updated.AccountId)?.Name ?? "";
+        target.CategoryId = updated.CategoryId;
+        target.CategoryName = Categories.FirstOrDefault(c => c.Id == updated.CategoryId)?.Name ?? "";
+        target.TransferId = updated.TransferId;
+        target.UpTransactionId = updated.UpTransactionId;
+        target.IsUnnecessary = updated.IsUnnecessary;
+    }
+
+    private void QueueUpdatedTransaction(Transaction transaction)
+    {
+        if (transaction.Id <= 0) return;
+        _pendingUpdatedTransactions.RemoveAll(t => t.Id == transaction.Id);
+        _pendingUpdatedTransactions.Add(transaction);
     }
 
     public async Task SaveSettingAsync(string key, string value)
@@ -905,6 +974,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                 if (pushed)
                 {
                     sentPush = push;
+                    foreach (var t in push.UpdatedTransactions)
+                        await db.ClearTransactionOverrideAsync(t.Id);
                     foreach (var s in push.UpdatedBillStatuses)
                         await db.ClearBillOverrideAsync(s.BillId);
                     // Remove only what was actually sent (by count, not Clear) —
@@ -937,6 +1008,20 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             _syncInProgress = false;
         }
+    }
+
+    public async Task MarkPendingChangesSyncedAsync()
+    {
+        _pendingNewTransactions.Clear();
+        _pendingUpdatedTransactions.Clear();
+        _pendingDeletedTransactionIds.Clear();
+        _pendingBillStatuses.Clear();
+        _pendingNewBills.Clear();
+        _pendingUpdatedBills.Clear();
+        _pendingUpdatedSettings.Clear();
+        await db.ClearTransactionOverridesAsync();
+        await db.ClearBillOverridesAsync();
+        OnChange?.Invoke();
     }
 
     private async Task ReapplyPendingChangesAsync()
