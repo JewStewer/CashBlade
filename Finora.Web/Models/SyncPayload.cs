@@ -27,6 +27,7 @@ public class PushPayload
     public List<Bill> NewBills { get; set; } = new();
     public List<Bill> UpdatedBills { get; set; } = new();
     public List<int> DeletedBillIds { get; set; } = new();
+    public List<BillDelete> DeletedBills { get; set; } = new();
     public List<Debt> NewDebts { get; set; } = new();
     public List<Debt> UpdatedDebts { get; set; } = new();
     public List<DebtPayment> NewDebtPayments { get; set; } = new();
@@ -56,4 +57,15 @@ public class TransactionDelete
     public DateTime Date { get; set; }
     public string Description { get; set; } = string.Empty;
     public int AmountCents { get; set; }
+}
+
+public class BillDelete
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int AccountId { get; set; }
+    public string AccountName { get; set; } = string.Empty;
+    public int AmountCents { get; set; }
+    public DateTime DueDate { get; set; }
+    public BillFrequency Frequency { get; set; }
 }

@@ -1,6 +1,6 @@
 // IndexedDB helper — called via JS interop from Blazor
 const DB_NAME = 'FinanceBlade';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORES = [
     'accounts', 'categories', 'transactions', 'bills',
     'billOccurrenceStatuses', 'debts', 'debtPayments',

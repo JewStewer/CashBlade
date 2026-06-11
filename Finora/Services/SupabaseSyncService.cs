@@ -279,6 +279,21 @@ public static class SupabaseSyncService
                 db.BillOccurrenceStatuses.RemoveRange(statuses);
                 db.Bills.Remove(existing);
             }
+            foreach (var deleted in push.DeletedBills)
+            {
+                var matches = await db.Bills
+                    .AsNoTracking()
+                    .Where(b => b.AmountCents == deleted.AmountCents && b.Frequency == deleted.Frequency)
+                    .ToListAsync();
+                foreach (var match in matches.Where(b => SameBillDelete(b, deleted)))
+                {
+                    var existing = await db.Bills.FindAsync(match.Id);
+                    if (existing is null) continue;
+                    var statuses = await db.BillOccurrenceStatuses.Where(s => s.BillId == existing.Id).ToListAsync();
+                    db.BillOccurrenceStatuses.RemoveRange(statuses);
+                    db.Bills.Remove(existing);
+                }
+            }
 
             // New debt payments from phone (negative temp IDs; DebtId may
             // reference a debt created earlier in this same push)
@@ -396,6 +411,15 @@ public static class SupabaseSyncService
         db.Categories.Add(created);
         await db.SaveChangesAsync();
         return created.Id;
+    }
+
+    private static bool SameBillDelete(Bill bill, BillDelete deleted)
+    {
+        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id) return true;
+        if (bill.AmountCents != deleted.AmountCents) return false;
+        if (bill.Frequency != deleted.Frequency) return false;
+        if (!string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        return Math.Abs((bill.DueDate.Date - deleted.DueDate.Date).TotalDays) <= 7;
     }
 
     private static void Log(string message)

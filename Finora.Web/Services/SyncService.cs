@@ -192,16 +192,32 @@ public class SyncService(HttpClient http, IndexedDbService db)
         }
 
         var deletedBills = await db.GetPendingBillDeletesAsync();
-        foreach (var id in deletedBills.Select(d => d.Id).Where(id => id > 0).Distinct())
+        foreach (var deleted in deletedBills.Select(d => d.ToBillDelete()))
         {
-            var stillExistsInIncomingSnapshot = payload.Bills.Any(b => b.Id == id);
-            payload.Bills.RemoveAll(b => b.Id == id);
-            payload.BillOccurrenceStatuses.RemoveAll(s => s.BillId == id);
+            var matchingIds = payload.Bills
+                .Where(b => SameBillDelete(b, deleted))
+                .Select(b => b.Id)
+                .ToHashSet();
+            var stillExistsInIncomingSnapshot = matchingIds.Count > 0;
+            payload.Bills.RemoveAll(b => matchingIds.Contains(b.Id));
+            payload.BillOccurrenceStatuses.RemoveAll(s => matchingIds.Contains(s.BillId));
             if (!stillExistsInIncomingSnapshot)
             {
-                await db.ClearBillDeleteAsync(id);
+                await db.ClearBillDeleteAsync(deleted.Id);
             }
         }
+    }
+
+    private static bool SameBillDelete(Bill bill, BillDelete deleted)
+    {
+        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id) return true;
+        if (bill.AmountCents != deleted.AmountCents) return false;
+        if (bill.Frequency != deleted.Frequency) return false;
+        if (!string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        var billAccount = string.IsNullOrWhiteSpace(bill.AccountName) ? bill.AccountId.ToString() : bill.AccountName.Trim();
+        var deletedAccount = string.IsNullOrWhiteSpace(deleted.AccountName) ? deleted.AccountId.ToString() : deleted.AccountName.Trim();
+        if (!string.Equals(billAccount, deletedAccount, StringComparison.OrdinalIgnoreCase) && bill.AccountId != deleted.AccountId) return false;
+        return Math.Abs((bill.DueDate.Date - deleted.DueDate.Date).TotalDays) <= 7;
     }
 
     private static Transaction? FindPayloadTransaction(List<Transaction> transactions, Transaction updated)

@@ -137,11 +137,11 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
-    public async Task SetBillDeleteAsync(int billId)
+    public async Task SetBillDeleteAsync(BillDelete deleted)
     {
         try
         {
-            await PutAsync("billDeletes", new PendingBillDelete { Id = billId });
+            await PutAsync("billDeletes", PendingBillDelete.FromBillDelete(deleted));
         }
         catch (JSException)
         {
@@ -221,6 +221,34 @@ public class PendingBillOverride
 public class PendingBillDelete
 {
     public int Id { get; set; }   // = BillId
+    public string Name { get; set; } = string.Empty;
+    public int AccountId { get; set; }
+    public string AccountName { get; set; } = string.Empty;
+    public int AmountCents { get; set; }
+    public DateTime DueDate { get; set; }
+    public BillFrequency Frequency { get; set; }
+
+    public BillDelete ToBillDelete() => new()
+    {
+        Id = Id,
+        Name = Name,
+        AccountId = AccountId,
+        AccountName = AccountName,
+        AmountCents = AmountCents,
+        DueDate = DueDate,
+        Frequency = Frequency
+    };
+
+    public static PendingBillDelete FromBillDelete(BillDelete deleted) => new()
+    {
+        Id = deleted.Id,
+        Name = deleted.Name,
+        AccountId = deleted.AccountId,
+        AccountName = deleted.AccountName,
+        AmountCents = deleted.AmountCents,
+        DueDate = deleted.DueDate,
+        Frequency = deleted.Frequency
+    };
 }
 
 public class PendingTransactionOverride

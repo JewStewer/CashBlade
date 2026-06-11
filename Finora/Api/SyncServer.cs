@@ -245,6 +245,21 @@ public static class SyncServer
                     db.BillOccurrenceStatuses.RemoveRange(statuses);
                     db.Bills.Remove(existing);
                 }
+                foreach (var deleted in push.DeletedBills)
+                {
+                    var matches = await db.Bills
+                        .AsNoTracking()
+                        .Where(b => b.AmountCents == deleted.AmountCents && b.Frequency == (BillFrequency)(int)deleted.Frequency)
+                        .ToListAsync();
+                    foreach (var match in matches.Where(b => SameBillDelete(b, deleted)))
+                    {
+                        var existing = await db.Bills.FindAsync(match.Id);
+                        if (existing is null) continue;
+                        var statuses = await db.BillOccurrenceStatuses.Where(s => s.BillId == existing.Id).ToListAsync();
+                        db.BillOccurrenceStatuses.RemoveRange(statuses);
+                        db.Bills.Remove(existing);
+                    }
+                }
 
                 // New debt payments from phone (negative temp IDs; DebtId may
                 // reference a debt created earlier in this same push)
@@ -363,6 +378,15 @@ public static class SyncServer
         await db.SaveChangesAsync();
         return created.Id;
     }
+
+    private static bool SameBillDelete(Bill bill, BillDelete deleted)
+    {
+        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id) return true;
+        if (bill.AmountCents != deleted.AmountCents) return false;
+        if (bill.Frequency != deleted.Frequency) return false;
+        if (!string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        return Math.Abs((bill.DueDate.Date - deleted.DueDate.Date).TotalDays) <= 7;
+    }
 }
 
 // ── DTOs shared with Blazor (matching JSON shape) ────────────────────────────
@@ -393,6 +417,7 @@ public class PushPayload
     public List<Bill> NewBills { get; set; } = new();
     public List<Bill> UpdatedBills { get; set; } = new();
     public List<int> DeletedBillIds { get; set; } = new();
+    public List<BillDelete> DeletedBills { get; set; } = new();
     public List<Debt> NewDebts { get; set; } = new();
     public List<Debt> UpdatedDebts { get; set; } = new();
     public List<DebtPayment> NewDebtPayments { get; set; } = new();
@@ -422,4 +447,15 @@ public class TransactionDelete
     public DateTime Date { get; set; }
     public string Description { get; set; } = string.Empty;
     public int AmountCents { get; set; }
+}
+
+public class BillDelete
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int AccountId { get; set; }
+    public string AccountName { get; set; } = string.Empty;
+    public int AmountCents { get; set; }
+    public DateTime DueDate { get; set; }
+    public BillFrequency Frequency { get; set; }
 }

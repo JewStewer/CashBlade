@@ -72,6 +72,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<Bill> _pendingUpdatedBills = new();
     private readonly List<AppSetting> _pendingUpdatedSettings = new();
     private readonly List<int> _pendingDeletedBillIds = new();
+    private readonly List<BillDelete> _pendingDeletedBills = new();
     private readonly List<Debt> _pendingNewDebts = new();
     private readonly List<Debt> _pendingUpdatedDebts = new();
     private readonly List<DebtPayment> _pendingNewDebtPayments = new();
@@ -94,6 +95,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedBills.Count > 0 ||
         _pendingUpdatedSettings.Count > 0 ||
         _pendingDeletedBillIds.Count > 0 ||
+        _pendingDeletedBills.Count > 0 ||
         _pendingNewDebts.Count > 0 ||
         _pendingUpdatedDebts.Count > 0 ||
         _pendingNewDebtPayments.Count > 0 ||
@@ -232,18 +234,27 @@ public class AppState(IndexedDbService db, SyncService sync)
         var deletes = await db.GetPendingBillDeletesAsync();
         foreach (var deleted in deletes)
         {
-            var id = deleted.Id;
-            if (id <= 0) continue;
+            var deleteIntent = deleted.ToBillDelete();
+            var removedIds = Bills
+                .Where(b => SameBillDelete(b, deleteIntent))
+                .Select(b => b.Id)
+                .ToHashSet();
+            if (removedIds.Count == 0) continue;
 
-            Bills.RemoveAll(b => b.Id == id);
-            BillStatuses.RemoveAll(s => s.BillId == id);
-            _pendingNewBills.RemoveAll(b => b.Id == id);
-            _pendingUpdatedBills.RemoveAll(b => b.Id == id);
-            _pendingBillStatuses.RemoveAll(s => s.BillId == id);
-            _pendingDeletedBillIds.RemoveAll(x => x == id);
-            _pendingDeletedBillIds.Add(id);
-            await db.DeleteAsync("bills", id);
-            await db.ClearBillOverrideAsync(id);
+            Bills.RemoveAll(b => removedIds.Contains(b.Id));
+            BillStatuses.RemoveAll(s => removedIds.Contains(s.BillId));
+            _pendingNewBills.RemoveAll(b => removedIds.Contains(b.Id));
+            _pendingUpdatedBills.RemoveAll(b => removedIds.Contains(b.Id));
+            _pendingBillStatuses.RemoveAll(s => removedIds.Contains(s.BillId));
+            foreach (var id in removedIds.Where(id => id > 0))
+            {
+                _pendingDeletedBillIds.RemoveAll(x => x == id);
+                _pendingDeletedBillIds.Add(id);
+                await db.DeleteAsync("bills", id);
+                await db.ClearBillOverrideAsync(id);
+            }
+            _pendingDeletedBills.RemoveAll(d => SameBillDelete(d, deleteIntent));
+            _pendingDeletedBills.Add(deleteIntent);
         }
     }
 
@@ -1064,6 +1075,8 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task DeleteBillAsync(int id)
     {
+        var deletedBill = Bills.FirstOrDefault(b => b.Id == id);
+        var deleteIntent = deletedBill is null ? null : ToBillDelete(deletedBill);
         Bills.RemoveAll(b => b.Id == id);
         BillStatuses.RemoveAll(s => s.BillId == id);
         _pendingNewBills.RemoveAll(b => b.Id == id);
@@ -1073,7 +1086,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             _pendingDeletedBillIds.RemoveAll(x => x == id);
             _pendingDeletedBillIds.Add(id);
-            await db.SetBillDeleteAsync(id);
+        }
+        if (deleteIntent is not null)
+        {
+            _pendingDeletedBills.RemoveAll(d => SameBillDelete(d, deleteIntent));
+            _pendingDeletedBills.Add(deleteIntent);
+            await db.SetBillDeleteAsync(deleteIntent);
         }
         await db.DeleteAsync("bills", id);
         await db.ClearBillOverrideAsync(id);
@@ -1392,6 +1410,41 @@ public class AppState(IndexedDbService db, SyncService sync)
         AmountCents = transaction.AmountCents
     };
 
+    private static BillDelete ToBillDelete(Bill bill) => new()
+    {
+        Id = bill.Id,
+        Name = bill.Name,
+        AccountId = bill.AccountId,
+        AccountName = bill.AccountName,
+        AmountCents = bill.AmountCents,
+        DueDate = bill.DueDate,
+        Frequency = bill.Frequency
+    };
+
+    private static bool SameBillDelete(Bill bill, BillDelete deleted)
+    {
+        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id) return true;
+        if (bill.AmountCents != deleted.AmountCents) return false;
+        if (bill.Frequency != deleted.Frequency) return false;
+        if (!string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        var billAccount = string.IsNullOrWhiteSpace(bill.AccountName) ? bill.AccountId.ToString() : bill.AccountName.Trim();
+        var deletedAccount = string.IsNullOrWhiteSpace(deleted.AccountName) ? deleted.AccountId.ToString() : deleted.AccountName.Trim();
+        if (!string.Equals(billAccount, deletedAccount, StringComparison.OrdinalIgnoreCase) && bill.AccountId != deleted.AccountId) return false;
+        return Math.Abs((bill.DueDate.Date - deleted.DueDate.Date).TotalDays) <= 7;
+    }
+
+    private static bool SameBillDelete(BillDelete left, BillDelete right)
+    {
+        if (left.Id > 0 && right.Id > 0 && left.Id == right.Id) return true;
+        if (left.AmountCents != right.AmountCents) return false;
+        if (left.Frequency != right.Frequency) return false;
+        if (!string.Equals(left.Name.Trim(), right.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        var leftAccount = string.IsNullOrWhiteSpace(left.AccountName) ? left.AccountId.ToString() : left.AccountName.Trim();
+        var rightAccount = string.IsNullOrWhiteSpace(right.AccountName) ? right.AccountId.ToString() : right.AccountName.Trim();
+        if (!string.Equals(leftAccount, rightAccount, StringComparison.OrdinalIgnoreCase) && left.AccountId != right.AccountId) return false;
+        return Math.Abs((left.DueDate.Date - right.DueDate.Date).TotalDays) <= 7;
+    }
+
     private static bool SameTransactionDelete(TransactionDelete left, TransactionDelete right)
     {
         if (!string.IsNullOrWhiteSpace(left.UpTransactionId) || !string.IsNullOrWhiteSpace(right.UpTransactionId))
@@ -1463,7 +1516,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         cloud.Transactions.AddRange(push.NewTransactions);
 
         cloud.Bills.RemoveAll(b => push.DeletedBillIds.Contains(b.Id));
+        foreach (var deleted in push.DeletedBills)
+        {
+            cloud.Bills.RemoveAll(b => SameBillDelete(b, deleted));
+        }
+        var remainingBillIds = cloud.Bills.Select(b => b.Id).ToHashSet();
         cloud.BillOccurrenceStatuses.RemoveAll(s => push.DeletedBillIds.Contains(s.BillId));
+        cloud.BillOccurrenceStatuses.RemoveAll(s => !remainingBillIds.Contains(s.BillId));
 
         foreach (var u in push.UpdatedBills)
         {
@@ -1598,6 +1657,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     NewBills = new List<Bill>(_pendingNewBills),
                     UpdatedBills = new List<Bill>(_pendingUpdatedBills),
                     DeletedBillIds = new List<int>(_pendingDeletedBillIds),
+                    DeletedBills = new List<BillDelete>(_pendingDeletedBills),
                     NewDebts = new List<Debt>(_pendingNewDebts),
                     UpdatedDebts = new List<Debt>(_pendingUpdatedDebts),
                     NewDebtPayments = new List<DebtPayment>(_pendingNewDebtPayments),
@@ -1650,6 +1710,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewBills.RemoveRange(0, push.NewBills.Count);
                     _pendingUpdatedBills.RemoveRange(0, push.UpdatedBills.Count);
                     _pendingDeletedBillIds.RemoveRange(0, push.DeletedBillIds.Count);
+                    _pendingDeletedBills.RemoveRange(0, push.DeletedBills.Count);
                     _pendingNewDebts.RemoveRange(0, push.NewDebts.Count);
                     _pendingUpdatedDebts.RemoveRange(0, push.UpdatedDebts.Count);
                     _pendingNewDebtPayments.RemoveRange(0, push.NewDebtPayments.Count);
@@ -1688,6 +1749,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingNewBills.Clear();
         _pendingUpdatedBills.Clear();
         _pendingDeletedBillIds.Clear();
+        _pendingDeletedBills.Clear();
         _pendingNewDebts.Clear();
         _pendingUpdatedDebts.Clear();
         _pendingNewDebtPayments.Clear();
@@ -1712,6 +1774,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             NewBills = new List<Bill>(_pendingNewBills),
             UpdatedBills = new List<Bill>(_pendingUpdatedBills),
             DeletedBillIds = new List<int>(_pendingDeletedBillIds),
+            DeletedBills = new List<BillDelete>(_pendingDeletedBills),
             NewDebts = new List<Debt>(_pendingNewDebts),
             UpdatedDebts = new List<Debt>(_pendingUpdatedDebts),
             NewDebtPayments = new List<DebtPayment>(_pendingNewDebtPayments),
@@ -1849,6 +1912,22 @@ public class AppState(IndexedDbService db, SyncService sync)
                 await db.DeleteAsync("bills", id);
                 changed = true;
             }
+        }
+        foreach (var deleted in push.DeletedBills)
+        {
+            var removedIds = Bills
+                .Where(b => SameBillDelete(b, deleted))
+                .Select(b => b.Id)
+                .ToHashSet();
+            if (removedIds.Count == 0) continue;
+
+            Bills.RemoveAll(b => removedIds.Contains(b.Id));
+            BillStatuses.RemoveAll(s => removedIds.Contains(s.BillId));
+            foreach (var removedId in removedIds)
+            {
+                await db.DeleteAsync("bills", removedId);
+            }
+            changed = true;
         }
 
         // Re-add phone-created debts the server doesn't know about yet
