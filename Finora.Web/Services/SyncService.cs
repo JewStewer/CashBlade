@@ -194,8 +194,13 @@ public class SyncService(HttpClient http, IndexedDbService db)
         var deletedBills = await db.GetPendingBillDeletesAsync();
         foreach (var id in deletedBills.Select(d => d.Id).Where(id => id > 0).Distinct())
         {
+            var stillExistsInIncomingSnapshot = payload.Bills.Any(b => b.Id == id);
             payload.Bills.RemoveAll(b => b.Id == id);
             payload.BillOccurrenceStatuses.RemoveAll(s => s.BillId == id);
+            if (!stillExistsInIncomingSnapshot)
+            {
+                await db.ClearBillDeleteAsync(id);
+            }
         }
     }
 

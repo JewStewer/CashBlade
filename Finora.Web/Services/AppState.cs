@@ -1650,8 +1650,6 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewBills.RemoveRange(0, push.NewBills.Count);
                     _pendingUpdatedBills.RemoveRange(0, push.UpdatedBills.Count);
                     _pendingDeletedBillIds.RemoveRange(0, push.DeletedBillIds.Count);
-                    foreach (var id in push.DeletedBillIds)
-                        await db.ClearBillDeleteAsync(id);
                     _pendingNewDebts.RemoveRange(0, push.NewDebts.Count);
                     _pendingUpdatedDebts.RemoveRange(0, push.UpdatedDebts.Count);
                     _pendingNewDebtPayments.RemoveRange(0, push.NewDebtPayments.Count);
