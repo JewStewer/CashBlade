@@ -17,16 +17,16 @@ public class DailyTrackerDayRow
     public decimal NecessaryTotal => SpendingTotal - UnnecessaryTotal;
 
     public bool HasUnnecessarySpending => UnnecessaryTotal > 0;
-    public bool IsCleanDay => !HasUnnecessarySpending && SpendingTotal > 0;
+    public bool IsCleanDay => !HasUnnecessarySpending;
     public bool HasAnyActivity => Transactions.Count > 0 || Bills.Count > 0;
     public bool HasSpending => SpendingTotal > 0;
 
     public string SpendingDisplay => SpendingTotal > 0 ? SpendingTotal.ToString("C") : "No spending";
     public string UnnecessaryDisplay => UnnecessaryTotal > 0 ? UnnecessaryTotal.ToString("C") : "None";
-    public string CleanBadge => !HasUnnecessarySpending && SpendingTotal > 0 ? "✓ Clean" : "";
+    public string CleanBadge => !HasUnnecessarySpending ? "✓ Clean" : "";
 
     public int DayScore => SpendingTotal == 0 ? 100 : (int)(NecessaryTotal / SpendingTotal * 100);
-    public string DayGrade => !HasSpending ? "—" : DayScore switch
+    public string DayGrade => !HasSpending ? "A+" : DayScore switch
     {
         100 => "A+",
         >= 90 => "A",

@@ -3460,6 +3460,11 @@ public class MainViewModel : ViewModelBase
 
             foreach (var occ in billOccurrences.Where(o => o.Date.Date == date.Date))
             {
+                if (transactions.Any(t => IsBillPaymentMatch(t, occ.Bill, occ.Date)))
+                {
+                    continue;
+                }
+
                 dayRow.Bills.Add(new BillCalendarBillRow
                 {
                     BillId = occ.Bill.Id,
@@ -3487,8 +3492,8 @@ public class MainViewModel : ViewModelBase
             {
                 DayAbbrev = dayAbbrevs[i],
                 SpendingDisplay = isFuture ? "" : dr.HasSpending ? dr.SpendingTotal.ToString("C") : "$0",
-                Grade = isFuture ? "—" : dr.HasSpending ? dr.DayGrade : "·",
-                GradeColorHex = isFuture ? "#334155" : dr.HasSpending ? dr.DayScoreColorHex : "#475569",
+                Grade = isFuture ? "—" : dr.DayGrade,
+                GradeColorHex = isFuture ? "#334155" : dr.DayScoreColorHex,
                 BackgroundHex = isToday ? "#0F172A" : "#0B1120",
                 BorderHex = isToday ? "#6EE7B7" : "#243244",
                 IsToday = isToday,

@@ -85,4 +85,4 @@ self.addEventListener('fetch', event => {
         return (await cache.match(event.request)) ?? fetch(event.request);
     })());
 });
-/* Manifest version: KcOLmqxn */
+/* Manifest version: W6hFtOq8 */

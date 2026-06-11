@@ -672,11 +672,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             var unnecessary = dayTxns?.Where(t => t.IsUnnecessary).Sum(t => Math.Abs(t.AmountDollars)) ?? 0m;
             var necessary = spending - unnecessary;
             var score = spending == 0 ? 100 : (int)(necessary / spending * 100);
-            var grade = spending == 0 ? "—" : score switch
+            var grade = spending == 0 ? "A+" : score switch
             {
                 100 => "A+", >= 90 => "A", >= 80 => "B", >= 70 => "C", >= 50 => "D", _ => "F"
             };
-            var color = spending == 0 ? "" : score switch
+            var color = spending == 0 ? "#34D399" : score switch
             {
                 100 => "#34D399", >= 80 => "#6EE7B7", >= 60 => "#FBBF24", >= 40 => "#F97316", _ => "#F87171"
             };
