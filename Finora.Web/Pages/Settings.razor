@@ -321,7 +321,7 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.12.6";
+    private const string AppVersion = "v2026.06.12.7";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -401,10 +401,10 @@
                     await State.MarkPendingChangesSyncedAsync();
                 }
                 syncStatus = result.CloudSnapshotPushed
-                    ? $"Synced Up Bank: imported {result.ImportedTransactions}, adjustments {result.BalanceAdjustments}, matched bills {result.MatchedBills}."
+                    ? $"Synced Up Bank: imported {result.ImportedTransactions}, balanced accounts {result.BalanceAdjustments}, matched bills {result.MatchedBills}."
                     : $"Imported from Up Bank, but cloud push did not complete.";
                 syncStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
-                upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, added {result.BalanceAdjustments} balance adjustment{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
+                upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, balanced {result.BalanceAdjustments} account{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
                 upBankStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
             }
             else
@@ -488,7 +488,7 @@
         if (result.CloudSnapshotPushed)
             await State.MarkPendingChangesSyncedAsync();
         await RefreshLocalIntentCountsAsync();
-        upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, added {result.BalanceAdjustments} balance adjustment{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
+        upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, balanced {result.BalanceAdjustments} account{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
         upBankStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
         StateHasChanged();
     }

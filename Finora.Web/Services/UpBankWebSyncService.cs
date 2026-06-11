@@ -54,6 +54,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             var imported = 0;
             var balanceAdjustments = 0;
             var matchedBills = 0;
+            var addedBalanceAdjustmentIds = new List<int>();
 
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
@@ -157,7 +158,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                 };
                 transactions.Add(adjustment);
                 await db.PutAsync("transactions", adjustment);
-                balanceAdjustments++;
+                addedBalanceAdjustmentIds.Add(adjustment.Id);
             }
 
             foreach (var account in accounts) await db.PutAsync("accounts", account);
@@ -166,6 +167,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             foreach (var status in billStatuses) await db.PutAsync("billOccurrenceStatuses", status);
 
             await ApplyPersistedTransactionChangesAsync(categories, transactions, transactionOverrides, transactionDeletes);
+            balanceAdjustments = transactions.Count(t => addedBalanceAdjustmentIds.Contains(t.Id));
 
             await SaveSettingValueAsync(appSettings, LastSyncSettingKey, newestSeenUtc.ToUniversalTime().ToString("O"));
             var pushedSnapshot = await PushCurrentSnapshotToCloudAsync();
