@@ -1077,6 +1077,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var deletedBill = Bills.FirstOrDefault(b => b.Id == id);
         var deleteIntent = deletedBill is null ? null : ToBillDelete(deletedBill);
+        await RestoreMatchedBillAdjustmentsAsync(id);
         Bills.RemoveAll(b => b.Id == id);
         BillStatuses.RemoveAll(s => s.BillId == id);
         _pendingNewBills.RemoveAll(b => b.Id == id);
@@ -1276,10 +1277,11 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var deleted = Transactions.FirstOrDefault(t => t.Id == id);
         Transactions.RemoveAll(t => t.Id == id);
-        if (id > 0)
+        var isGeneratedBalanceAdjustment = deleted is not null && IsGeneratedBalanceAdjustment(deleted);
+        if (id > 0 && !isGeneratedBalanceAdjustment)
             _pendingDeletedTransactionIds.Add(id);
 
-        if (deleted is not null)
+        if (deleted is not null && !isGeneratedBalanceAdjustment)
         {
             var deleteIntent = ToTransactionDelete(deleted);
             _pendingDeletedTransactions.RemoveAll(t => SameTransactionDelete(t, deleteIntent));
@@ -1292,6 +1294,40 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
         ScheduleSyncSoon();
     }
+
+    private async Task RestoreMatchedBillAdjustmentsAsync(int billId)
+    {
+        var statuses = BillStatuses
+            .Where(s => s.BillId == billId &&
+                s.MatchedTransactionId is not null &&
+                !string.IsNullOrWhiteSpace(s.OriginalTransactionDescription))
+            .ToList();
+        foreach (var status in statuses)
+        {
+            var transaction = Transactions.FirstOrDefault(t => t.Id == status.MatchedTransactionId);
+            if (transaction is null) continue;
+
+            transaction.Description = status.OriginalTransactionDescription!;
+            if (status.OriginalTransactionCategoryId is not null)
+            {
+                transaction.CategoryId = status.OriginalTransactionCategoryId.Value;
+                transaction.CategoryName = Categories.FirstOrDefault(c => c.Id == transaction.CategoryId)?.Name ?? transaction.CategoryName;
+            }
+
+            transaction.TransferId = Guid.TryParse(status.OriginalTransactionTransferId, out var transferId)
+                ? transferId
+                : null;
+            await db.PutAsync("transactions", transaction);
+            QueueUpdatedTransaction(transaction);
+            await db.SetTransactionOverrideAsync(transaction);
+        }
+    }
+
+    private static bool IsGeneratedBalanceAdjustment(Transaction transaction) =>
+        transaction.UpTransactionId is null &&
+        (transaction.TransferId == Guid.Empty ||
+            transaction.Description.Equals("Up balance adjustment", StringComparison.OrdinalIgnoreCase) ||
+            transaction.CategoryName.Equals("Balance Adjustment", StringComparison.OrdinalIgnoreCase));
 
     public async Task MarkBillPaidAsync(int billId, bool paid)
     {

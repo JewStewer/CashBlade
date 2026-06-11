@@ -128,6 +128,8 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                 url = page.Links.Next;
             }
 
+            await RestoreOrphanedBillAdjustmentsAsync(categories, transactions, bills);
+
             foreach (var upAccount in upAccounts)
             {
                 var account = GetOrCreateAccount(
@@ -241,11 +243,57 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         {
             var transaction = FindTransaction(transactions, deleted);
             if (transaction is null) continue;
+            if (IsGeneratedBalanceAdjustment(transaction)) continue;
 
             transactions.Remove(transaction);
             await db.DeleteAsync("transactions", transaction.Id);
         }
     }
+
+    private async Task RestoreOrphanedBillAdjustmentsAsync(
+        List<Category> categories,
+        List<Transaction> transactions,
+        List<Bill> bills)
+    {
+        var balanceAdjustmentCategory = GetOrCreateCategory(categories, "Balance Adjustment", CategoryType.Expense);
+        foreach (var transaction in transactions.Where(IsOrphanedBillAdjustmentCandidate).ToList())
+        {
+            var transactionKey = GetMerchantKey(transaction.Description);
+            var stillHasMatchingBill = !string.IsNullOrWhiteSpace(transactionKey) &&
+                bills.Any(b =>
+                    b.AccountId == transaction.AccountId &&
+                    Math.Abs(b.AmountCents - Math.Abs(transaction.AmountCents)) <= 1 &&
+                    string.Equals(GetMerchantKey(b.Name), transactionKey, StringComparison.OrdinalIgnoreCase));
+            if (stillHasMatchingBill)
+            {
+                continue;
+            }
+
+            transaction.Description = "Up balance adjustment";
+            transaction.CategoryId = balanceAdjustmentCategory.Id;
+            transaction.CategoryName = balanceAdjustmentCategory.Name;
+            transaction.TransferId = Guid.Empty;
+            await db.PutAsync("transactions", transaction);
+        }
+    }
+
+    private static bool IsOrphanedBillAdjustmentCandidate(Transaction transaction) =>
+        transaction.AmountCents < 0 &&
+        transaction.UpTransactionId is null &&
+        transaction.TransferId is null &&
+        !string.IsNullOrWhiteSpace(transaction.AccountName) &&
+        string.Equals(transaction.CategoryName, transaction.AccountName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGeneratedBalanceAdjustment(Transaction transaction) =>
+        transaction.UpTransactionId is null &&
+        (transaction.TransferId == Guid.Empty ||
+            transaction.Description.Equals("Up balance adjustment", StringComparison.OrdinalIgnoreCase) ||
+            transaction.CategoryName.Equals("Balance Adjustment", StringComparison.OrdinalIgnoreCase));
+
+    private static string GetMerchantKey(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : new string(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     private static Transaction? FindTransaction(List<Transaction> transactions, Transaction updated)
     {
