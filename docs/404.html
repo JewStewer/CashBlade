@@ -35,9 +35,18 @@
     <script>
         window.financeBlade = {
             scrollPageToTop: () => {
-                requestAnimationFrame(() => {
-                    document.querySelector('.page-content')?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+                const reset = () => {
+                    const page = document.querySelector('.page-content');
+                    if (page) page.scrollTop = 0;
                     window.scrollTo(0, 0);
+                    document.documentElement.scrollTop = 0;
+                    document.body.scrollTop = 0;
+                };
+                reset();
+                requestAnimationFrame(() => {
+                    reset();
+                    requestAnimationFrame(reset);
                 });
             }
         };

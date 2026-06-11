@@ -12,7 +12,10 @@
     <!-- App version / force update -->
     <div class="card" style="border-color:rgba(99,102,241,0.4)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <div style="font-size:14px;font-weight:600">App Update</div>
+            <div>
+                <div style="font-size:14px;font-weight:600">App Update</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">@AppVersion</div>
+            </div>
             @if (_updateDone)
             {
                 <span class="badge badge-green">✓ Reloading…</span>
@@ -57,6 +60,16 @@
         <button class="btn btn-primary btn-full" @onclick="DoAutoSync" disabled="@(Sync.IsSyncing || UpSync.IsSyncing)">
             @((Sync.IsSyncing || UpSync.IsSyncing) ? "Syncing..." : "Sync Now")
         </button>
+
+        @if (manualSyncActive)
+        {
+            <div style="margin-top:10px">
+                <div class="sync-progress-track">
+                    <div class="sync-progress-fill" style="width:@manualSyncProgress%"></div>
+                </div>
+                <div style="margin-top:6px;font-size:12px;color:var(--text3)">@manualSyncStep</div>
+            </div>
+        }
 
         @if (!string.IsNullOrEmpty(syncStatus))
         {
@@ -264,12 +277,12 @@
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px">About</div>
         <div style="font-size:13px;color:var(--text3)">Finance Blade Mobile — offline-first, syncs via Supabase</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Built @BuildDate</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">@AppVersion</div>
     </div>
 </div>
 
 @code {
-    private static readonly string BuildDate = DateTime.Now.ToString("dd MMM yyyy HH:mm");
+    private const string AppVersion = "v2026.06.11.3";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -290,6 +303,9 @@
     private string _pushStatus = string.Empty, _pushStatusColor = "var(--text3)";
     private string _localNotificationStatus = string.Empty, _localNotificationStatusColor = "var(--text3)";
     private string vapidPublicKey = string.Empty;
+    private bool manualSyncActive;
+    private int manualSyncProgress;
+    private string manualSyncStep = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -306,6 +322,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        await JS.InvokeVoidAsync("financeBlade.scrollPageToTop");
         try
         {
             _pushSupported = await JS.InvokeAsync<bool>("pushNotifications.isSupported");
@@ -319,7 +336,8 @@
 
     private async Task DoAutoSync()
     {
-        syncStatus = "Syncing...";
+        StartManualSyncProgress("Preparing sync...", 8);
+        syncStatus = string.Empty;
         syncStatusColor = "var(--text3)";
         await RefreshLocalIntentCountsAsync();
         StateHasChanged();
@@ -327,12 +345,17 @@
         var token = await UpSync.GetAccessTokenAsync();
         if (!string.IsNullOrWhiteSpace(token))
         {
+            SetManualSyncProgress("Importing from Up Bank...", 35);
             var result = await UpSync.SyncAsync();
+            SetManualSyncProgress("Reloading local data...", 72);
             await State.LoadAsync();
             if (result is not null)
             {
                 if (result.CloudSnapshotPushed)
+                {
+                    SetManualSyncProgress("Marking changes synced...", 88);
                     await State.MarkPendingChangesSyncedAsync();
+                }
                 syncStatus = result.CloudSnapshotPushed
                     ? $"Synced Up Bank: imported {result.ImportedTransactions}, adjustments {result.BalanceAdjustments}, matched bills {result.MatchedBills}."
                     : $"Imported from Up Bank, but cloud push did not complete.";
@@ -348,13 +371,36 @@
         }
         else
         {
+            SetManualSyncProgress("Pushing and pulling changes...", 45);
             await State.SyncAndReloadAsync();
             syncStatus = string.IsNullOrEmpty(Sync.LastError)
                 ? $"Synced at {DateTime.Now:HH:mm}."
                 : "Sync failed.";
             syncStatusColor = string.IsNullOrEmpty(Sync.LastError) ? "var(--green)" : "var(--red)";
         }
+        CompleteManualSyncProgress(string.IsNullOrEmpty(Sync.LastError) && string.IsNullOrEmpty(UpSync.LastError) ? "Done" : "Finished with an issue");
+        await RefreshLocalIntentCountsAsync();
         StateHasChanged();
+    }
+
+    private void StartManualSyncProgress(string step, int progress)
+    {
+        manualSyncActive = true;
+        manualSyncStep = step;
+        manualSyncProgress = progress;
+    }
+
+    private void SetManualSyncProgress(string step, int progress)
+    {
+        manualSyncStep = step;
+        manualSyncProgress = progress;
+        StateHasChanged();
+    }
+
+    private void CompleteManualSyncProgress(string step)
+    {
+        manualSyncStep = step;
+        manualSyncProgress = 100;
     }
 
     private async Task TestSupabase()
