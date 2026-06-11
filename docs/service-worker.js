@@ -69,8 +69,20 @@ self.addEventListener('fetch', event => {
             }
         }
 
-        // For assets (JS, DLLs, CSS): cache first, fall back to network
+        // Framework files change together. Prefer the network so iOS does not mix
+        // a fresh boot manifest with stale/corrupt cached WASM after an update.
+        if (new URL(event.request.url).pathname.includes('/_framework/')) {
+            try {
+                const response = await fetch(event.request);
+                if (response.ok) {
+                    cache.put(event.request, response.clone()).catch(() => {});
+                    return response;
+                }
+            } catch {}
+        }
+
+        // For other assets: cache first, fall back to network
         return (await cache.match(event.request)) ?? fetch(event.request);
     })());
 });
-/* Manifest version: NVYYpHEy */
+/* Manifest version: vbffZYQC */
