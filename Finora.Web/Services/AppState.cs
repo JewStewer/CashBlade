@@ -717,11 +717,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (t is null) return;
         t.IsUnnecessary = !t.IsUnnecessary;
         await db.PutAsync("transactions", t);
-        if (transactionId > 0)
-        {
-            QueueUpdatedTransaction(t);
-            await db.SetTransactionOverrideAsync(t);
-        }
+        QueueUpdatedTransaction(t);
+        await db.SetTransactionOverrideAsync(t);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -733,11 +730,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (t is null) return;
         ApplyTransactionEdit(t, updated);
         await db.PutAsync("transactions", t);
-        if (t.Id > 0)
-        {
-            QueueUpdatedTransaction(t);
-            await db.SetTransactionOverrideAsync(t);
-        }
+        QueueUpdatedTransaction(t);
+        await db.SetTransactionOverrideAsync(t);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -782,11 +776,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         t.CategoryId = categoryId;
         t.CategoryName = Categories.FirstOrDefault(c => c.Id == categoryId)?.Name ?? "";
         await db.PutAsync("transactions", t);
-        if (transactionId > 0)
-        {
-            QueueUpdatedTransaction(t);
-            await db.SetTransactionOverrideAsync(t);
-        }
+        QueueUpdatedTransaction(t);
+        await db.SetTransactionOverrideAsync(t);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -797,15 +788,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         var deleted = Transactions.FirstOrDefault(t => t.Id == id);
         Transactions.RemoveAll(t => t.Id == id);
         if (id > 0)
-        {
             _pendingDeletedTransactionIds.Add(id);
-            if (deleted is not null)
-            {
-                var deleteIntent = ToTransactionDelete(deleted);
-                _pendingDeletedTransactions.RemoveAll(t => SameTransactionDelete(t, deleteIntent));
-                _pendingDeletedTransactions.Add(deleteIntent);
-                await db.SetTransactionDeleteAsync(deleteIntent);
-            }
+
+        if (deleted is not null)
+        {
+            var deleteIntent = ToTransactionDelete(deleted);
+            _pendingDeletedTransactions.RemoveAll(t => SameTransactionDelete(t, deleteIntent));
+            _pendingDeletedTransactions.Add(deleteIntent);
+            await db.SetTransactionDeleteAsync(deleteIntent);
         }
         await db.DeleteAsync("transactions", id);
         await db.ClearTransactionOverrideAsync(id);
@@ -902,7 +892,6 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private void QueueUpdatedTransaction(Transaction transaction)
     {
-        if (transaction.Id <= 0) return;
         _pendingUpdatedTransactions.RemoveAll(t => t.Id == transaction.Id);
         _pendingUpdatedTransactions.Add(transaction);
     }
