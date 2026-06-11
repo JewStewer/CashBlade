@@ -448,7 +448,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public (DateTime from, DateTime to) GetCurrentPayCycle()
     {
-        const int cycleDays = 14;
+        const int cycleDays = 7;
         var today = DateTime.Today;
         var nextPayday = NextPayDate.Date;
         while (nextPayday < today)
