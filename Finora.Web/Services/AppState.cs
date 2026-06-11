@@ -684,6 +684,66 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
     }
 
+    // ── Merge phone-side pending changes into the cloud's finance_sync ────────
+    // snapshot, so the cloud stays current even if the PC never drains
+    // phone_push. Phone-created rows keep their negative temp IDs here; when
+    // WPF next runs, ApplyPhonePushAsync assigns them real IDs and WPF's next
+    // push naturally supersedes these entries (no duplicates, since
+    // _pendingXxx is cleared before this is called).
+    private async Task<SyncPayload?> BuildMergedCloudPayloadAsync(PushPayload push)
+    {
+        var cloud = await sync.FetchCloudPayloadAsync();
+        if (cloud is null) return null;
+
+        cloud.Transactions.RemoveAll(t => push.DeletedTransactionIds.Contains(t.Id));
+        foreach (var u in push.UpdatedTransactions)
+        {
+            var existing = cloud.Transactions.FirstOrDefault(t => t.Id == u.Id);
+            if (existing is null) continue;
+            existing.Description = u.Description;
+            existing.AmountCents = u.AmountCents;
+            existing.Date = u.Date;
+            existing.AccountId = u.AccountId;
+            existing.CategoryId = u.CategoryId;
+            existing.IsUnnecessary = u.IsUnnecessary;
+        }
+        cloud.Transactions.AddRange(push.NewTransactions);
+
+        foreach (var u in push.UpdatedBills)
+        {
+            var existing = cloud.Bills.FirstOrDefault(b => b.Id == u.Id);
+            if (existing is null) continue;
+            existing.Name = u.Name;
+            existing.AccountId = u.AccountId;
+            existing.AmountCents = u.AmountCents;
+            existing.DueDate = u.DueDate;
+            existing.Frequency = u.Frequency;
+            existing.IsAutoPay = u.IsAutoPay;
+        }
+        cloud.Bills.AddRange(push.NewBills);
+
+        foreach (var s in push.UpdatedBillStatuses)
+        {
+            var existing = cloud.BillOccurrenceStatuses
+                .FirstOrDefault(x => x.BillId == s.BillId && x.DueDate.Date == s.DueDate.Date);
+            if (existing is not null)
+            {
+                existing.IsPaid = s.IsPaid;
+                existing.PaidOn = s.PaidOn;
+            }
+            else
+            {
+                cloud.BillOccurrenceStatuses.Add(s);
+            }
+
+            var bill = cloud.Bills.FirstOrDefault(b => b.Id == s.BillId);
+            if (bill is not null) bill.IsPaid = s.IsPaid;
+        }
+
+        cloud.SyncedAt = DateTime.UtcNow;
+        return cloud;
+    }
+
     public async Task SyncAndReloadAsync()
     {
         // Push any phone-side changes — Wi-Fi first, Supabase as fallback
@@ -704,7 +764,21 @@ public class AppState(IndexedDbService db, SyncService sync)
                 pushed = await sync.PushToPcAsync(push);
 
             if (!pushed && sync.HasCloudSync)
+            {
                 pushed = await sync.PushToSupabaseAsync(push);
+
+                // Also merge straight into finance_sync (the canonical cloud
+                // snapshot) so the cloud is current even if the PC never comes
+                // back online to drain phone_push. Best-effort: phone_push
+                // above is what WPF reconciles from, so a failure here can't
+                // regress anything.
+                if (pushed)
+                {
+                    var merged = await BuildMergedCloudPayloadAsync(push);
+                    if (merged is not null)
+                        await sync.PushFullSyncAsync(merged);
+                }
+            }
 
             if (pushed)
             {

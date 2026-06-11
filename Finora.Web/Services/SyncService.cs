@@ -188,6 +188,60 @@ public class SyncService(HttpClient http, IndexedDbService db)
         catch { return false; }
     }
 
+    // ── Fetch the current finance_sync payload without touching IndexedDB ────
+    // Used to merge phone-side pending changes directly into the cloud snapshot.
+    public async Task<SyncPayload?> FetchCloudPayloadAsync()
+    {
+        if (!HasCloudSync) return null;
+        try
+        {
+            var baseUrl = NormaliseUrl(SupabaseUrl!);
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                $"{baseUrl}/rest/v1/finance_sync?id=eq.main&select=payload");
+            AddSupabaseHeaders(req, SupabaseKey!);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var resp = await http.SendAsync(req, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+
+            var body = await resp.Content.ReadAsStringAsync();
+            var rows = JsonSerializer.Deserialize<List<SupabaseRow>>(body, _opts);
+            if (rows is null || rows.Count == 0 || string.IsNullOrWhiteSpace(rows[0].Payload)) return null;
+
+            return JsonSerializer.Deserialize<SyncPayload>(rows[0].Payload, _opts);
+        }
+        catch { return null; }
+    }
+
+    // ── Push a merged full snapshot directly to finance_sync (the canonical ──
+    // cloud state). Lets the phone keep the cloud current even if the PC never
+    // comes back online; PushToSupabaseAsync (phone_push) still lets WPF
+    // reconcile phone-assigned temp IDs whenever it's next opened.
+    public async Task<bool> PushFullSyncAsync(SyncPayload payload)
+    {
+        if (!HasCloudSync) return false;
+        try
+        {
+            var baseUrl = NormaliseUrl(SupabaseUrl!);
+            var json = JsonSerializer.Serialize(new
+            {
+                id = "main",
+                payload = JsonSerializer.Serialize(payload, _opts),
+                synced_at = DateTime.UtcNow
+            }, _opts);
+            var req = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/rest/v1/finance_sync")
+            {
+                Content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json")
+            };
+            AddSupabaseHeaders(req, SupabaseKey!);
+            req.Headers.Add("Prefer", "resolution=merge-duplicates");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var resp = await http.SendAsync(req, cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     // ── Save push subscription to Supabase ───────────────────────────────────
     public async Task<bool> SavePushSubscriptionAsync(string subscriptionJson)
     {
