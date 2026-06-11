@@ -1,4 +1,5 @@
 @inject AppState State
+@inject IJSRuntime JS
 
 <div class="modal-backdrop" @onclick="Close">
     <div class="modal-sheet" @onclick:stopPropagation>
@@ -44,6 +45,20 @@
                 <input type="checkbox" id="autoPay" @bind="isAutoPay" style="width:18px;height:18px;accent-color:var(--teal)" />
                 <label for="autoPay" style="font-size:14px;color:var(--text2)">Auto-pay</label>
             </div>
+            @if (IsNew)
+            {
+                <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
+                    <input type="checkbox" id="isInstallment" @bind="isInstallment" style="width:18px;height:18px;accent-color:var(--teal)" />
+                    <label for="isInstallment" style="font-size:14px;color:var(--text2)">Track as installment debt</label>
+                </div>
+                @if (isInstallment)
+                {
+                    <div>
+                        <label class="form-label">Total installment balance ($)</label>
+                        <input class="form-input" type="number" step="0.01" @bind="installmentTotal" placeholder="0.00" />
+                    </div>
+                }
+            }
         </div>
 
         @if (!string.IsNullOrEmpty(error))
@@ -52,6 +67,10 @@
         }
 
         <div style="padding:14px 16px;display:flex;gap:8px">
+            @if (!IsNew)
+            {
+                <button class="btn btn-danger" @onclick="Delete" disabled="@saving">Delete</button>
+            }
             <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
             <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
                 @(saving ? "Saving…" : (IsNew ? "Add" : "Save"))
@@ -64,13 +83,16 @@
     [Parameter] public Bill? Bill { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public decimal? InstallmentTotalDollars { get; set; }
 
     private string name = string.Empty;
     private decimal amount;
+    private decimal installmentTotal;
     private DateTime dueDate = DateTime.Today;
     private BillFrequency frequency = BillFrequency.Monthly;
     private int accountId;
     private bool isAutoPay;
+    private bool isInstallment;
     private string error = string.Empty;
     private bool saving;
 
@@ -90,6 +112,8 @@
         else
         {
             accountId = State.Accounts.FirstOrDefault()?.Id ?? 0;
+            isInstallment = InstallmentTotalDollars is > 0;
+            installmentTotal = InstallmentTotalDollars ?? 0;
         }
     }
 
@@ -99,6 +123,8 @@
         if (string.IsNullOrWhiteSpace(name)) { error = "Name is required."; return; }
         if (amount <= 0) { error = "Enter a positive amount."; return; }
         if (accountId == 0) { error = "Select an account."; return; }
+        if (IsNew && isInstallment && installmentTotal <= 0) { error = "Enter the total installment balance."; return; }
+        if (IsNew && isInstallment && installmentTotal < amount) { error = "Total balance should be at least the bill amount."; return; }
 
         saving = true;
         var b = new Bill
@@ -113,10 +139,27 @@
         };
 
         if (IsNew)
-            await State.AddBillAsync(b);
+        {
+            if (isInstallment)
+                await State.AddInstallmentBillAsync(b, installmentTotal);
+            else
+                await State.AddBillAsync(b);
+        }
         else
             await State.UpdateBillAsync(b);
 
+        saving = false;
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task Delete()
+    {
+        if (Bill is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"Delete \"{Bill.Name}\"? This can't be undone."))
+            return;
+
+        saving = true;
+        await State.DeleteBillAsync(Bill.Id);
         saving = false;
         await OnSaved.InvokeAsync();
     }

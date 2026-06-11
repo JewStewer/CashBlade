@@ -12,6 +12,7 @@ public class SavingsGoalWindow : Window
     private readonly TextBox _targetBox = new();
     private readonly TextBox _currentBox = new();
     private readonly DatePicker _targetDatePicker = new();
+    private readonly ComboBox _accountBox = new();
     private readonly TextBlock _weeklyRequiredText = new();
 
     public SavingsGoalWindow(int? goalId = null)
@@ -39,6 +40,7 @@ public class SavingsGoalWindow : Window
         AddField(panel, "Current amount", _currentBox);
         AddField(panel, "Target amount", _targetBox);
         AddDateField(panel, "Target date", _targetDatePicker);
+        AddAccountField(panel);
 
         _weeklyRequiredText.Text = "Weekly amount: enter a target amount and date";
         _weeklyRequiredText.FontWeight = FontWeights.SemiBold;
@@ -75,6 +77,23 @@ public class SavingsGoalWindow : Window
         panel.Children.Add(picker);
     }
 
+    private void AddAccountField(Panel panel)
+    {
+        panel.Children.Add(new TextBlock { Text = "Savings account target", Margin = new Thickness(0, 8, 0, 3) });
+        using var db = new FinoraDbContext();
+        var options = new List<AccountOption> { new(0, "No linked account") };
+        options.AddRange(db.Accounts
+            .Where(a => a.Type == AccountType.Savings)
+            .OrderBy(a => a.Name)
+            .Select(a => new AccountOption(a.Id, a.Name)));
+        _accountBox.ItemsSource = options;
+        _accountBox.SelectedValuePath = nameof(AccountOption.Id);
+        _accountBox.DisplayMemberPath = nameof(AccountOption.Name);
+        _accountBox.Height = 32;
+        _accountBox.SelectedValue = options.Count == 2 ? options[1].Id : 0;
+        panel.Children.Add(_accountBox);
+    }
+
     private void LoadGoal(int id)
     {
         using var db = new FinoraDbContext();
@@ -90,6 +109,7 @@ public class SavingsGoalWindow : Window
         _targetBox.Text = goal.TargetDollars.ToString("0.00");
         _currentBox.Text = goal.CurrentDollars.ToString("0.00");
         _targetDatePicker.SelectedDate = goal.TargetDate;
+        SelectMatchingSavingsAccount(goal);
         UpdateWeeklyRequired();
     }
 
@@ -132,9 +152,50 @@ public class SavingsGoalWindow : Window
             db.SavingsGoals.Add(goal);
         }
 
+        ApplyLinkedAccountTarget(db, name, target, current, targetDate.Value);
         db.SaveChanges();
         DialogResult = true;
         Close();
+    }
+
+    private void SelectMatchingSavingsAccount(SavingsGoal goal)
+    {
+        using var db = new FinoraDbContext();
+        var matchingAccount = db.Accounts
+            .Where(a => a.Type == AccountType.Savings && a.TargetCents == goal.TargetCents)
+            .AsEnumerable()
+            .FirstOrDefault(a =>
+                string.Equals(a.Name, goal.Name, StringComparison.OrdinalIgnoreCase) ||
+                a.TargetDate?.Date == goal.TargetDate?.Date);
+
+        if (matchingAccount is not null)
+        {
+            _accountBox.SelectedValue = matchingAccount.Id;
+        }
+    }
+
+    private void ApplyLinkedAccountTarget(FinoraDbContext db, string name, decimal target, decimal current, DateTime targetDate)
+    {
+        if (_accountBox.SelectedValue is not int accountId || accountId <= 0)
+        {
+            return;
+        }
+
+        var account = db.Accounts.FirstOrDefault(a => a.Id == accountId && a.Type == AccountType.Savings);
+        if (account is null)
+        {
+            return;
+        }
+
+        account.TargetDollars = target;
+        account.TargetDate = targetDate;
+        account.TargetStartDate = DateTime.Today;
+        account.TargetStartingBalanceDollars = current;
+
+        if (string.Equals(account.Name, "Savings", StringComparison.OrdinalIgnoreCase))
+        {
+            account.Name = name;
+        }
     }
 
     private void UpdateWeeklyRequired()
@@ -171,4 +232,6 @@ public class SavingsGoalWindow : Window
         var weeks = Math.Max((decimal)days / 7m, 1m);
         return Math.Ceiling((remaining / weeks) * 100m) / 100m;
     }
+
+    private sealed record AccountOption(int Id, string Name);
 }

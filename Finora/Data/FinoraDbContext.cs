@@ -7,6 +7,11 @@ namespace Finora.Data;
 
 public class FinoraDbContext : DbContext
 {
+    // Raised after a save that actually persisted changes, so SupabaseSyncService
+    // can push to the cloud shortly after an edit instead of waiting for its
+    // 5-minute timer — mirrors the phone's debounced ScheduleSyncSoon().
+    public static event Action? Changed;
+
     private const string CurrentAppDataFolderName = "Cashglade";
     private const string LegacyAppDataFolderName = "Finora";
     private const string DatabaseFileName = "cashglade.db";
@@ -47,6 +52,22 @@ public class FinoraDbContext : DbContext
         }
 
         optionsBuilder.UseSqlite($"Data Source={dbPath}");
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        var hasChanges = ChangeTracker.HasChanges();
+        var result = base.SaveChanges(acceptAllChangesOnSuccess);
+        if (hasChanges) Changed?.Invoke();
+        return result;
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        var hasChanges = ChangeTracker.HasChanges();
+        var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        if (hasChanges) Changed?.Invoke();
+        return result;
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

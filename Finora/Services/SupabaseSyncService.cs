@@ -23,6 +23,8 @@ public static class SupabaseSyncService
 
     private static SupabaseConfig? _config;
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static volatile bool _pushInProgress;
+    private static CancellationTokenSource? _debounceCts;
 
     public static void Start()
     {
@@ -34,6 +36,8 @@ public static class SupabaseSyncService
         }
 
         Log($"Cloud sync enabled. Pushing to {_config.Url} every 5 minutes.");
+
+        FinoraDbContext.Changed += OnLocalChange;
 
         _ = Task.Run(async () =>
         {
@@ -47,9 +51,35 @@ public static class SupabaseSyncService
         });
     }
 
+    // Edits anywhere in the app raise FinoraDbContext.Changed. Debounce a few
+    // seconds so a burst of saves results in one push, then push so the
+    // change reaches iOS without waiting for the 5-minute timer.
+    private static void OnLocalChange()
+    {
+        if (_config is null || _pushInProgress) return;
+
+        _debounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _debounceCts = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3), cts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+            await PushAsync();
+        });
+    }
+
     public static async Task PushAsync()
     {
-        if (_config is null) return;
+        if (_config is null || _pushInProgress) return;
+        _pushInProgress = true;
         try
         {
             Log("Cloud sync push started.");
@@ -91,6 +121,10 @@ public static class SupabaseSyncService
         catch (Exception ex)
         {
             Log($"Cloud sync push error: {ex.Message}");
+        }
+        finally
+        {
+            _pushInProgress = false;
         }
     }
 
@@ -186,13 +220,45 @@ public static class SupabaseSyncService
                 if (bill is not null) bill.IsPaid = s.IsPaid;
             }
 
+            // New debts from phone (negative temp IDs, get real IDs on save)
+            var debtIdMap = new Dictionary<int, Debt>();
+            foreach (var d in push.NewDebts)
+            {
+                var entity = new Debt
+                {
+                    Name = d.Name, BalanceCents = d.BalanceCents,
+                    MinimumPaymentCents = d.MinimumPaymentCents, PaymentPeriod = d.PaymentPeriod,
+                    InterestRate = d.InterestRate, OriginalBalanceCents = d.OriginalBalanceCents,
+                    UpPaymentMatchText = d.UpPaymentMatchText
+                };
+                db.Debts.Add(entity);
+                debtIdMap[d.Id] = entity;
+            }
+
+            // Updated debts from phone (balance changes from bill payments)
+            foreach (var d in push.UpdatedDebts.Where(x => x.Id > 0))
+            {
+                var existing = await db.Debts.FindAsync(d.Id);
+                if (existing is not null) existing.BalanceCents = d.BalanceCents;
+            }
+
             // New bills from phone
             foreach (var b in push.NewBills)
-                db.Bills.Add(new Bill
+            {
+                var entity = new Bill
                 {
                     Name = b.Name, AccountId = b.AccountId, AmountCents = b.AmountCents,
                     DueDate = b.DueDate, Frequency = (BillFrequency)(int)b.Frequency, IsAutoPay = b.IsAutoPay
-                });
+                };
+                if (b.DebtId is { } newBillDebtId)
+                {
+                    if (debtIdMap.TryGetValue(newBillDebtId, out var newDebtForBill))
+                        entity.Debt = newDebtForBill;
+                    else if (newBillDebtId > 0)
+                        entity.DebtId = newBillDebtId;
+                }
+                db.Bills.Add(entity);
+            }
 
             // Updated bills from phone
             foreach (var b in push.UpdatedBills.Where(x => x.Id > 0))
@@ -202,6 +268,51 @@ public static class SupabaseSyncService
                 existing.Name = b.Name; existing.AccountId = b.AccountId;
                 existing.AmountCents = b.AmountCents; existing.DueDate = b.DueDate;
                 existing.Frequency = (BillFrequency)(int)b.Frequency; existing.IsAutoPay = b.IsAutoPay;
+            }
+
+            // Deleted bills from phone
+            foreach (var id in push.DeletedBillIds.Where(id => id > 0))
+            {
+                var existing = await db.Bills.FindAsync(id);
+                if (existing is null) continue;
+                var statuses = await db.BillOccurrenceStatuses.Where(s => s.BillId == id).ToListAsync();
+                db.BillOccurrenceStatuses.RemoveRange(statuses);
+                db.Bills.Remove(existing);
+            }
+
+            // New debt payments from phone (negative temp IDs; DebtId may
+            // reference a debt created earlier in this same push)
+            foreach (var p in push.NewDebtPayments)
+            {
+                var entity = new DebtPayment
+                {
+                    UpTransactionId = p.UpTransactionId, AmountCents = p.AmountCents,
+                    PaidOn = DateTime.SpecifyKind(p.PaidOn.Date, DateTimeKind.Unspecified),
+                    Description = p.Description
+                };
+                if (debtIdMap.TryGetValue(p.DebtId, out var debtForPayment))
+                    entity.Debt = debtForPayment;
+                else
+                    entity.DebtId = p.DebtId;
+                db.DebtPayments.Add(entity);
+            }
+
+            // Deleted debt payments from phone
+            foreach (var id in push.DeletedDebtPaymentIds.Where(id => id > 0))
+            {
+                var existing = await db.DebtPayments.FindAsync(id);
+                if (existing is not null) db.DebtPayments.Remove(existing);
+            }
+
+            // Updated accounts from phone (savings-goal targets)
+            foreach (var a in push.UpdatedAccounts.Where(x => x.Id > 0))
+            {
+                var existing = await db.Accounts.FindAsync(a.Id);
+                if (existing is null) continue;
+                existing.TargetCents = a.TargetCents;
+                existing.TargetDate = a.TargetDate;
+                existing.TargetStartDate = a.TargetStartDate;
+                existing.TargetStartingBalanceCents = a.TargetStartingBalanceCents;
             }
 
             // Delete the phone_push row so it isn't applied again

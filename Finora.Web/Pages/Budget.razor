@@ -571,6 +571,8 @@
                     {
                         var currentBalance = State.GetAccountBalance(account.Id);
                         var projected = currentBalance + _affordAmount;
+                        var targetDate = DateTime.Today.AddDays(weeks * 7);
+                        var alreadyTracking = account.TargetCents is not null;
                         <div style="border-top:1px solid var(--border);margin-top:5px;padding-top:8px">
                             <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                                 <span style="color:var(--text3)">@account.Name now</span>
@@ -581,6 +583,13 @@
                                 <span style="font-weight:700;color:@(weeklySpare>=weeklyNeeded?"var(--green)":"var(--red)")">@projected.ToString("C")</span>
                             </div>
                         </div>
+                        <button class="btn btn-primary btn-sm btn-full" style="margin-top:10px" @onclick="() => SetSavingsGoalAsync(account.Id, projected, targetDate)">
+                            @(alreadyTracking ? "Update Account Goal" : "Track as Account Goal")
+                        </button>
+                        @if (alreadyTracking)
+                        {
+                            <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">@account.Name already has a tracked goal — this will replace it.</div>
+                        }
                     }
                 </div>
             }
@@ -674,6 +683,7 @@
     @if (_billDraft is not null)
     {
         <AddEditBillModal Bill="@_billDraft"
+            InstallmentTotalDollars="@_affordAmount"
             OnClose="() => _billDraft = null"
             OnSaved="() => _billDraft = null" />
     }
@@ -790,6 +800,11 @@
             _installmentFrequencyWeeks = weeks;
             await SaveAffordabilitySettingsAsync();
         }
+    }
+
+    private async Task SetSavingsGoalAsync(int accountId, decimal targetDollars, DateTime targetDate)
+    {
+        await State.SetAccountGoalAsync(accountId, targetDollars, targetDate);
     }
 
     private void StartAddInstallmentBill(decimal perInstallment, int freqWeeks)

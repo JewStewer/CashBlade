@@ -28,6 +28,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -79,6 +80,22 @@
             </StackPanel>
 
             <StackPanel Grid.Row="5" Margin="0,0,0,12">
+                <CheckBox x:Name="CreateInstallmentDebtBox"
+                          Content="Track this bill as an installment debt"
+                          Foreground="#334155"
+                          Checked="CreateInstallmentDebtBox_Changed"
+                          Unchecked="CreateInstallmentDebtBox_Changed"/>
+                <StackPanel x:Name="InstallmentTotalPanel" Margin="0,8,0,0" Visibility="Collapsed">
+                    <TextBlock Text="Total installment balance" Foreground="#334155"/>
+                    <TextBox x:Name="InstallmentTotalBox"
+                             Height="36"
+                             Margin="0,5,0,0"
+                             Padding="9,6"
+                             ToolTip="The full remaining balance; each paid bill reduces this debt."/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Row="6" Margin="0,0,0,12">
                 <TextBlock Text="Due date" Foreground="#334155"/>
                 <DatePicker x:Name="DueDatePicker"
                             Height="36"
@@ -86,12 +103,12 @@
                             SelectedDate="{x:Static sys:DateTime.Today}"/>
             </StackPanel>
 
-            <StackPanel Grid.Row="6" Margin="0,0,0,12">
+            <StackPanel Grid.Row="7" Margin="0,0,0,12">
                 <TextBlock Text="Frequency" Foreground="#334155"/>
                 <ComboBox x:Name="FrequencyBox" Height="36" Margin="0,5,0,0"/>
             </StackPanel>
 
-            <StackPanel Grid.Row="7" Orientation="Horizontal" Margin="0,0,0,12">
+            <StackPanel Grid.Row="8" Orientation="Horizontal" Margin="0,0,0,12">
                 <CheckBox x:Name="PaidBox"
                           Content="Paid"
                           Foreground="#334155"
@@ -101,7 +118,7 @@
                           Foreground="#334155"/>
             </StackPanel>
 
-            <StackPanel Grid.Row="8" Margin="0,0,0,12">
+            <StackPanel Grid.Row="9" Margin="0,0,0,12">
                 <TextBlock Text="Payment match text" Foreground="#334155"/>
                 <TextBox x:Name="PaymentMatchTextBox"
                          Height="36"
@@ -110,16 +127,27 @@
                          ToolTip="Optional text that can appear on payments for this bill"/>
             </StackPanel>
 
-            <TextBlock Grid.Row="9"
+            <TextBlock Grid.Row="10"
                        Text="If the due date is before the next payday, Cashglade counts any shortfall as money needed right now."
                        TextWrapping="Wrap"
                        Foreground="#64748B"
                        Margin="0,4,0,0"/>
 
-            <StackPanel Grid.Row="10"
+            <StackPanel Grid.Row="11"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         Margin="0,20,0,0">
+                <Button x:Name="DeleteButton"
+                        Content="Delete"
+                        Width="94"
+                        Height="36"
+                        Margin="0,0,10,0"
+                        Click="Delete_Click"
+                        Background="#991B1B"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Visibility="Collapsed"/>
+
                 <Button Content="Cancel"
                         Width="94"
                         Height="36"

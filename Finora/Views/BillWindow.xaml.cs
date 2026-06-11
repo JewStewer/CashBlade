@@ -27,6 +27,8 @@ public partial class BillWindow : Window
         _billId = billId;
         Title = "Edit Bill";
         HeaderText.Text = "Edit Bill";
+        DeleteButton.Visibility = Visibility.Visible;
+        CreateInstallmentDebtBox.IsEnabled = false;
         LoadBill(billId);
     }
 
@@ -173,7 +175,7 @@ public partial class BillWindow : Window
 
         bill.Name = name;
         bill.AccountId = accountId;
-        bill.DebtId = DebtBox.SelectedValue is int debtId && debtId > 0 ? debtId : null;
+        bill.DebtId = GetSelectedDebtId();
         bill.AmountDollars = amount;
         bill.PaymentMatchText = PaymentMatchTextBox.Text.Trim();
         bill.IsAutoPay = AutoPayBox.IsChecked == true;
@@ -197,6 +199,33 @@ public partial class BillWindow : Window
 
         if (_billId is null)
         {
+            if (CreateInstallmentDebtBox.IsChecked == true)
+            {
+                if (!decimal.TryParse(InstallmentTotalBox.Text, out var installmentTotal) || installmentTotal <= 0)
+                {
+                    MessageBox.Show("Enter a positive total installment balance.");
+                    return;
+                }
+
+                if (installmentTotal < amount)
+                {
+                    MessageBox.Show("The total installment balance should be at least the bill amount.");
+                    return;
+                }
+
+                var debt = new Debt
+                {
+                    Name = name,
+                    BalanceDollars = installmentTotal,
+                    OriginalBalanceDollars = installmentTotal,
+                    MinimumPaymentDollars = amount,
+                    PaymentPeriod = GetPaymentPeriod(frequency),
+                    UpPaymentMatchText = PaymentMatchTextBox.Text.Trim()
+                };
+                db.Debts.Add(debt);
+                bill.Debt = debt;
+            }
+
             db.Bills.Add(bill);
         }
 
@@ -262,6 +291,26 @@ public partial class BillWindow : Window
         db.SaveChanges();
     }
 
+    private int? GetSelectedDebtId()
+    {
+        if (_billId is null && CreateInstallmentDebtBox.IsChecked == true)
+        {
+            return null;
+        }
+
+        return DebtBox.SelectedValue is int debtId && debtId > 0 ? debtId : null;
+    }
+
+    private static string GetPaymentPeriod(BillFrequency frequency) => frequency switch
+    {
+        BillFrequency.Weekly => "Weekly",
+        BillFrequency.Fortnightly => "Fortnightly",
+        BillFrequency.Monthly => "Monthly",
+        BillFrequency.Quarterly => "Quarterly",
+        BillFrequency.Yearly => "Yearly",
+        _ => "Weekly"
+    };
+
     private static string GetBillName(string description)
     {
         var cleaned = description.Trim();
@@ -273,6 +322,54 @@ public partial class BillWindow : Window
     {
         DialogResult = false;
         Close();
+    }
+
+    private void Delete_Click(object sender, RoutedEventArgs e)
+    {
+        if (_billId is null)
+        {
+            DialogResult = false;
+            Close();
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Delete \"{NameBox.Text.Trim()}\" and all of its occurrences?",
+            "Delete bill",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        using var db = new FinoraDbContext();
+        var bill = db.Bills.FirstOrDefault(b => b.Id == _billId.Value);
+        if (bill is null)
+        {
+            MessageBox.Show("Bill not found.");
+            return;
+        }
+
+        var statuses = db.BillOccurrenceStatuses.Where(s => s.BillId == bill.Id).ToList();
+        db.BillOccurrenceStatuses.RemoveRange(statuses);
+        db.Bills.Remove(bill);
+        db.SaveChanges();
+
+        DialogResult = true;
+        Close();
+    }
+
+    private void CreateInstallmentDebtBox_Changed(object sender, RoutedEventArgs e)
+    {
+        var isCreatingInstallmentDebt = CreateInstallmentDebtBox.IsChecked == true;
+        InstallmentTotalPanel.Visibility = isCreatingInstallmentDebt ? Visibility.Visible : Visibility.Collapsed;
+        DebtBox.IsEnabled = !isCreatingInstallmentDebt;
+        if (isCreatingInstallmentDebt)
+        {
+            DebtBox.SelectedValue = 0;
+        }
     }
 
     private sealed record DebtOption(int Id, string Name);

@@ -26,6 +26,12 @@ public class PushPayload
     public List<AppSetting> UpdatedSettings { get; set; } = new();
     public List<Bill> NewBills { get; set; } = new();
     public List<Bill> UpdatedBills { get; set; } = new();
+    public List<int> DeletedBillIds { get; set; } = new();
+    public List<Debt> NewDebts { get; set; } = new();
+    public List<Debt> UpdatedDebts { get; set; } = new();
+    public List<DebtPayment> NewDebtPayments { get; set; } = new();
+    public List<int> DeletedDebtPaymentIds { get; set; } = new();
+    public List<Account> UpdatedAccounts { get; set; } = new();
 }
 
 public class TransactionEdit
