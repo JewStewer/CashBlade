@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject AppState State
 @inject NavigationManager Nav
+@inject SyncService Sync
 @implements IDisposable
 
 <div class="app-shell">
@@ -116,6 +117,8 @@
 @code {
     private string? _initError;
     private bool _dismissedBillAlert;
+    private PeriodicTimer? _syncTimer;
+    private CancellationTokenSource? _syncCts;
 
     protected override void OnInitialized()
     {
@@ -127,6 +130,7 @@
         try
         {
             await State.LoadAsync();
+            StartBackgroundSync();
         }
         catch (Exception ex)
         {
@@ -138,9 +142,48 @@
     private async Task Retry()
     {
         _initError = null;
-        try { await State.LoadAsync(); }
+        try
+        {
+            await State.LoadAsync();
+            StartBackgroundSync();
+        }
         catch (Exception ex) { _initError = ex.Message; }
     }
 
-    public void Dispose() => State.OnChange -= StateHasChanged;
+    // Pull the latest data on open, then keep refreshing in the background —
+    // so the app stays current without a manual "Sync Now" or the PC running.
+    private void StartBackgroundSync()
+    {
+        if (!Sync.HasCloudSync && !Sync.HasLocalSync) return;
+
+        _ = SafeSyncAsync();
+
+        _syncCts = new CancellationTokenSource();
+        _syncTimer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+        _ = RunPeriodicSyncAsync(_syncTimer, _syncCts.Token);
+    }
+
+    private async Task RunPeriodicSyncAsync(PeriodicTimer timer, CancellationToken token)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+                await SafeSyncAsync();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task SafeSyncAsync()
+    {
+        try { await State.SyncAndReloadAsync(); }
+        catch { /* SyncService records LastError for the Settings page; nothing to do here */ }
+    }
+
+    public void Dispose()
+    {
+        State.OnChange -= StateHasChanged;
+        _syncCts?.Cancel();
+        _syncCts?.Dispose();
+        _syncTimer?.Dispose();
+    }
 }

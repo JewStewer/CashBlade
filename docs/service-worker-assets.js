@@ -1,4 +1,4 @@
-self.assetsManifest = {
+﻿self.assetsManifest = {
   "assets": [
     {
       "hash": "sha256-gvHfnndfEu1tRf0rFb5988rWq7ITIotOaE8+AMbKYbc=",
@@ -33,12 +33,12 @@ self.assetsManifest = {
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-foWilU0w+GVLdNgK4cwy+z712MGX7GH2HopazWxhgyc=",
+      "hash": "sha256-a3uVyH+8q7Kpgv2Qn89iA5\/WotXlIuirUgMfE5GUyiE=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-q4KkMnE8qnO+EOHDc421fWmS5eqaUrDdXgrGw8QUQ1U=",
-      "url": "_framework\/finora.web.wasm"
+      "hash": "sha256-Io1lWMHgO\/UZlffGjRf6NiIjyZyVteWBwUWwb8b1nDQ=",
+      "url": "_framework\/Finora.Web.wasm"
     },
     {
       "hash": "sha256-aYUQ6JQ4VCRdymEdS5aDZbqm0wHwzVsEjB19gS8Y\/2g=",
@@ -157,7 +157,7 @@ self.assetsManifest = {
       "url": "_framework\/System.ObjectModel.wasm"
     },
     {
-      "hash": "sha256-oU+bEbyps0Fur9q9cfnkOppX7u+FmDx92kbfZ7y5vOM=",
+      "hash": "sha256-G7J6cvB+R6SCNO+O9SPhbm26mwYkG4DxD9MG+y1NqNU=",
       "url": "_framework\/System.Private.CoreLib.wasm"
     },
     {
@@ -169,7 +169,7 @@ self.assetsManifest = {
       "url": "_framework\/System.Runtime.InteropServices.JavaScript.wasm"
     },
     {
-      "hash": "sha256-SH0tspEr\/uL+1lVrjTGdaG1lc6fAw29yjbyEi6pQnhs=",
+      "hash": "sha256-ulkfwMXFawym9DdgyzZWN0sFpkgOhf5aZoNU4DP\/+aE=",
       "url": "_framework\/System.Runtime.wasm"
     },
     {
@@ -217,5 +217,5 @@ self.assetsManifest = {
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "JfD+pa+Q"
+  "version": "Vn8vc8Ld"
 };
