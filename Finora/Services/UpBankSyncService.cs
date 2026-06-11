@@ -175,6 +175,7 @@ public class UpBankSyncService
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        RestoreOrphanedBillAdjustments(db);
         var balanceSync = await SyncAccountBalancesAsync(http, db, cancellationToken);
         accountBalanceAdjustments = balanceSync.Adjustments;
         renamedBillAdjustments = balanceSync.RenamedBillAdjustments;
@@ -187,6 +188,47 @@ public class UpBankSyncService
         await db.SaveChangesAsync(cancellationToken);
 
         return new UpBankSyncResult(imported, debtPayments, accountBalanceAdjustments, renamedBillAdjustments, ambiguousBillMatches);
+    }
+
+    private static void RestoreOrphanedBillAdjustments(FinoraDbContext db)
+    {
+        var balanceAdjustmentCategory = GetCategory(db, "Balance Adjustment");
+        var candidateTransactions = db.Transactions
+            .Include(t => t.Account)
+            .Include(t => t.Category)
+            .Where(t =>
+                t.AmountCents < 0 &&
+                t.UpTransactionId == null &&
+                t.TransferId == null &&
+                t.AccountId > 0)
+            .ToList();
+
+        foreach (var transaction in candidateTransactions)
+        {
+            var accountName = transaction.Account?.Name ?? string.Empty;
+            var categoryName = transaction.Category?.Name ?? string.Empty;
+            if (!string.Equals(categoryName, accountName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var transactionKey = TransactionClassification.GetMerchantKey(transaction.Description);
+            var stillHasMatchingBill = !string.IsNullOrWhiteSpace(transactionKey) &&
+                db.Bills
+                    .AsEnumerable()
+                    .Any(b =>
+                        b.AccountId == transaction.AccountId &&
+                        Math.Abs(b.AmountCents - Math.Abs(transaction.AmountCents)) <= 1 &&
+                        string.Equals(TransactionClassification.GetMerchantKey(b.Name), transactionKey, StringComparison.OrdinalIgnoreCase));
+            if (stillHasMatchingBill)
+            {
+                continue;
+            }
+
+            transaction.Description = "Up balance adjustment";
+            transaction.Category = balanceAdjustmentCategory;
+            transaction.TransferId = Guid.Empty;
+        }
     }
 
     private static async Task<(int Adjustments, int RenamedBillAdjustments, int AmbiguousBillMatches)> SyncAccountBalancesAsync(HttpClient http, FinoraDbContext db, CancellationToken cancellationToken)

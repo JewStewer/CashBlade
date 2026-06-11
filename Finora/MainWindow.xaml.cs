@@ -611,6 +611,7 @@ public partial class MainWindow : Window
             .Where(s => ids.Contains(s.BillId))
             .ToList();
 
+        RestoreMatchedBillAdjustments(db, statuses);
         db.BillOccurrenceStatuses.RemoveRange(statuses);
         db.Bills.RemoveRange(bills);
         db.SaveChanges();
@@ -630,6 +631,34 @@ public partial class MainWindow : Window
         ViewModel.SelectedBill = ViewModel.Bills[nextIndex];
         BillsGrid.SelectedItem = ViewModel.SelectedBill;
         BillsGrid.ScrollIntoView(ViewModel.SelectedBill);
+    }
+
+    private static void RestoreMatchedBillAdjustments(FinoraDbContext db, IEnumerable<Finora.Models.BillOccurrenceStatus> statuses)
+    {
+        foreach (var status in statuses)
+        {
+            if (status.MatchedTransactionId is not { } transactionId ||
+                string.IsNullOrWhiteSpace(status.OriginalTransactionDescription))
+            {
+                continue;
+            }
+
+            var transaction = db.Transactions.FirstOrDefault(t => t.Id == transactionId);
+            if (transaction is null)
+            {
+                continue;
+            }
+
+            transaction.Description = status.OriginalTransactionDescription;
+            if (status.OriginalTransactionCategoryId is not null)
+            {
+                transaction.CategoryId = status.OriginalTransactionCategoryId.Value;
+            }
+
+            transaction.TransferId = Guid.TryParse(status.OriginalTransactionTransferId, out var transferId)
+                ? transferId
+                : null;
+        }
     }
 
     private void All_Click(object sender, RoutedEventArgs e) => ViewModel.AllTransactions();
