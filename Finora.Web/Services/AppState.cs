@@ -17,6 +17,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     // Phone-only: transactions marked as lent (excluded from spending until repaid)
     public List<LentTransaction> LentTransactions { get; private set; } = new();
     private HashSet<int> _unrepaidLentIds = new();
+    private HashSet<int> _matchedInternalMovementIds = new();
 
     // ── Computed summaries ────────────────────────────────────────────────────
     public decimal TotalBalance { get; private set; }
@@ -147,6 +148,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         ComputeSettings();
         DenormaliseTransactions();
+        ComputeMatchedInternalMovements();
         DenormaliseBills();
         ComputeBalances();
         ComputeBudget();
@@ -188,6 +190,34 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             t.AccountName = accountMap.GetValueOrDefault(t.AccountId, "");
             t.CategoryName = catMap.GetValueOrDefault(t.CategoryId, "");
+        }
+    }
+
+    private void ComputeMatchedInternalMovements()
+    {
+        _matchedInternalMovementIds = new HashSet<int>();
+
+        var candidates = Transactions
+            .Where(t => t.AmountCents != 0
+                        && !TransactionClassification.IsInternalMovementCategory(t.CategoryName)
+                        && !TransactionClassification.HasLinkedTransferId(t)
+                        && TransactionClassification.IsInternalMovementDescription(t.Description))
+            .GroupBy(t => new { Date = t.Date.Date, AbsAmount = Math.Abs(t.AmountCents) });
+
+        foreach (var group in candidates)
+        {
+            var outgoing = group.Where(t => t.AmountCents < 0).OrderBy(t => t.Id).ToList();
+            var incoming = group.Where(t => t.AmountCents > 0).OrderBy(t => t.Id).ToList();
+
+            foreach (var debit in outgoing)
+            {
+                var credit = incoming.FirstOrDefault(t => t.AccountId != debit.AccountId);
+                if (credit is null) continue;
+
+                _matchedInternalMovementIds.Add(debit.Id);
+                _matchedInternalMovementIds.Add(credit.Id);
+                incoming.Remove(credit);
+            }
         }
     }
 
@@ -368,7 +398,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         var from = monday.AddDays(-7 * weeksAgo);
         var to = from.AddDays(6);
         return Transactions
-            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0 && !IsTransfer(t))
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0 && !IsInternalMovement(t))
             .Sum(t => Math.Abs(t.AmountDollars));
     }
 
@@ -377,7 +407,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var from = DateTime.Today.AddDays(-(days - 1));
         var total = Transactions
-            .Where(t => t.Date.Date >= from && t.Date.Date < DateTime.Today && t.AmountCents < 0 && !IsTransfer(t))
+            .Where(t => t.Date.Date >= from && t.Date.Date < DateTime.Today && t.AmountCents < 0 && !IsInternalMovement(t))
             .Sum(t => Math.Abs(t.AmountDollars));
         return days > 1 ? Math.Round(total / (days - 1), 2) : 0m;
     }
@@ -397,7 +427,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         var (from, to) = GetCurrentPeriod();
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsTransfer(t) && !_unrepaidLentIds.Contains(t.Id))
+                        && !IsInternalMovement(t) && !_unrepaidLentIds.Contains(t.Id))
             .Sum(t => Math.Abs(t.AmountDollars));
     }
 
@@ -411,7 +441,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal GetDiscretionarySpendingForPeriod(DateTime from, DateTime to) =>
         Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsTransfer(t) && !IsBillCategory(t.CategoryName)
+                        && !IsInternalMovement(t) && !IsBillCategory(t.CategoryName)
                         && !_unrepaidLentIds.Contains(t.Id))
             .Sum(t => Math.Abs(t.AmountDollars));
 
@@ -420,7 +450,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public decimal GetTodaySpending() =>
         Transactions
-            .Where(t => t.Date.Date == DateTime.Today && t.AmountCents < 0 && !IsTransfer(t))
+            .Where(t => t.Date.Date == DateTime.Today && t.AmountCents < 0 && !IsInternalMovement(t))
             .Sum(t => Math.Abs(t.AmountDollars));
 
     public List<(string Category, decimal Amount)> GetTopCategories(int n = 5, bool excludeBills = false)
@@ -428,7 +458,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         var (from, to) = GetCurrentPeriod();
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsTransfer(t) && (!excludeBills || !IsBillCategory(t.CategoryName)))
+                        && !IsInternalMovement(t) && (!excludeBills || !IsBillCategory(t.CategoryName)))
             .GroupBy(t => t.CategoryName)
             .Select(g => (g.Key, g.Sum(t => Math.Abs(t.AmountDollars))))
             .OrderByDescending(x => x.Item2)
@@ -460,7 +490,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             var d = DateTime.Today.AddMonths(-i);
             var from = new DateTime(d.Year, d.Month, 1);
             var to = from.AddMonths(1).AddDays(-1);
-            var txs = Transactions.Where(t => t.Date >= from && t.Date <= to && !IsTransfer(t)).ToList();
+            var txs = Transactions.Where(t => t.Date >= from && t.Date <= to && !IsInternalMovement(t)).ToList();
             var inc = txs.Where(t => t.AmountCents > 0).Sum(t => t.AmountDollars);
             var spend = txs.Where(t => t.AmountCents < 0).Sum(t => Math.Abs(t.AmountDollars));
             result.Add((d.ToString("MMM"), inc, spend));
@@ -471,7 +501,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private void DetectPayAccount()
     {
         var payTxns = Transactions
-            .Where(t => t.AmountCents >= 20000 && !IsTransfer(t))
+            .Where(t => t.AmountCents >= 20000 && !IsInternalMovement(t))
             .OrderByDescending(t => t.Date)
             .Take(3)
             .ToList();
@@ -505,16 +535,18 @@ public class AppState(IndexedDbService db, SyncService sync)
         return (afterBills, afterBills + (accountId == PayAccountId ? EstimatedPayAmount : 0m));
     }
 
-    private static bool IsTransfer(Transaction t) =>
-        t.CategoryName is "Transfer" or "Opening Balance" or "Balance Adjustment" ||
-        (t.TransferId is { } tid && tid != Guid.Empty);
+    public bool IsInternalMovement(Transaction t) =>
+        TransactionClassification.IsInternalMovementCategory(t.CategoryName) ||
+        TransactionClassification.HasLinkedTransferId(t) ||
+        TransactionClassification.IsCoverMovementDescription(t.Description) ||
+        _matchedInternalMovementIds.Contains(t.Id);
 
     // ── Daily tracker ─────────────────────────────────────────────────────────
     public List<DailyScore> GetDailyScores(int days = 35)
     {
         var today = DateTime.Today;
         var txByDate = Transactions
-            .Where(t => t.AmountCents < 0 && !IsTransfer(t))
+            .Where(t => t.AmountCents < 0 && !IsInternalMovement(t))
             .GroupBy(t => t.Date.Date)
             .ToDictionary(g => g.Key, g => g.ToList());
 
@@ -543,7 +575,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public int GetCleanStreak()
     {
         var txByDay = Transactions
-            .Where(t => t.AmountCents < 0 && !IsTransfer(t))
+            .Where(t => t.AmountCents < 0 && !IsInternalMovement(t))
             .GroupBy(t => t.Date.Date)
             .ToDictionary(g => g.Key, g => g.ToList());
 
@@ -763,6 +795,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             existing.Date = u.Date;
             existing.AccountId = u.AccountId;
             existing.CategoryId = u.CategoryId;
+            existing.TransferId = u.TransferId;
+            existing.UpTransactionId = u.UpTransactionId;
             existing.IsUnnecessary = u.IsUnnecessary;
         }
         cloud.Transactions.AddRange(push.NewTransactions);
@@ -825,6 +859,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         try
         {
             // Push any phone-side changes — Wi-Fi first, Supabase as fallback
+            PushPayload? sentPush = null;
+
             if (HasPendingChanges)
             {
                 var push = new PushPayload
@@ -838,29 +874,37 @@ public class AppState(IndexedDbService db, SyncService sync)
                     UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings)
                 };
 
-                bool pushed = false;
+                bool pushedToPc = false;
                 if (sync.HasLocalSync)
-                    pushed = await sync.PushToPcAsync(push);
+                    pushedToPc = await sync.PushToPcAsync(push);
 
-                if (!pushed && sync.HasCloudSync)
+                bool pushedToCloud = false;
+                bool pushedToCanonicalStore = false;
+                if (sync.HasCloudSync)
                 {
-                    pushed = await sync.PushToSupabaseAsync(push);
+                    pushedToCloud = await sync.PushToSupabaseAsync(push);
 
                     // Also merge straight into finance_sync (the canonical cloud
                     // snapshot) so the cloud is current even if the PC never comes
                     // back online to drain phone_push. Best-effort: phone_push
                     // above is what WPF reconciles from, so a failure here can't
                     // regress anything.
-                    if (pushed)
+                    if (pushedToCloud || pushedToPc)
                     {
                         var merged = await BuildMergedCloudPayloadAsync(push);
                         if (merged is not null)
-                            await sync.PushFullSyncAsync(merged);
+                            pushedToCanonicalStore = await sync.PushFullSyncAsync(merged);
                     }
                 }
+                else
+                {
+                    pushedToCanonicalStore = pushedToPc;
+                }
 
+                var pushed = pushedToCanonicalStore;
                 if (pushed)
                 {
+                    sentPush = push;
                     foreach (var s in push.UpdatedBillStatuses)
                         await db.ClearBillOverrideAsync(s.BillId);
                     // Remove only what was actually sent (by count, not Clear) —
@@ -883,6 +927,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                 await LoadAsync();
                 // Sync wipes IndexedDB and replaces with server data; reapply any
                 // phone-side changes that weren't pushed so they aren't lost.
+                if (sentPush is not null)
+                    await ReapplyPushChangesAsync(sentPush);
                 await ReapplyPendingChangesAsync();
             }
             else OnChange?.Invoke();
@@ -895,10 +941,26 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private async Task ReapplyPendingChangesAsync()
     {
+        var push = new PushPayload
+        {
+            NewTransactions = new List<Transaction>(_pendingNewTransactions),
+            UpdatedTransactions = new List<Transaction>(_pendingUpdatedTransactions),
+            DeletedTransactionIds = new List<int>(_pendingDeletedTransactionIds),
+            UpdatedBillStatuses = new List<BillOccurrenceStatus>(_pendingBillStatuses),
+            NewBills = new List<Bill>(_pendingNewBills),
+            UpdatedBills = new List<Bill>(_pendingUpdatedBills),
+            UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings)
+        };
+
+        await ReapplyPushChangesAsync(push);
+    }
+
+    private async Task ReapplyPushChangesAsync(PushPayload push)
+    {
         bool changed = false;
 
         // Re-add phone-created transactions the server doesn't know about yet
-        foreach (var t in _pendingNewTransactions)
+        foreach (var t in push.NewTransactions)
         {
             if (!Transactions.Any(x => x.Id == t.Id))
             {
@@ -908,20 +970,27 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
-        // Re-apply category / unnecessary changes
-        foreach (var pt in _pendingUpdatedTransactions)
+        // Re-apply transaction edits made on phone
+        foreach (var pt in push.UpdatedTransactions)
         {
             var t = Transactions.FirstOrDefault(x => x.Id == pt.Id);
             if (t is null) continue;
+            t.Date = pt.Date;
+            t.Description = pt.Description;
+            t.AmountCents = pt.AmountCents;
+            t.AccountId = pt.AccountId;
+            t.AccountName = pt.AccountName;
             t.CategoryId = pt.CategoryId;
             t.CategoryName = pt.CategoryName;
+            t.TransferId = pt.TransferId;
+            t.UpTransactionId = pt.UpTransactionId;
             t.IsUnnecessary = pt.IsUnnecessary;
             await db.PutAsync("transactions", t);
             changed = true;
         }
 
         // Re-remove phone-deleted transactions
-        foreach (var id in _pendingDeletedTransactionIds)
+        foreach (var id in push.DeletedTransactionIds)
         {
             if (Transactions.RemoveAll(x => x.Id == id) > 0)
             {
@@ -931,7 +1000,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         // Re-apply bill paid/unpaid changes
-        foreach (var ps in _pendingBillStatuses)
+        foreach (var ps in push.UpdatedBillStatuses)
         {
             var bill = Bills.FirstOrDefault(b => b.Id == ps.BillId);
             if (bill is null) continue;
@@ -946,7 +1015,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         // Re-add phone-created bills the server doesn't know about yet
-        foreach (var b in _pendingNewBills)
+        foreach (var b in push.NewBills)
         {
             if (!Bills.Any(x => x.Id == b.Id))
             {
@@ -957,7 +1026,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         // Re-apply bill edits made on phone
-        foreach (var pb in _pendingUpdatedBills)
+        foreach (var pb in push.UpdatedBills)
         {
             var bill = Bills.FirstOrDefault(x => x.Id == pb.Id);
             if (bill is null) continue;
@@ -973,7 +1042,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         // Re-apply phone-side settings such as category limits/payday/summary period.
-        foreach (var ps in _pendingUpdatedSettings)
+        foreach (var ps in push.UpdatedSettings)
         {
             await db.SaveSettingAsync(ps.Key, ps.Value);
             var existing = AppSettings.FirstOrDefault(s => s.Key == ps.Key);

@@ -77,16 +77,17 @@
                     @{
                         var lentUnrepaid = State.IsUnrepaid(t.Id);
                         var lentRepaid   = !lentUnrepaid && State.IsLent(t.Id);
+                        var isInternalMovement = State.IsInternalMovement(t);
                         var rowBorder = lentUnrepaid ? "border-left:3px solid #818CF8"
                                        : lentRepaid  ? "border-left:3px solid #34D399"
                                        : t.IsUnnecessary ? "border-left:3px solid var(--amber)"
                                        : "";
                     }
                     <div class="list-row" style="cursor:pointer;@rowBorder" @onclick="() => SelectTxn(t.Id)">
-                        <div class="row-icon" style="background:var(--surface2)">@GetEmoji(t.CategoryName)</div>
+                        <div class="row-icon" style="background:var(--surface2)">@GetEmoji(isInternalMovement ? "Transfer" : t.CategoryName)</div>
                         <div class="row-main">
                             <div class="row-title">@t.Description</div>
-                            <div class="row-sub">@t.AccountName · @t.CategoryName</div>
+                            <div class="row-sub">@t.AccountName · @(isInternalMovement ? "Transfer" : t.CategoryName)</div>
                         </div>
                         <div style="text-align:right">
                             <div class="row-amount @(t.AmountCents>=0?"pos":"neg")">@t.AmountDollars.ToString("C")</div>
@@ -123,7 +124,7 @@
                             </div>
                             <div style="display:flex;gap:8px;flex-wrap:wrap">
                                 <button class="btn btn-sm btn-secondary" @onclick="() => StartEdit(localT)" @onclick:stopPropagation="true">Edit</button>
-                                @if (localT.AmountCents < 0 && !IsTransfer(localT))
+                                @if (localT.AmountCents < 0 && !State.IsInternalMovement(localT))
                                 {
                                     <button class="btn btn-sm @(localT.IsUnnecessary ? "btn-primary" : "btn-secondary")"
                                             style="@(localT.IsUnnecessary ? "background:rgba(245,158,11,0.2);color:var(--amber);border:1px solid var(--amber)" : "")"
@@ -268,17 +269,13 @@
         q = filter switch
         {
             "Income" => q.Where(t => t.AmountCents > 0),
-            "Expenses" => q.Where(t => t.AmountCents < 0 && !IsTransfer(t)),
-            "Transfers" => q.Where(t => IsTransfer(t)),
+            "Expenses" => q.Where(t => t.AmountCents < 0 && !State.IsInternalMovement(t)),
+            "Transfers" => q.Where(t => State.IsInternalMovement(t)),
             _ => q
         };
 
         return q.ToList();
     }
-
-    private static bool IsTransfer(Transaction t) =>
-        t.CategoryName is "Transfer" or "Opening Balance" or "Balance Adjustment" ||
-        (t.TransferId is { } tid && tid != Guid.Empty);
 
     private static string GetEmoji(string cat) => cat switch
     {

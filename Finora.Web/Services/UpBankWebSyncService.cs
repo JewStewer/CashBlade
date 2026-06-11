@@ -361,7 +361,6 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
     {
         if (amountCents > 0) return "Income";
         if (!string.IsNullOrWhiteSpace(upCategoryId)) return FormatUpCategoryName(upCategoryId);
-        if (description.Contains("transfer", StringComparison.OrdinalIgnoreCase)) return "Transfer";
         return "Misc";
     }
 

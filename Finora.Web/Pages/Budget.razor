@@ -13,7 +13,7 @@
         var billsPct  = PeriodIncome > 0 ? BillsSpend  / PeriodIncome : 0m;
         var discPct   = PeriodIncome > 0 ? PeriodSpend / PeriodIncome : 0m;
         <div class="card">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.06em">This @State.SummaryPeriod — Where's My Money?</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.06em">This @PeriodNoun — Where's My Money?</div>
 
             <!-- Income row -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -53,7 +53,7 @@
 
             <!-- Net -->
             <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
-                <span style="font-size:13px;color:var(--text3)">Net this @State.SummaryPeriod.ToLower()</span>
+                <span style="font-size:13px;color:var(--text3)">Net this @PeriodNounLower</span>
                 <span style="font-size:17px;font-weight:700;color:@(net >= 0 ? "var(--green)" : "var(--red)")">
                     @(net >= 0 ? "+" : "")@net.ToString("C")
                 </span>
@@ -157,7 +157,7 @@
     @if (State.WeeklyIncome > 0)
     {
         <div class="card" style="margin-top:12px">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Everyday Spending This @State.SummaryPeriod</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Everyday Spending This @PeriodNoun</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget = income minus bills (@PeriodBudget.ToString("C"))</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
                 <span style="font-size:22px;font-weight:700;color:@(PeriodSpend>PeriodBudget?"var(--red)":"var(--text)")">
@@ -187,7 +187,7 @@
                 @if (isSpike)
                 {
                     <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:8px">
-                        <span style="color:var(--amber);font-weight:600">⚡ High-spend @State.SummaryPeriod.ToLower()</span>
+                        <span style="color:var(--amber);font-weight:600">⚡ High-spend @PeriodNounLower</span>
                         <span style="color:var(--text3)"> — @spikeAmount.ToString("C") above your usual @avg.ToString("C0") avg. Likely one-off expenses.</span>
                     </div>
                 }
@@ -214,7 +214,7 @@
         @if (BiggestPeriodTxns.Any())
         {
             <div class="card" style="margin-top:12px">
-                <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Biggest Transactions This @State.SummaryPeriod</div>
+                <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Biggest Transactions This @PeriodNoun</div>
                 <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Everyday purchases only (bills excluded)</div>
                 @foreach (var t in BiggestPeriodTxns.Take(6))
                 {
@@ -242,7 +242,7 @@
     {
         <div class="card" style="margin-top:12px">
             <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Spending Breakdown</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">All categories this @State.SummaryPeriod.ToLower() · bar = % of largest category</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">All categories this @PeriodNounLower · bar = % of largest category</div>
 
             @if (billCats.Any())
             {
@@ -556,6 +556,8 @@
     private decimal PeriodBudget   => Math.Max(PeriodIncome - (State.SummaryPeriod == "Monthly" ? State.BudgetBills * 4.33m : State.BudgetBills), 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private List<(string Category, decimal Amount)> TopCats => State.GetTopCategories(5, excludeBills: true);
+    private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
+    private string PeriodNounLower => PeriodNoun.ToLowerInvariant();
 
     // Average discretionary spending over the previous 3 periods (for spike detection)
     private decimal AvgPreviousDiscretionary
@@ -595,8 +597,7 @@
             var (from, to) = State.GetCurrentPeriod();
             return State.Transactions
                 .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0)
-                .Where(t => t.CategoryName is not "Transfer" and not "Opening Balance" and not "Balance Adjustment" &&
-                            !(t.TransferId.HasValue && t.TransferId.Value != Guid.Empty) &&
+                .Where(t => !State.IsInternalMovement(t) &&
                             !AppState.IsBillCategory(t.CategoryName))
                 .OrderBy(t => t.AmountCents)
                 .Take(10)
