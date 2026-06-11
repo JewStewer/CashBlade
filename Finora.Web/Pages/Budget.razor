@@ -526,7 +526,7 @@
             <div style="display:flex;gap:8px;margin-top:10px">
                 <div style="flex:1">
                     <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Over how many weeks?</label>
-                    <input class="form-input" type="number" min="1" step="1" value="@_goalWeeks" @onchange="OnGoalWeeksChanged" style="font-size:14px" />
+                    <input class="form-input" type="number" min="1" step="1" @bind="_goalWeeks" @bind:event="oninput" @onchange="OnGoalWeeksChanged" style="font-size:14px" />
                 </div>
                 <div style="flex:1">
                     <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Saving into</label>
@@ -545,6 +545,7 @@
                 var weeks = Math.Max(_goalWeeks, 1);
                 var weeklyNeeded = Math.Round(_affordAmount / weeks, 2);
                 var weeklySpare = State.BudgetLeftover;
+                var leftOver = weeklySpare - weeklyNeeded;
                 var ratio = weeklySpare > 0 ? weeklyNeeded / weeklySpare : 999m;
                 var (verdict, verdictColor) =
                     ratio < 0.5m ? ("✓ Comfortable — easily on track", "var(--green)") :
@@ -561,6 +562,10 @@
                     <div style="display:flex;justify-content:space-between;font-size:13px">
                         <span style="color:var(--text3)">Your spare budget</span>
                         <span style="font-weight:600;color:@(weeklySpare>=weeklyNeeded?"var(--green)":"var(--red)")">@weeklySpare.ToString("C")/wk</span>
+                    </div>
+                    <div style="border-top:1px solid var(--border);margin-top:5px;padding-top:8px;display:flex;justify-content:space-between;font-size:14px">
+                        <span style="color:var(--text3)">Left over after saving</span>
+                        <span style="font-weight:700;color:@(leftOver>=0?"var(--green)":"var(--red)")">@leftOver.ToString("C")/wk</span>
                     </div>
                     @if (account is not null)
                     {
@@ -585,11 +590,11 @@
             <div style="display:flex;gap:8px;margin-top:10px">
                 <div style="flex:1">
                     <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Number of payments</label>
-                    <input class="form-input" type="number" min="2" step="1" value="@_installmentCount" @onchange="OnInstallmentCountChanged" style="font-size:14px" />
+                    <input class="form-input" type="number" min="2" step="1" @bind="_installmentCount" @bind:event="oninput" @onchange="OnInstallmentCountChanged" style="font-size:14px" />
                 </div>
                 <div style="flex:1">
                     <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Every (weeks)</label>
-                    <input class="form-input" type="number" min="1" step="1" value="@_installmentFrequencyWeeks" @onchange="OnInstallmentFrequencyChanged" style="font-size:14px" />
+                    <input class="form-input" type="number" min="1" step="1" @bind="_installmentFrequencyWeeks" @bind:event="oninput" @onchange="OnInstallmentFrequencyChanged" style="font-size:14px" />
                 </div>
             </div>
 
@@ -625,6 +630,9 @@
                     <div style="font-size:11px;color:var(--text3);margin-top:6px">
                         First payment today, then @(count-1) more every @freq wk@(freq == 1 ? "" : "s") · paid off in @totalWeeks wk@(totalWeeks == 1 ? "" : "s")
                     </div>
+                    <button class="btn btn-primary btn-sm btn-full" style="margin-top:10px" @onclick="() => StartAddInstallmentBill(perInstallment, freq)">
+                        + Add to Budget as a Bill
+                    </button>
                 </div>
             }
         }
@@ -662,6 +670,13 @@
             </div>
         }
     </div>
+
+    @if (_billDraft is not null)
+    {
+        <AddEditBillModal Bill="@_billDraft"
+            OnClose="() => _billDraft = null"
+            OnSaved="() => _billDraft = null" />
+    }
 
     <!-- Safe to spend / Over budget breakdown -->
     <div class="card" style="margin-top:12px;border-color:@(State.SafeToSpendAmount>0?"var(--teal)":"var(--red)")">
@@ -714,6 +729,7 @@
     private string _goalAccountName = string.Empty;
     private int _installmentCount = 4;
     private int _installmentFrequencyWeeks = 2;
+    private Bill? _billDraft;
 
     protected override void OnInitialized()
     {
@@ -774,6 +790,25 @@
             _installmentFrequencyWeeks = weeks;
             await SaveAffordabilitySettingsAsync();
         }
+    }
+
+    private void StartAddInstallmentBill(decimal perInstallment, int freqWeeks)
+    {
+        _billDraft = new Bill
+        {
+            Name = "Afterpay",
+            AmountDollars = perInstallment,
+            DueDate = DateTime.Today,
+            NextPayDate = DateTime.Today,
+            Frequency = freqWeeks switch
+            {
+                1 => BillFrequency.Weekly,
+                2 => BillFrequency.Fortnightly,
+                <= 6 => BillFrequency.Monthly,
+                <= 26 => BillFrequency.Quarterly,
+                _ => BillFrequency.Yearly
+            }
+        };
     }
 
     private async Task SaveAffordabilitySettingsAsync()

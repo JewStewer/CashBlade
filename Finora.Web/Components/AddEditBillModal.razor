@@ -3,7 +3,7 @@
 <div class="modal-backdrop" @onclick="Close">
     <div class="modal-sheet" @onclick:stopPropagation>
         <div class="modal-handle"></div>
-        <div class="modal-title">@(Bill is null ? "Add Bill" : "Edit Bill")</div>
+        <div class="modal-title">@(IsNew ? "Add Bill" : "Edit Bill")</div>
 
         <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:12px">
             <div>
@@ -54,7 +54,7 @@
         <div style="padding:14px 16px;display:flex;gap:8px">
             <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
             <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
-                @(saving ? "Saving…" : (Bill is null ? "Add" : "Save"))
+                @(saving ? "Saving…" : (IsNew ? "Add" : "Save"))
             </button>
         </div>
     </div>
@@ -74,6 +74,8 @@
     private string error = string.Empty;
     private bool saving;
 
+    private bool IsNew => Bill is null || Bill.Id == 0;
+
     protected override void OnParametersSet()
     {
         if (Bill is not null)
@@ -82,7 +84,7 @@
             amount = Bill.AmountDollars;
             dueDate = Bill.DueDate;
             frequency = Bill.Frequency;
-            accountId = Bill.AccountId;
+            accountId = Bill.AccountId != 0 ? Bill.AccountId : (State.Accounts.FirstOrDefault()?.Id ?? 0);
             isAutoPay = Bill.IsAutoPay;
         }
         else
@@ -110,7 +112,7 @@
             IsAutoPay = isAutoPay
         };
 
-        if (Bill is null)
+        if (IsNew)
             await State.AddBillAsync(b);
         else
             await State.UpdateBillAsync(b);
