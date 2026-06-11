@@ -303,7 +303,21 @@
 
     private async Task DoAutoSync()
     {
-        await State.SyncAndReloadAsync();
+        var token = await UpSync.GetAccessTokenAsync();
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            var result = await UpSync.SyncAsync();
+            await State.LoadAsync();
+            if (result is not null)
+            {
+                upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, added {result.BalanceAdjustments} balance adjustment{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
+                upBankStatusColor = "var(--green)";
+            }
+        }
+        else
+        {
+            await State.SyncAndReloadAsync();
+        }
         StateHasChanged();
     }
 

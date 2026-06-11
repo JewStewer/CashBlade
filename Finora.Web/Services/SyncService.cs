@@ -237,7 +237,12 @@ public class SyncService(HttpClient http, IndexedDbService db)
             req.Headers.Add("Prefer", "resolution=merge-duplicates");
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var resp = await http.SendAsync(req, cts.Token);
-            return resp.IsSuccessStatusCode;
+            if (!resp.IsSuccessStatusCode) return false;
+
+            LastSyncedAt = payload.SyncedAt;
+            await SaveMetaAsync();
+            OnSyncStateChanged?.Invoke();
+            return true;
         }
         catch { return false; }
     }

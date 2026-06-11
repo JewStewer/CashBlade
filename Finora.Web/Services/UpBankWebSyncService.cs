@@ -6,7 +6,7 @@ using Finora.Web.Models;
 
 namespace Finora.Web.Services;
 
-public class UpBankWebSyncService(HttpClient http, IndexedDbService db)
+public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncService sync)
 {
     public const string AccessTokenSettingKey = "UpBankAccessToken";
     private const string LastSyncSettingKey = "UpBankLastSyncUtc";
@@ -146,6 +146,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db)
             foreach (var status in billStatuses) await db.PutAsync("billOccurrenceStatuses", status);
 
             await SaveSettingValueAsync(appSettings, LastSyncSettingKey, newestSeenUtc.ToUniversalTime().ToString("O"));
+            await PushCurrentSnapshotToCloudAsync();
 
             return new UpBankWebSyncResult(imported, balanceAdjustments, matchedBills);
         }
@@ -191,6 +192,28 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db)
         var setting = settings.FirstOrDefault(s => s.Key == key);
         if (setting is null) settings.Add(new AppSetting { Id = NextLocalId(settings.Select(s => s.Id)), Key = key, Value = value });
         else setting.Value = value;
+    }
+
+    private async Task PushCurrentSnapshotToCloudAsync()
+    {
+        if (!sync.HasCloudSync) return;
+
+        var payload = new SyncPayload
+        {
+            Accounts = await db.GetAccountsAsync(),
+            Categories = await db.GetCategoriesAsync(),
+            Transactions = await db.GetTransactionsAsync(),
+            Bills = await db.GetBillsAsync(),
+            BillOccurrenceStatuses = await db.GetBillStatusesAsync(),
+            Debts = await db.GetDebtsAsync(),
+            DebtPayments = await db.GetDebtPaymentsAsync(),
+            SavingsGoals = await db.GetSavingsGoalsAsync(),
+            WeeklyBudgets = await db.GetWeeklyBudgetsAsync(),
+            AppSettings = await db.GetAppSettingsAsync(),
+            SyncedAt = DateTime.UtcNow
+        };
+
+        await sync.PushFullSyncAsync(payload);
     }
 
     private bool TryMarkMatchingBillPaid(List<Bill> bills, List<BillOccurrenceStatus> statuses, int accountId, DateTime paidOn, int amountCents, int transactionId)
