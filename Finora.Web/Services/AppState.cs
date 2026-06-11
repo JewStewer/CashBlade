@@ -40,6 +40,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<Transaction> _pendingNewTransactions = new();
     private readonly List<Transaction> _pendingUpdatedTransactions = new();
     private readonly List<int> _pendingDeletedTransactionIds = new();
+    private readonly List<TransactionDelete> _pendingDeletedTransactions = new();
     private readonly List<BillOccurrenceStatus> _pendingBillStatuses = new();
     private readonly List<Bill> _pendingNewBills = new();
     private readonly List<Bill> _pendingUpdatedBills = new();
@@ -55,6 +56,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingNewTransactions.Count > 0 ||
         _pendingUpdatedTransactions.Count > 0 ||
         _pendingDeletedTransactionIds.Count > 0 ||
+        _pendingDeletedTransactions.Count > 0 ||
         _pendingBillStatuses.Count > 0 ||
         _pendingNewBills.Count > 0 ||
         _pendingUpdatedBills.Count > 0 ||
@@ -597,7 +599,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         return description.Contains("Nissan Financial", StringComparison.OrdinalIgnoreCase) ||
             description.Contains("Skyline Car Finance", StringComparison.OrdinalIgnoreCase) ||
             description.Contains("Australian College of Commerce", StringComparison.OrdinalIgnoreCase) ||
-            description.Contains("Swoosh Finance", StringComparison.OrdinalIgnoreCase);
+            description.Contains("Swoosh Finance", StringComparison.OrdinalIgnoreCase) ||
+            description.Contains("State Penalties Enforcement", StringComparison.OrdinalIgnoreCase) ||
+            description.Contains("Qantas Insurance", StringComparison.OrdinalIgnoreCase) ||
+            description.Contains("Suncorp Insurance", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TextContainsToken(string text, string? token) =>
@@ -771,8 +776,17 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task DeleteTransactionAsync(int id)
     {
+        var deleted = Transactions.FirstOrDefault(t => t.Id == id);
         Transactions.RemoveAll(t => t.Id == id);
-        if (id > 0) _pendingDeletedTransactionIds.Add(id);
+        if (id > 0)
+        {
+            _pendingDeletedTransactionIds.Add(id);
+            if (deleted is not null)
+            {
+                _pendingDeletedTransactions.RemoveAll(t => t.Id == id);
+                _pendingDeletedTransactions.Add(ToTransactionDelete(deleted));
+            }
+        }
         await db.DeleteAsync("transactions", id);
         await db.ClearTransactionOverrideAsync(id);
         Compute();
@@ -832,11 +846,38 @@ public class AppState(IndexedDbService db, SyncService sync)
         target.AmountDollars = updated.AmountDollars;
         target.AccountId = updated.AccountId;
         target.AccountName = Accounts.FirstOrDefault(a => a.Id == updated.AccountId)?.Name ?? "";
-        target.CategoryId = updated.CategoryId;
-        target.CategoryName = Categories.FirstOrDefault(c => c.Id == updated.CategoryId)?.Name ?? "";
+        var category = ResolveCategory(updated.CategoryName, updated.CategoryId, updated.AmountCents);
+        target.CategoryId = category.Id;
+        target.CategoryName = category.Name;
         target.TransferId = updated.TransferId;
         target.UpTransactionId = updated.UpTransactionId;
         target.IsUnnecessary = updated.IsUnnecessary;
+    }
+
+    private Category ResolveCategory(string? categoryName, int categoryId, int amountCents)
+    {
+        if (!string.IsNullOrWhiteSpace(categoryName))
+        {
+            var byName = Categories.FirstOrDefault(c => string.Equals(c.Name, categoryName.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (byName is not null) return byName;
+        }
+
+        var byId = Categories.FirstOrDefault(c => c.Id == categoryId);
+        if (byId is not null) return byId;
+
+        var fallbackName = amountCents > 0 ? "Income" : "Misc";
+        var fallback = Categories.FirstOrDefault(c => string.Equals(c.Name, fallbackName, StringComparison.OrdinalIgnoreCase));
+        if (fallback is not null) return fallback;
+
+        var newId = Math.Min(Categories.Select(c => c.Id).DefaultIfEmpty(0).Min() - 1, -1);
+        var created = new Category
+        {
+            Id = newId,
+            Name = fallbackName,
+            Type = amountCents > 0 ? CategoryType.Income : CategoryType.Expense
+        };
+        Categories.Add(created);
+        return created;
     }
 
     private void QueueUpdatedTransaction(Transaction transaction)
@@ -845,6 +886,30 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedTransactions.RemoveAll(t => t.Id == transaction.Id);
         _pendingUpdatedTransactions.Add(transaction);
     }
+
+    private static TransactionEdit ToTransactionEdit(Transaction transaction) => new()
+    {
+        Id = transaction.Id,
+        UpTransactionId = transaction.UpTransactionId,
+        Date = transaction.Date,
+        Description = transaction.Description,
+        AmountCents = transaction.AmountCents,
+        AccountId = transaction.AccountId,
+        AccountName = transaction.AccountName,
+        CategoryId = transaction.CategoryId,
+        CategoryName = transaction.CategoryName,
+        TransferId = transaction.TransferId,
+        IsUnnecessary = transaction.IsUnnecessary
+    };
+
+    private static TransactionDelete ToTransactionDelete(Transaction transaction) => new()
+    {
+        Id = transaction.Id,
+        UpTransactionId = transaction.UpTransactionId,
+        Date = transaction.Date,
+        Description = transaction.Description,
+        AmountCents = transaction.AmountCents
+    };
 
     public async Task SaveSettingAsync(string key, string value)
     {
@@ -873,6 +938,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (cloud is null) return null;
 
         cloud.Transactions.RemoveAll(t => push.DeletedTransactionIds.Contains(t.Id));
+        foreach (var deleted in push.DeletedTransactions)
+        {
+            var existing = FindPayloadTransaction(cloud.Transactions, deleted);
+            if (existing is not null) cloud.Transactions.Remove(existing);
+        }
         foreach (var u in push.UpdatedTransactions)
         {
             var existing = cloud.Transactions.FirstOrDefault(t => t.Id == u.Id);
@@ -885,6 +955,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             existing.TransferId = u.TransferId;
             existing.UpTransactionId = u.UpTransactionId;
             existing.IsUnnecessary = u.IsUnnecessary;
+        }
+        foreach (var edit in push.TransactionEdits)
+        {
+            var existing = FindPayloadTransaction(cloud.Transactions, edit);
+            if (existing is null) continue;
+            existing.Description = edit.Description;
+            existing.AmountCents = edit.AmountCents;
+            existing.Date = edit.Date;
+            existing.AccountId = edit.AccountId;
+            existing.CategoryId = ResolvePayloadCategoryId(cloud.Categories, edit.CategoryName, edit.CategoryId, edit.AmountCents);
+            existing.TransferId = edit.TransferId;
+            existing.UpTransactionId = edit.UpTransactionId;
+            existing.IsUnnecessary = edit.IsUnnecessary;
         }
         cloud.Transactions.AddRange(push.NewTransactions);
 
@@ -936,6 +1019,51 @@ public class AppState(IndexedDbService db, SyncService sync)
         return cloud;
     }
 
+    private static Transaction? FindPayloadTransaction(List<Transaction> transactions, TransactionEdit edit)
+    {
+        if (!string.IsNullOrWhiteSpace(edit.UpTransactionId))
+        {
+            var byUpId = transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, edit.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return transactions.FirstOrDefault(t => t.Id == edit.Id) ??
+            transactions.FirstOrDefault(t =>
+                t.Date.Date == edit.Date.Date &&
+                t.AmountCents == edit.AmountCents &&
+                string.Equals(t.Description, edit.Description, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static Transaction? FindPayloadTransaction(List<Transaction> transactions, TransactionDelete deleted)
+    {
+        if (!string.IsNullOrWhiteSpace(deleted.UpTransactionId))
+        {
+            var byUpId = transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, deleted.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return transactions.FirstOrDefault(t => t.Id == deleted.Id) ??
+            transactions.FirstOrDefault(t =>
+                t.Date.Date == deleted.Date.Date &&
+                t.AmountCents == deleted.AmountCents &&
+                string.Equals(t.Description, deleted.Description, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int ResolvePayloadCategoryId(List<Category> categories, string categoryName, int categoryId, int amountCents)
+    {
+        if (!string.IsNullOrWhiteSpace(categoryName))
+        {
+            var byName = categories.FirstOrDefault(c => string.Equals(c.Name, categoryName.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (byName is not null) return byName.Id;
+        }
+
+        if (categories.Any(c => c.Id == categoryId)) return categoryId;
+        var fallback = categories.FirstOrDefault(c => string.Equals(c.Name, amountCents > 0 ? "Income" : "Misc", StringComparison.OrdinalIgnoreCase));
+        return fallback?.Id ?? categoryId;
+    }
+
     public async Task SyncAndReloadAsync()
     {
         // Re-entrancy guard: ScheduleSyncSoon (after every edit) and the
@@ -955,6 +1083,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     NewTransactions = new List<Transaction>(_pendingNewTransactions),
                     UpdatedTransactions = new List<Transaction>(_pendingUpdatedTransactions),
                     DeletedTransactionIds = new List<int>(_pendingDeletedTransactionIds),
+                    TransactionEdits = _pendingUpdatedTransactions.Select(ToTransactionEdit).ToList(),
+                    DeletedTransactions = new List<TransactionDelete>(_pendingDeletedTransactions),
                     UpdatedBillStatuses = new List<BillOccurrenceStatus>(_pendingBillStatuses),
                     NewBills = new List<Bill>(_pendingNewBills),
                     UpdatedBills = new List<Bill>(_pendingUpdatedBills),
@@ -1002,6 +1132,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewTransactions.RemoveRange(0, push.NewTransactions.Count);
                     _pendingUpdatedTransactions.RemoveRange(0, push.UpdatedTransactions.Count);
                     _pendingDeletedTransactionIds.RemoveRange(0, push.DeletedTransactionIds.Count);
+                    _pendingDeletedTransactions.RemoveRange(0, push.DeletedTransactions.Count);
                     _pendingBillStatuses.RemoveRange(0, push.UpdatedBillStatuses.Count);
                     _pendingNewBills.RemoveRange(0, push.NewBills.Count);
                     _pendingUpdatedBills.RemoveRange(0, push.UpdatedBills.Count);
@@ -1033,6 +1164,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingNewTransactions.Clear();
         _pendingUpdatedTransactions.Clear();
         _pendingDeletedTransactionIds.Clear();
+        _pendingDeletedTransactions.Clear();
         _pendingBillStatuses.Clear();
         _pendingNewBills.Clear();
         _pendingUpdatedBills.Clear();
@@ -1049,6 +1181,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             NewTransactions = new List<Transaction>(_pendingNewTransactions),
             UpdatedTransactions = new List<Transaction>(_pendingUpdatedTransactions),
             DeletedTransactionIds = new List<int>(_pendingDeletedTransactionIds),
+            TransactionEdits = _pendingUpdatedTransactions.Select(ToTransactionEdit).ToList(),
+            DeletedTransactions = new List<TransactionDelete>(_pendingDeletedTransactions),
             UpdatedBillStatuses = new List<BillOccurrenceStatus>(_pendingBillStatuses),
             NewBills = new List<Bill>(_pendingNewBills),
             UpdatedBills = new List<Bill>(_pendingUpdatedBills),
@@ -1092,12 +1226,43 @@ public class AppState(IndexedDbService db, SyncService sync)
             changed = true;
         }
 
+        foreach (var edit in push.TransactionEdits)
+        {
+            var t = FindLocalTransaction(edit);
+            if (t is null) continue;
+            var updated = new Transaction
+            {
+                Id = t.Id,
+                Date = edit.Date,
+                Description = edit.Description,
+                AmountCents = edit.AmountCents,
+                AccountId = edit.AccountId,
+                CategoryId = edit.CategoryId,
+                CategoryName = edit.CategoryName,
+                TransferId = edit.TransferId,
+                UpTransactionId = edit.UpTransactionId,
+                IsUnnecessary = edit.IsUnnecessary
+            };
+            ApplyTransactionEdit(t, updated);
+            await db.PutAsync("transactions", t);
+            changed = true;
+        }
+
         // Re-remove phone-deleted transactions
         foreach (var id in push.DeletedTransactionIds)
         {
             if (Transactions.RemoveAll(x => x.Id == id) > 0)
             {
                 await db.DeleteAsync("transactions", id);
+                changed = true;
+            }
+        }
+        foreach (var deleted in push.DeletedTransactions)
+        {
+            var t = FindLocalTransaction(deleted);
+            if (t is not null && Transactions.Remove(t))
+            {
+                await db.DeleteAsync("transactions", t.Id);
                 changed = true;
             }
         }
@@ -1165,5 +1330,37 @@ public class AppState(IndexedDbService db, SyncService sync)
             Compute();
             OnChange?.Invoke();
         }
+    }
+
+    private Transaction? FindLocalTransaction(TransactionEdit edit)
+    {
+        if (!string.IsNullOrWhiteSpace(edit.UpTransactionId))
+        {
+            var byUpId = Transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, edit.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return Transactions.FirstOrDefault(t => t.Id == edit.Id) ??
+            Transactions.FirstOrDefault(t =>
+                t.Date.Date == edit.Date.Date &&
+                t.AmountCents == edit.AmountCents &&
+                string.Equals(t.Description, edit.Description, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private Transaction? FindLocalTransaction(TransactionDelete deleted)
+    {
+        if (!string.IsNullOrWhiteSpace(deleted.UpTransactionId))
+        {
+            var byUpId = Transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, deleted.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return Transactions.FirstOrDefault(t => t.Id == deleted.Id) ??
+            Transactions.FirstOrDefault(t =>
+                t.Date.Date == deleted.Date.Date &&
+                t.AmountCents == deleted.AmountCents &&
+                string.Equals(t.Description, deleted.Description, StringComparison.OrdinalIgnoreCase));
     }
 }

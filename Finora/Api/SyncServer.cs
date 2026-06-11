@@ -122,11 +122,29 @@ public static class SyncServer
                     existing.CategoryId = t.CategoryId;
                     existing.IsUnnecessary = t.IsUnnecessary;
                 }
+                foreach (var edit in push.TransactionEdits)
+                {
+                    var existing = await FindTransactionAsync(db, edit);
+                    if (existing is null) continue;
+                    existing.Description = edit.Description;
+                    existing.AmountCents = edit.AmountCents;
+                    existing.Date = DateTime.SpecifyKind(edit.Date.Date, DateTimeKind.Unspecified);
+                    existing.AccountId = edit.AccountId;
+                    existing.CategoryId = await ResolveCategoryIdAsync(db, edit.CategoryName, edit.CategoryId, edit.AmountCents);
+                    existing.TransferId = edit.TransferId;
+                    existing.UpTransactionId = edit.UpTransactionId;
+                    existing.IsUnnecessary = edit.IsUnnecessary;
+                }
 
                 // Deleted transactions
                 foreach (var id in push.DeletedTransactionIds)
                 {
                     var existing = await db.Transactions.FindAsync(id);
+                    if (existing is not null) db.Transactions.Remove(existing);
+                }
+                foreach (var deleted in push.DeletedTransactions)
+                {
+                    var existing = await FindTransactionAsync(db, deleted);
                     if (existing is not null) db.Transactions.Remove(existing);
                 }
 
@@ -217,6 +235,55 @@ public static class SyncServer
 
         _ = app.RunAsync();
     }
+
+    private static async Task<Transaction?> FindTransactionAsync(FinoraDbContext db, TransactionEdit edit)
+    {
+        if (!string.IsNullOrWhiteSpace(edit.UpTransactionId))
+        {
+            var byUpId = await db.Transactions.FirstOrDefaultAsync(t => t.UpTransactionId == edit.UpTransactionId);
+            if (byUpId is not null) return byUpId;
+        }
+
+        return await db.Transactions.FindAsync(edit.Id) ??
+            await db.Transactions.FirstOrDefaultAsync(t =>
+                t.Date.Date == edit.Date.Date &&
+                t.AmountCents == edit.AmountCents &&
+                t.Description == edit.Description);
+    }
+
+    private static async Task<Transaction?> FindTransactionAsync(FinoraDbContext db, TransactionDelete deleted)
+    {
+        if (!string.IsNullOrWhiteSpace(deleted.UpTransactionId))
+        {
+            var byUpId = await db.Transactions.FirstOrDefaultAsync(t => t.UpTransactionId == deleted.UpTransactionId);
+            if (byUpId is not null) return byUpId;
+        }
+
+        return await db.Transactions.FindAsync(deleted.Id) ??
+            await db.Transactions.FirstOrDefaultAsync(t =>
+                t.Date.Date == deleted.Date.Date &&
+                t.AmountCents == deleted.AmountCents &&
+                t.Description == deleted.Description);
+    }
+
+    private static async Task<int> ResolveCategoryIdAsync(FinoraDbContext db, string categoryName, int categoryId, int amountCents)
+    {
+        if (!string.IsNullOrWhiteSpace(categoryName))
+        {
+            var byName = await db.Categories.FirstOrDefaultAsync(c => c.Name == categoryName.Trim());
+            if (byName is not null) return byName.Id;
+        }
+
+        if (await db.Categories.AnyAsync(c => c.Id == categoryId)) return categoryId;
+        var fallbackName = amountCents > 0 ? "Income" : "Misc";
+        var fallback = await db.Categories.FirstOrDefaultAsync(c => c.Name == fallbackName);
+        if (fallback is not null) return fallback.Id;
+
+        var created = new Category { Name = fallbackName, Type = amountCents > 0 ? CategoryType.Income : CategoryType.Expense };
+        db.Categories.Add(created);
+        await db.SaveChangesAsync();
+        return created.Id;
+    }
 }
 
 // ── DTOs shared with Blazor (matching JSON shape) ────────────────────────────
@@ -240,8 +307,34 @@ public class PushPayload
     public List<Transaction> NewTransactions { get; set; } = new();
     public List<Transaction> UpdatedTransactions { get; set; } = new();
     public List<int> DeletedTransactionIds { get; set; } = new();
+    public List<TransactionEdit> TransactionEdits { get; set; } = new();
+    public List<TransactionDelete> DeletedTransactions { get; set; } = new();
     public List<BillOccurrenceStatus> UpdatedBillStatuses { get; set; } = new();
     public List<AppSetting> UpdatedSettings { get; set; } = new();
     public List<Bill> NewBills { get; set; } = new();
     public List<Bill> UpdatedBills { get; set; } = new();
+}
+
+public class TransactionEdit
+{
+    public int Id { get; set; }
+    public string? UpTransactionId { get; set; }
+    public DateTime Date { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int AmountCents { get; set; }
+    public int AccountId { get; set; }
+    public string AccountName { get; set; } = string.Empty;
+    public int CategoryId { get; set; }
+    public string CategoryName { get; set; } = string.Empty;
+    public Guid? TransferId { get; set; }
+    public bool IsUnnecessary { get; set; }
+}
+
+public class TransactionDelete
+{
+    public int Id { get; set; }
+    public string? UpTransactionId { get; set; }
+    public DateTime Date { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int AmountCents { get; set; }
 }
