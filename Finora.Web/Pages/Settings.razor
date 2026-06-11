@@ -48,7 +48,7 @@
         }
 
         <button class="btn btn-primary btn-full" @onclick="DoAutoSync" disabled="@(Sync.IsSyncing || UpSync.IsSyncing)">
-            @(Sync.IsSyncing ? "Syncing…" : "Sync Now")
+            @((Sync.IsSyncing || UpSync.IsSyncing) ? "Syncing..." : "Sync Now")
         </button>
 
         @if (!string.IsNullOrEmpty(syncStatus))

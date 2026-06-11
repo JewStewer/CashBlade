@@ -151,13 +151,31 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var ov in overrides)
         {
             var updated = ov.Transaction;
-            var transaction = Transactions.FirstOrDefault(t => t.Id == updated.Id);
+            var transaction = FindTransactionForOverride(updated);
             if (transaction is null) continue;
 
             ApplyTransactionEdit(transaction, updated);
             await db.PutAsync("transactions", transaction);
             QueueUpdatedTransaction(transaction);
         }
+    }
+
+    private Transaction? FindTransactionForOverride(Transaction updated)
+    {
+        if (!string.IsNullOrWhiteSpace(updated.UpTransactionId))
+        {
+            var byUpId = Transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, updated.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        var byId = Transactions.FirstOrDefault(t => t.Id == updated.Id);
+        if (byId is not null) return byId;
+
+        return Transactions.FirstOrDefault(t =>
+            t.Date.Date == updated.Date.Date &&
+            t.AmountCents == updated.AmountCents &&
+            string.Equals(t.Description, updated.Description, StringComparison.OrdinalIgnoreCase));
     }
 
     private void Compute()
