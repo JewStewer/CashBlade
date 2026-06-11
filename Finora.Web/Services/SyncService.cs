@@ -98,6 +98,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
             var payload = JsonSerializer.Deserialize<SyncPayload>(rows[0].Payload, _opts);
             if (payload is null) { LastError = "Could not read sync data."; return false; }
 
+            await ApplyLocalTransactionIntentsAsync(payload);
             await db.SaveSyncPayloadAsync(payload);
             LastSyncedAt = rows[0].SyncedAt ?? payload.SyncedAt;
             await SaveMetaAsync();
@@ -127,6 +128,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var payload = await http.GetFromJsonAsync<SyncPayload>($"{PcHost}/api/sync", _opts, cts.Token);
             if (payload is null) { LastError = "Empty response from PC."; return false; }
+            await ApplyLocalTransactionIntentsAsync(payload);
             await db.SaveSyncPayloadAsync(payload);
             LastSyncedAt = payload.SyncedAt;
             await SaveMetaAsync();
@@ -160,6 +162,90 @@ public class SyncService(HttpClient http, IndexedDbService db)
             OnSyncStateChanged?.Invoke();
         }
         return false;
+    }
+
+    private async Task ApplyLocalTransactionIntentsAsync(SyncPayload payload)
+    {
+        var overrides = await db.GetPendingTransactionOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var updated = ov.Transaction;
+            var transaction = FindPayloadTransaction(payload.Transactions, updated);
+            if (transaction is null) continue;
+
+            transaction.Date = new DateTime(updated.Date.Year, updated.Date.Month, updated.Date.Day);
+            transaction.Description = updated.Description;
+            transaction.AmountCents = updated.AmountCents;
+            transaction.AccountId = updated.AccountId;
+            transaction.CategoryId = ResolvePayloadCategoryId(payload.Categories, updated.CategoryName, updated.CategoryId, updated.AmountCents);
+            transaction.TransferId = updated.TransferId;
+            transaction.UpTransactionId = updated.UpTransactionId;
+            transaction.IsUnnecessary = updated.IsUnnecessary;
+        }
+
+        var deletes = await db.GetPendingTransactionDeletesAsync();
+        foreach (var deleted in deletes.Select(d => d.Deleted))
+        {
+            var transaction = FindPayloadTransaction(payload.Transactions, deleted);
+            if (transaction is not null)
+                payload.Transactions.Remove(transaction);
+        }
+    }
+
+    private static Transaction? FindPayloadTransaction(List<Transaction> transactions, Transaction updated)
+    {
+        if (!string.IsNullOrWhiteSpace(updated.UpTransactionId))
+        {
+            var byUpId = transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, updated.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return transactions.FirstOrDefault(t => t.Id == updated.Id) ??
+            transactions.FirstOrDefault(t =>
+                t.Date.Date == updated.Date.Date &&
+                t.AmountCents == updated.AmountCents &&
+                string.Equals(t.Description, updated.Description, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static Transaction? FindPayloadTransaction(List<Transaction> transactions, TransactionDelete deleted)
+    {
+        if (!string.IsNullOrWhiteSpace(deleted.UpTransactionId))
+        {
+            var byUpId = transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, deleted.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return transactions.FirstOrDefault(t => t.Id == deleted.Id) ??
+            transactions.FirstOrDefault(t =>
+                t.Date.Date == deleted.Date.Date &&
+                t.AmountCents == deleted.AmountCents &&
+                string.Equals(t.Description, deleted.Description, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int ResolvePayloadCategoryId(List<Category> categories, string categoryName, int categoryId, int amountCents)
+    {
+        if (!string.IsNullOrWhiteSpace(categoryName))
+        {
+            var byName = categories.FirstOrDefault(c => string.Equals(c.Name, categoryName.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (byName is not null) return byName.Id;
+        }
+
+        if (categories.Any(c => c.Id == categoryId)) return categoryId;
+
+        var fallbackName = amountCents > 0 ? "Income" : "Misc";
+        var fallback = categories.FirstOrDefault(c => string.Equals(c.Name, fallbackName, StringComparison.OrdinalIgnoreCase));
+        if (fallback is not null) return fallback.Id;
+
+        var created = new Category
+        {
+            Id = Math.Min(categories.Select(c => c.Id).DefaultIfEmpty(0).Min() - 1, -1),
+            Name = fallbackName,
+            Type = amountCents > 0 ? CategoryType.Income : CategoryType.Expense
+        };
+        categories.Add(created);
+        return created.Id;
     }
 
     // ── Push phone changes to Supabase (phone_push table) ─────────────────────
