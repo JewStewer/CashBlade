@@ -3123,8 +3123,7 @@
                                         <Button Content="Add to budget" Style="{StaticResource SmallButton}" Background="#0F766E" Margin="0,0,6,0" Click="AddBillToBudget_Click"/>
                                         <Button Content="Mark paid" Style="{StaticResource SmallButton}" Margin="0,0,6,0" Click="MarkBillsPaid_Click"/>
                                         <Button Content="Mark unpaid" Style="{StaticResource SmallButton}" Margin="0,0,6,0" Click="MarkBillsUnpaid_Click"/>
-                                        <Button Content="Skip this week" Style="{StaticResource SmallButton}" Background="#991B1B" Margin="0,0,6,0" Click="DeleteBill_Click"/>
-                                        <Button Content="Delete series" Style="{StaticResource SmallButton}" Background="#7F1D1D" Click="DeleteBillSeries_Click"/>
+                                        <Button Content="Delete" Style="{StaticResource SmallButton}" Background="#7F1D1D" Click="DeleteBill_Click"/>
                                     </StackPanel>
                                 </Grid>
 

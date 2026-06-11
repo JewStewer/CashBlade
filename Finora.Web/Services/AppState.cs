@@ -139,6 +139,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         // Apply any phone-side overrides that survived a cloud replace or app restart.
         await ApplyPersistedTransactionOverridesAsync();
         await ApplyPersistedTransactionDeletesAsync();
+        await ApplyPersistedBillDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
 
         await sync.InitAsync();
@@ -223,6 +224,26 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (transaction.Id > 0) _pendingDeletedTransactionIds.Add(transaction.Id);
             _pendingDeletedTransactions.RemoveAll(d => SameTransactionDelete(d, ov.Deleted));
             _pendingDeletedTransactions.Add(ov.Deleted);
+        }
+    }
+
+    private async Task ApplyPersistedBillDeletesAsync()
+    {
+        var deletes = await db.GetPendingBillDeletesAsync();
+        foreach (var deleted in deletes)
+        {
+            var id = deleted.Id;
+            if (id <= 0) continue;
+
+            Bills.RemoveAll(b => b.Id == id);
+            BillStatuses.RemoveAll(s => s.BillId == id);
+            _pendingNewBills.RemoveAll(b => b.Id == id);
+            _pendingUpdatedBills.RemoveAll(b => b.Id == id);
+            _pendingBillStatuses.RemoveAll(s => s.BillId == id);
+            _pendingDeletedBillIds.RemoveAll(x => x == id);
+            _pendingDeletedBillIds.Add(id);
+            await db.DeleteAsync("bills", id);
+            await db.ClearBillOverrideAsync(id);
         }
     }
 
@@ -1049,7 +1070,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedBills.RemoveAll(b => b.Id == id);
         _pendingBillStatuses.RemoveAll(s => s.BillId == id);
         if (id > 0)
+        {
+            _pendingDeletedBillIds.RemoveAll(x => x == id);
             _pendingDeletedBillIds.Add(id);
+            await db.SetBillDeleteAsync(id);
+        }
         await db.DeleteAsync("bills", id);
         await db.ClearBillOverrideAsync(id);
         Compute();
@@ -1625,6 +1650,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewBills.RemoveRange(0, push.NewBills.Count);
                     _pendingUpdatedBills.RemoveRange(0, push.UpdatedBills.Count);
                     _pendingDeletedBillIds.RemoveRange(0, push.DeletedBillIds.Count);
+                    foreach (var id in push.DeletedBillIds)
+                        await db.ClearBillDeleteAsync(id);
                     _pendingNewDebts.RemoveRange(0, push.NewDebts.Count);
                     _pendingUpdatedDebts.RemoveRange(0, push.UpdatedDebts.Count);
                     _pendingNewDebtPayments.RemoveRange(0, push.NewDebtPayments.Count);
@@ -1670,6 +1697,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedAccounts.Clear();
         _pendingUpdatedSettings.Clear();
         await db.ClearBillOverridesAsync();
+        await db.ClearBillDeletesAsync();
         OnChange?.Invoke();
     }
 

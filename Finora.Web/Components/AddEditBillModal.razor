@@ -155,7 +155,7 @@
     private async Task Delete()
     {
         if (Bill is null) return;
-        if (!await JS.InvokeAsync<bool>("confirm", $"Delete \"{Bill.Name}\"? This can't be undone."))
+        if (!await JS.InvokeAsync<bool>("confirm", $"Delete the entire \"{Bill.Name}\" bill series? This can't be undone."))
             return;
 
         saving = true;

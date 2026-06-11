@@ -63,6 +63,17 @@ public class IndexedDbService(IJSRuntime js)
         var meta = existingMeta.FirstOrDefault() ?? new SyncMeta { Id = 1 };
         meta.LastSyncedAt = p.SyncedAt;
 
+        // Bill overrides are intentionally outside replaceAll so unpaid/paid
+        // changes survive a refresh until pushed. When the PC/cloud snapshot no
+        // longer contains a bill, remove stale overrides so deleted series stay
+        // deleted on iOS instead of lingering locally.
+        var validBillIds = p.Bills.Select(b => b.Id).ToHashSet();
+        var staleBillOverrides = await GetPendingBillOverridesAsync();
+        foreach (var stale in staleBillOverrides.Where(o => !validBillIds.Contains(o.Id)))
+        {
+            await ClearBillOverrideAsync(stale.Id);
+        }
+
         // Single atomic IndexedDB transaction via db.replaceAll:
         //   • clears all sync-managed stores
         //   • writes new records for every store
@@ -114,6 +125,15 @@ public class IndexedDbService(IJSRuntime js)
     public Task ClearBillOverrideAsync(int billId) =>
         DeleteAsync("pendingBillOverrides", billId);
 
+    public Task<List<PendingBillDelete>> GetPendingBillDeletesAsync() =>
+        GetAllAsync<PendingBillDelete>("billDeletes");
+
+    public Task SetBillDeleteAsync(int billId) =>
+        PutAsync("billDeletes", new PendingBillDelete { Id = billId });
+
+    public Task ClearBillDeleteAsync(int billId) =>
+        DeleteAsync("billDeletes", billId);
+
     // ── Persistent transaction edits (survive cloud replace until pushed) ─────
     public Task<List<PendingTransactionOverride>> GetPendingTransactionOverridesAsync() =>
         GetAllAsync<PendingTransactionOverride>("transactionOverrides");
@@ -139,6 +159,9 @@ public class IndexedDbService(IJSRuntime js)
     public Task ClearBillOverridesAsync() =>
         ClearAsync("pendingBillOverrides");
 
+    public Task ClearBillDeletesAsync() =>
+        ClearAsync("billDeletes");
+
     public async Task SaveSettingAsync(string key, string value)
     {
         var settings = await GetAppSettingsAsync();
@@ -160,6 +183,11 @@ public class PendingBillOverride
 {
     public int Id { get; set; }   // = BillId (unique per bill)
     public bool IsPaid { get; set; }
+}
+
+public class PendingBillDelete
+{
+    public int Id { get; set; }   // = BillId
 }
 
 public class PendingTransactionOverride

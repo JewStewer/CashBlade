@@ -176,7 +176,7 @@
         _ = SafeSyncAsync();
 
         _syncCts = new CancellationTokenSource();
-        _syncTimer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+        _syncTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         _ = RunPeriodicSyncAsync(_syncTimer, _syncCts.Token);
     }
 

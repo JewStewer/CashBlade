@@ -448,7 +448,7 @@ public partial class MainWindow : Window
 
     private void DeleteBill_Click(object sender, RoutedEventArgs e)
     {
-        DeleteSelectedBills();
+        DeleteSelectedBillSeries();
     }
 
     private void DeleteBillSeries_Click(object sender, RoutedEventArgs e)

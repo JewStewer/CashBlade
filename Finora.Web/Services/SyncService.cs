@@ -98,7 +98,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
             var payload = JsonSerializer.Deserialize<SyncPayload>(rows[0].Payload, _opts);
             if (payload is null) { LastError = "Could not read sync data."; return false; }
 
-            await ApplyLocalTransactionIntentsAsync(payload);
+            await ApplyLocalIntentsAsync(payload);
             await db.SaveSyncPayloadAsync(payload);
             LastSyncedAt = rows[0].SyncedAt ?? payload.SyncedAt;
             await SaveMetaAsync();
@@ -128,7 +128,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var payload = await http.GetFromJsonAsync<SyncPayload>($"{PcHost}/api/sync", _opts, cts.Token);
             if (payload is null) { LastError = "Empty response from PC."; return false; }
-            await ApplyLocalTransactionIntentsAsync(payload);
+            await ApplyLocalIntentsAsync(payload);
             await db.SaveSyncPayloadAsync(payload);
             LastSyncedAt = payload.SyncedAt;
             await SaveMetaAsync();
@@ -164,7 +164,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
         return false;
     }
 
-    private async Task ApplyLocalTransactionIntentsAsync(SyncPayload payload)
+    private async Task ApplyLocalIntentsAsync(SyncPayload payload)
     {
         var overrides = await db.GetPendingTransactionOverridesAsync();
         foreach (var ov in overrides)
@@ -189,6 +189,13 @@ public class SyncService(HttpClient http, IndexedDbService db)
             var transaction = FindPayloadTransaction(payload.Transactions, deleted);
             if (transaction is not null)
                 payload.Transactions.Remove(transaction);
+        }
+
+        var deletedBills = await db.GetPendingBillDeletesAsync();
+        foreach (var id in deletedBills.Select(d => d.Id).Where(id => id > 0).Distinct())
+        {
+            payload.Bills.RemoveAll(b => b.Id == id);
+            payload.BillOccurrenceStatuses.RemoveAll(s => s.BillId == id);
         }
     }
 
