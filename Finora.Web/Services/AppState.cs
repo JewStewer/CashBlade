@@ -446,6 +446,19 @@ public class AppState(IndexedDbService db, SyncService sync)
                     DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month)));
     }
 
+    public (DateTime from, DateTime to) GetCurrentPayCycle()
+    {
+        const int cycleDays = 14;
+        var today = DateTime.Today;
+        var nextPayday = NextPayDate.Date;
+        while (nextPayday < today)
+            nextPayday = nextPayday.AddDays(cycleDays);
+
+        var from = nextPayday == today ? today : nextPayday.AddDays(-cycleDays);
+        var to = nextPayday == today ? today.AddDays(cycleDays - 1) : nextPayday.AddDays(-1);
+        return (from, to);
+    }
+
     // ── Week spending helpers ──────────────────────────────────────────────────
     /// <summary>Total spending for the ISO week N weeks ago (0 = current week).</summary>
     public decimal GetWeekSpending(int weeksAgo = 0)
@@ -483,6 +496,11 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal GetPeriodSpending()
     {
         var (from, to) = GetCurrentPeriod();
+        return GetPeriodSpendingForPeriod(from, to);
+    }
+
+    public decimal GetPeriodSpendingForPeriod(DateTime from, DateTime to)
+    {
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
                         && !IsInternalMovement(t) && !_unrepaidLentIds.Contains(t.Id))
@@ -514,6 +532,11 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<(string Category, decimal Amount)> GetTopCategories(int n = 5, bool excludeBills = false)
     {
         var (from, to) = GetCurrentPeriod();
+        return GetTopCategoriesForPeriod(from, to, n, excludeBills);
+    }
+
+    public List<(string Category, decimal Amount)> GetTopCategoriesForPeriod(DateTime from, DateTime to, int n = 5, bool excludeBills = false)
+    {
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
                         && !IsInternalMovement(t) && (!excludeBills || !IsBudgetedBillTransaction(t)))
