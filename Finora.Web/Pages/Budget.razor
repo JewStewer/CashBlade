@@ -508,12 +508,11 @@
 
     <!-- Can I afford it? -->
     <div class="card" style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <div style="font-size:12px;color:var(--text3)">Can I Afford It?</div>
-            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);cursor:pointer">
-                <input type="checkbox" checked="@_savingsGoalMode" @onchange="OnSavingsGoalModeChanged" style="margin:0" />
-                Saving up over time?
-            </label>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Can I Afford It?</div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+            <button class="pill @(_affordMode=="OneOff"?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick='() => SetAffordModeAsync("OneOff")'>One-off</button>
+            <button class="pill @(_affordMode=="Savings"?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick='() => SetAffordModeAsync("Savings")'>Saving up</button>
+            <button class="pill @(_affordMode=="Installments"?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick='() => SetAffordModeAsync("Installments")'>Installments</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:18px;color:var(--text3);font-weight:300">$</span>
@@ -522,7 +521,7 @@
                    placeholder="Enter amount…" style="flex:1;font-size:18px;font-weight:600" />
         </div>
 
-        @if (_savingsGoalMode)
+        @if (_affordMode == "Savings")
         {
             <div style="display:flex;gap:8px;margin-top:10px">
                 <div style="flex:1">
@@ -578,6 +577,54 @@
                             </div>
                         </div>
                     }
+                </div>
+            }
+        }
+        else if (_affordMode == "Installments")
+        {
+            <div style="display:flex;gap:8px;margin-top:10px">
+                <div style="flex:1">
+                    <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Number of payments</label>
+                    <input class="form-input" type="number" min="2" step="1" value="@_installmentCount" @onchange="OnInstallmentCountChanged" style="font-size:14px" />
+                </div>
+                <div style="flex:1">
+                    <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Every (weeks)</label>
+                    <input class="form-input" type="number" min="1" step="1" value="@_installmentFrequencyWeeks" @onchange="OnInstallmentFrequencyChanged" style="font-size:14px" />
+                </div>
+            </div>
+
+            @if (_affordAmount > 0)
+            {
+                var count = Math.Max(_installmentCount, 2);
+                var freq = Math.Max(_installmentFrequencyWeeks, 1);
+                var perInstallment = Math.Round(_affordAmount / count, 2);
+                var weeklyImpact = Math.Round(perInstallment / freq, 2);
+                var totalWeeks = (count - 1) * freq;
+                var weeklySpare = State.BudgetLeftover;
+                var remainingSpare = weeklySpare - weeklyImpact;
+                var ratio = weeklySpare > 0 ? weeklyImpact / weeklySpare : 999m;
+                var (verdict, verdictColor) =
+                    ratio < 0.5m ? ("✓ Comfortable — easily on track", "var(--green)") :
+                    ratio <= 1m  ? ("⚠ Tight — uses most of your spare budget", "var(--amber)") :
+                                   ("✕ Short — not enough spare for these repayments", "var(--red)");
+
+                <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
+                    <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px">@verdict</div>
+                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+                        <span style="color:var(--text3)">Repayments</span>
+                        <span style="font-weight:600">@count × @perInstallment.ToString("C") / @freq wk@(freq == 1 ? "" : "s")</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:13px">
+                        <span style="color:var(--text3)">Adds to your spending</span>
+                        <span style="font-weight:600;color:@(weeklySpare>=weeklyImpact?"var(--green)":"var(--red)")">+@weeklyImpact.ToString("C")/wk</span>
+                    </div>
+                    <div style="border-top:1px solid var(--border);margin-top:5px;padding-top:8px;display:flex;justify-content:space-between;font-size:14px">
+                        <span style="color:var(--text3)">Spare budget after</span>
+                        <span style="font-weight:700;color:@(remainingSpare>=0?"var(--green)":"var(--red)")">@remainingSpare.ToString("C")/wk</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--text3);margin-top:6px">
+                        First payment today, then @(count-1) more every @freq wk@(freq == 1 ? "" : "s") · paid off in @totalWeeks wk@(totalWeeks == 1 ? "" : "s")
+                    </div>
                 </div>
             }
         }
@@ -662,36 +709,38 @@
 
 @code {
     private decimal _affordAmount;
-    private bool _savingsGoalMode;
+    private string _affordMode = "OneOff"; // OneOff | Savings | Installments
     private int _goalWeeks = 4;
     private string _goalAccountName = string.Empty;
+    private int _installmentCount = 4;
+    private int _installmentFrequencyWeeks = 2;
 
     protected override void OnInitialized()
     {
-        if (State.AffordabilityGoalAmount > 0)
+        _affordMode = State.AffordabilityMode;
+        _affordAmount = _affordMode switch
         {
-            _affordAmount = State.AffordabilityGoalAmount;
-            _savingsGoalMode = true;
-        }
+            "Savings" => State.AffordabilityGoalAmount,
+            "Installments" => State.AffordabilityInstallmentAmount,
+            _ => 0m
+        };
         _goalWeeks = State.AffordabilityGoalWeeks;
         _goalAccountName = State.AffordabilityGoalAccountName;
+        _installmentCount = State.AffordabilityInstallmentCount;
+        _installmentFrequencyWeeks = State.AffordabilityInstallmentFrequencyWeeks;
     }
 
-    private async Task OnSavingsGoalModeChanged(ChangeEventArgs e)
+    private async Task SetAffordModeAsync(string mode)
     {
-        _savingsGoalMode = e.Value is bool b && b;
-        if (_savingsGoalMode && _affordAmount > 0)
-        {
-            await SaveGoalSettingsAsync();
-        }
+        if (_affordMode == mode) return;
+        _affordMode = mode;
+        await State.SaveSettingAsync("AffordabilityMode", _affordMode);
+        if (_affordAmount > 0) await SaveAffordabilitySettingsAsync();
     }
 
     private async Task OnAffordAmountChanged()
     {
-        if (_savingsGoalMode && _affordAmount > 0)
-        {
-            await SaveGoalSettingsAsync();
-        }
+        if (_affordAmount > 0) await SaveAffordabilitySettingsAsync();
     }
 
     private async Task OnGoalWeeksChanged(ChangeEventArgs e)
@@ -699,21 +748,49 @@
         if (int.TryParse(e.Value?.ToString(), out var weeks) && weeks > 0)
         {
             _goalWeeks = weeks;
-            if (_savingsGoalMode) await SaveGoalSettingsAsync();
+            await SaveAffordabilitySettingsAsync();
         }
     }
 
     private async Task OnGoalAccountChanged(ChangeEventArgs e)
     {
         _goalAccountName = e.Value?.ToString() ?? string.Empty;
-        if (_savingsGoalMode) await SaveGoalSettingsAsync();
+        await SaveAffordabilitySettingsAsync();
     }
 
-    private async Task SaveGoalSettingsAsync()
+    private async Task OnInstallmentCountChanged(ChangeEventArgs e)
     {
-        await State.SaveSettingAsync("AffordabilityAmount", _affordAmount.ToString());
-        await State.SaveSettingAsync("AffordabilityWeeks", _goalWeeks.ToString());
-        await State.SaveSettingAsync("AffordabilityAccountName", _goalAccountName);
+        if (int.TryParse(e.Value?.ToString(), out var count) && count >= 2)
+        {
+            _installmentCount = count;
+            await SaveAffordabilitySettingsAsync();
+        }
+    }
+
+    private async Task OnInstallmentFrequencyChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var weeks) && weeks > 0)
+        {
+            _installmentFrequencyWeeks = weeks;
+            await SaveAffordabilitySettingsAsync();
+        }
+    }
+
+    private async Task SaveAffordabilitySettingsAsync()
+    {
+        switch (_affordMode)
+        {
+            case "Savings":
+                await State.SaveSettingAsync("AffordabilityAmount", _affordAmount.ToString());
+                await State.SaveSettingAsync("AffordabilityWeeks", _goalWeeks.ToString());
+                await State.SaveSettingAsync("AffordabilityAccountName", _goalAccountName);
+                break;
+            case "Installments":
+                await State.SaveSettingAsync("AffordabilityInstallmentAmount", _affordAmount.ToString());
+                await State.SaveSettingAsync("AffordabilityInstallments", _installmentCount.ToString());
+                await State.SaveSettingAsync("AffordabilityInstallmentWeeks", _installmentFrequencyWeeks.ToString());
+                break;
+        }
     }
 
     // Discretionary spend/budget: excludes bill categories (Debt, Rent, Phone, Insurance, etc.)

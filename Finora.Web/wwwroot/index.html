@@ -62,6 +62,53 @@
             }
         };
     </script>
+    <script>
+        // ── Resume / black-screen recovery (iOS PWA) ────────────────────────
+        // After the Home Screen app is backgrounded, iOS sometimes resumes it
+        // to a frozen/black WKWebView (a stuck framework fetch, or a render
+        // that never repaints). Reload to recover instead of the user having
+        // to swipe the app away and relaunch it.
+        (() => {
+            const RELOAD_GUARD_KEY = 'fb-last-reload';
+            const MIN_RELOAD_GAP_MS = 15000;
+            const safeReload = () => {
+                const last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) || 0);
+                if (Date.now() - last < MIN_RELOAD_GAP_MS) return;
+                sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
+                window.location.reload();
+            };
+
+            // Page restored from bfcache (frozen JS) — always reload.
+            window.addEventListener('pageshow', event => {
+                if (event.persisted) safeReload();
+            });
+
+            // Boot watchdog: if Blazor hasn't signalled it started within 20s,
+            // reload once (covers a hung framework fetch on cold start).
+            const bootTimeout = setTimeout(() => {
+                if (!window.__financeBladeStarted) safeReload();
+            }, 20000);
+            window.financeBlade.appStarted = () => {
+                window.__financeBladeStarted = true;
+                clearTimeout(bootTimeout);
+            };
+
+            // On resume: nudge a reflow (works around WKWebView staying black
+            // after backgrounding); if the app still hasn't booted shortly
+            // after, reload.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState !== 'visible') return;
+                document.body.style.display = 'none';
+                void document.body.offsetHeight;
+                document.body.style.display = '';
+                if (!window.__financeBladeStarted) {
+                    setTimeout(() => {
+                        if (!window.__financeBladeStarted) safeReload();
+                    }, 2000);
+                }
+            });
+        })();
+    </script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>
         (() => {

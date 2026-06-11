@@ -3,6 +3,17 @@ self.importScripts('./service-worker-assets.js');
 
 const CACHE = 'cashblade-' + self.assetsManifest.version;
 
+// iOS sometimes leaves an in-flight fetch hanging forever after the app is
+// backgrounded and resumed, which would otherwise stall the boot on the
+// loading screen. Bound network fetches so we always fall back to cache (or
+// a rejection the page-level watchdog can react to) instead of hanging.
+function fetchWithTimeout(request, ms) {
+    return Promise.race([
+        fetch(request),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('fetch timeout')), ms))
+    ]);
+}
+
 self.addEventListener('install', event => {
     event.waitUntil((async () => {
         const cache = await caches.open(CACHE);
@@ -61,7 +72,7 @@ self.addEventListener('fetch', event => {
         // any forced reload tricks. Falls back to cache when offline.
         if (event.request.mode === 'navigate') {
             try {
-                const response = await fetch(event.request);
+                const response = await fetchWithTimeout(event.request, 5000);
                 if (response.ok) return response;
                 return (await cache.match('index.html')) ?? (await cache.match('./index.html')) ?? response;
             } catch {
@@ -73,7 +84,7 @@ self.addEventListener('fetch', event => {
         // a fresh boot manifest with stale/corrupt cached WASM after an update.
         if (new URL(event.request.url).pathname.includes('/_framework/')) {
             try {
-                const response = await fetch(event.request);
+                const response = await fetchWithTimeout(event.request, 10000);
                 if (response.ok) {
                     cache.put(event.request, response.clone()).catch(() => {});
                     return response;
@@ -82,6 +93,6 @@ self.addEventListener('fetch', event => {
         }
 
         // For other assets: cache first, fall back to network
-        return (await cache.match(event.request)) ?? fetch(event.request);
+        return (await cache.match(event.request)) ?? fetchWithTimeout(event.request, 10000).catch(() => Response.error());
     })());
 });

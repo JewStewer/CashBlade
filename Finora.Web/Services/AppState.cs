@@ -45,6 +45,12 @@ public class AppState(IndexedDbService db, SyncService sync)
             ? null
             : Accounts.FirstOrDefault(a => string.Equals(a.Name, AffordabilityGoalAccountName, StringComparison.OrdinalIgnoreCase));
 
+    // ── Affordability calculator mode + installment plan (Afterpay-style) ─────
+    public string AffordabilityMode { get; private set; } = "OneOff";
+    public decimal AffordabilityInstallmentAmount { get; private set; }
+    public int AffordabilityInstallmentCount { get; private set; } = 4;
+    public int AffordabilityInstallmentFrequencyWeeks { get; private set; } = 2;
+
     // ── App lock (PIN) ──────────────────────────────────────────────────────────
     private const string AppLockPinHashKey = "AppLockPinHash";
     private const string AppLockSalt = "Finora-AppLock-v1";
@@ -255,6 +261,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             ? goalWeeks
             : 4;
         AffordabilityGoalAccountName = GetSetting("AffordabilityAccountName") ?? string.Empty;
+
+        AffordabilityMode = GetSetting("AffordabilityMode")
+            ?? (AffordabilityGoalAmount > 0 ? "Savings" : "OneOff");
+
+        AffordabilityInstallmentAmount = decimal.TryParse(GetSetting("AffordabilityInstallmentAmount"), out var instAmount) && instAmount > 0
+            ? instAmount
+            : 0m;
+        AffordabilityInstallmentCount = int.TryParse(GetSetting("AffordabilityInstallments"), out var instCount) && instCount >= 2
+            ? instCount
+            : 4;
+        AffordabilityInstallmentFrequencyWeeks = int.TryParse(GetSetting("AffordabilityInstallmentWeeks"), out var instFreq) && instFreq > 0
+            ? instFreq
+            : 2;
 
         AppLockEnabled = !string.IsNullOrEmpty(GetSetting(AppLockPinHashKey));
         if (!_lockStateInitialized)
