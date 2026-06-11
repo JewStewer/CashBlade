@@ -62,6 +62,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedBills.Count > 0 ||
         _pendingUpdatedSettings.Count > 0;
 
+    public async Task<(int Edits, int Deletes)> GetPersistedTransactionIntentCountsAsync()
+    {
+        var edits = await db.GetPendingTransactionOverridesAsync();
+        var deletes = await db.GetPendingTransactionDeletesAsync();
+        return (edits.Count, deletes.Count);
+    }
+
     public event Action? OnChange;
 
     // ── Account balances computed from transactions ───────────────────────────
@@ -192,10 +199,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         var byId = Transactions.FirstOrDefault(t => t.Id == updated.Id);
         if (byId is not null) return byId;
 
-        return Transactions.FirstOrDefault(t =>
-            t.Date.Date == updated.Date.Date &&
-            t.AmountCents == updated.AmountCents &&
-            string.Equals(t.Description, updated.Description, StringComparison.OrdinalIgnoreCase));
+        return Transactions.FirstOrDefault(t => SameTransactionSignature(t, updated));
     }
 
     private void Compute()
@@ -927,9 +931,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             return string.Equals(left.UpTransactionId, right.UpTransactionId, StringComparison.Ordinal);
         }
 
-        return left.Date.Date == right.Date.Date &&
-            left.AmountCents == right.AmountCents &&
-            string.Equals(left.Description, right.Description, StringComparison.OrdinalIgnoreCase);
+        return SameTransactionSignature(left.Date, left.Description, left.AmountCents, right.Date, right.Description, right.AmountCents);
     }
 
     public async Task SaveSettingAsync(string key, string value)
@@ -1050,10 +1052,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         return transactions.FirstOrDefault(t => t.Id == edit.Id) ??
-            transactions.FirstOrDefault(t =>
-                t.Date.Date == edit.Date.Date &&
-                t.AmountCents == edit.AmountCents &&
-                string.Equals(t.Description, edit.Description, StringComparison.OrdinalIgnoreCase));
+            transactions.FirstOrDefault(t => SameTransactionSignature(t.Date, t.Description, t.AmountCents, edit.Date, edit.Description, edit.AmountCents));
     }
 
     private static Transaction? FindPayloadTransaction(List<Transaction> transactions, TransactionDelete deleted)
@@ -1066,10 +1065,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         return transactions.FirstOrDefault(t => t.Id == deleted.Id) ??
-            transactions.FirstOrDefault(t =>
-                t.Date.Date == deleted.Date.Date &&
-                t.AmountCents == deleted.AmountCents &&
-                string.Equals(t.Description, deleted.Description, StringComparison.OrdinalIgnoreCase));
+            transactions.FirstOrDefault(t => SameTransactionSignature(t.Date, t.Description, t.AmountCents, deleted.Date, deleted.Description, deleted.AmountCents));
     }
 
     private static int ResolvePayloadCategoryId(List<Category> categories, string categoryName, int categoryId, int amountCents)
@@ -1360,10 +1356,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         return Transactions.FirstOrDefault(t => t.Id == edit.Id) ??
-            Transactions.FirstOrDefault(t =>
-                t.Date.Date == edit.Date.Date &&
-                t.AmountCents == edit.AmountCents &&
-                string.Equals(t.Description, edit.Description, StringComparison.OrdinalIgnoreCase));
+            Transactions.FirstOrDefault(t => SameTransactionSignature(t.Date, t.Description, t.AmountCents, edit.Date, edit.Description, edit.AmountCents));
     }
 
     private Transaction? FindLocalTransaction(TransactionDelete deleted)
@@ -1376,9 +1369,18 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         return Transactions.FirstOrDefault(t => t.Id == deleted.Id) ??
-            Transactions.FirstOrDefault(t =>
-                t.Date.Date == deleted.Date.Date &&
-                t.AmountCents == deleted.AmountCents &&
-                string.Equals(t.Description, deleted.Description, StringComparison.OrdinalIgnoreCase));
+            Transactions.FirstOrDefault(t => SameTransactionSignature(t.Date, t.Description, t.AmountCents, deleted.Date, deleted.Description, deleted.AmountCents));
     }
+
+    private static bool SameTransactionSignature(Transaction left, Transaction right) =>
+        SameTransactionSignature(left.Date, left.Description, left.AmountCents, right.Date, right.Description, right.AmountCents);
+
+    private static bool SameTransactionSignature(DateTime leftDate, string leftDescription, int leftAmountCents, DateTime rightDate, string rightDescription, int rightAmountCents)
+    {
+        if (leftAmountCents != rightAmountCents) return false;
+        if (!string.Equals(NormalizeDescription(leftDescription), NormalizeDescription(rightDescription), StringComparison.OrdinalIgnoreCase)) return false;
+        return Math.Abs((leftDate.Date - rightDate.Date).TotalDays) <= 3;
+    }
+
+    private static string NormalizeDescription(string? description) => (description ?? string.Empty).Trim();
 }

@@ -124,6 +124,7 @@
     protected override void OnInitialized()
     {
         State.OnChange += StateHasChanged;
+        Nav.LocationChanged += OnLocationChanged;
     }
 
     protected override async Task OnInitializedAsync()
@@ -212,9 +213,16 @@
         catch { }
     }
 
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try { await JS.InvokeVoidAsync("financeBlade.scrollPageToTop"); }
+        catch { }
+    }
+
     public void Dispose()
     {
         State.OnChange -= StateHasChanged;
+        Nav.LocationChanged -= OnLocationChanged;
         _syncCts?.Cancel();
         _syncCts?.Dispose();
         _syncTimer?.Dispose();

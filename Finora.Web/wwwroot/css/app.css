@@ -96,6 +96,7 @@ button, a, input, select, textarea, [role="button"] {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    overflow-anchor: none;
     /* Enough bottom padding to clear the fixed nav + home indicator */
     padding: 0 0 calc(var(--nav-height) + var(--safe-bottom) + 8px) 0;
 }
@@ -271,6 +272,7 @@ button, a, input, select, textarea, [role="button"] {
     padding: 12px 16px;
     gap: 12px;
     border-bottom: 1px solid var(--border);
+    overflow-anchor: none;
 }
 
 .list-row:last-child { border-bottom: none; }

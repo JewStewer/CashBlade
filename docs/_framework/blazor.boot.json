@@ -1,7 +1,7 @@
 {
   "mainAssemblyName": "Finora.Web",
   "resources": {
-    "hash": "sha256-MaRYujKTrxWcR7KsxR4JWjOStPXgu/kShjuPU96AJJs=",
+    "hash": "sha256-pz8z+Jt94/Syd6j/uYfChTS9MxHRUGb4OkYt7sqx3L8=",
     "jsModuleNative": {
       "dotnet.native.8.0.27.im9y30eqtq.js": "sha256-sn/g61GjVPhViOYQDkq1OMlk0eyS9r2Hi0qgU2o0HIU="
     },
@@ -17,7 +17,7 @@
       "icudt_no_CJK.dat": "sha256-L7sV7NEYP37/Qr2FPCePo5cJqRgTXRwGHuwF5Q+0Nfs="
     },
     "assembly": {
-      "Finora.Web.wasm": "sha256-3HkRbv9eGht2cw+6ocWVabIviAuUQiJctgGNpzl0YxQ=",
+      "Finora.Web.wasm": "sha256-qdBBn7oT3+dKQn/17Rg4lQAGN98kqcIVg2BwN/RXLoc=",
       "Microsoft.AspNetCore.Components.wasm": "sha256-aYUQ6JQ4VCRdymEdS5aDZbqm0wHwzVsEjB19gS8Y/2g=",
       "Microsoft.AspNetCore.Components.Web.wasm": "sha256-2NPB/HG+Kn2QP6b3LSWlupXOAbjsRXrRumJ4sM/2a84=",
       "Microsoft.AspNetCore.Components.WebAssembly.wasm": "sha256-dNxo29aPtc4pOCNKiTVrqWRq25ONtaVHwGSk8iHxb68=",
@@ -50,7 +50,7 @@
       "System.Private.CoreLib.wasm": "sha256-jWxrPhhGhhZM6fOZO68NLN3wMgHLSrisKuKI5A2C+o0=",
       "System.Private.Uri.wasm": "sha256-88R9ifBD2AZ8kQtJkHKhtQ5NamfXNpQG3C+f9SrPNEs=",
       "System.Runtime.InteropServices.JavaScript.wasm": "sha256-jyaxmIYanGVFU8WarRI2ikm+/Eb4m/X2+DRge0Q46eM=",
-      "System.Runtime.wasm": "sha256-JlyuQVlXODHeaiI5xshwwSinwDFNcczPEcFZVzHSJpE=",
+      "System.Runtime.wasm": "sha256-YtH+o22xqO+isSXwp8hQhRyYkEaP+tKek875K2uABs0=",
       "System.Text.Encodings.Web.wasm": "sha256-sp6NJz/iyyD3lUXZzKYAWo/W+1xLj7oBS5AGzzVIuyo=",
       "System.Text.Json.wasm": "sha256-MS26XWzdut6faRbKYH6zL3c3QBQyLyGSQ0o/a9aFtTc=",
       "System.Text.RegularExpressions.wasm": "sha256-cGqougFtcUKCYa7t901q675c/QaDflJLMQHNP81s7+c=",

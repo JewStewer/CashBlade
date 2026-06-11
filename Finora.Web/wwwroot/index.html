@@ -32,6 +32,16 @@
     <!-- db.js must load synchronously BEFORE Blazor -->
     <script src="js/db.js"></script>
     <script src="js/push.js"></script>
+    <script>
+        window.financeBlade = {
+            scrollPageToTop: () => {
+                requestAnimationFrame(() => {
+                    document.querySelector('.page-content')?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                    window.scrollTo(0, 0);
+                });
+            }
+        };
+    </script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>
         (() => {

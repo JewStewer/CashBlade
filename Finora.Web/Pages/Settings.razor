@@ -47,6 +47,13 @@
             <div style="font-size:13px;color:var(--amber);margin-bottom:8px">⚠ You have unsaved local changes.</div>
         }
 
+        @if (localEditIntents > 0 || localDeleteIntents > 0)
+        {
+            <div style="font-size:12px;color:var(--text3);margin-bottom:8px">
+                Local sync protection: @localEditIntents edit@(localEditIntents == 1 ? "" : "s"), @localDeleteIntents delete@(localDeleteIntents == 1 ? "" : "s").
+            </div>
+        }
+
         <button class="btn btn-primary btn-full" @onclick="DoAutoSync" disabled="@(Sync.IsSyncing || UpSync.IsSyncing)">
             @((Sync.IsSyncing || UpSync.IsSyncing) ? "Syncing..." : "Sync Now")
         </button>
@@ -271,6 +278,8 @@
     private DateTime nextPayDate = DateTime.Today;
     private bool testingSupabase;
     private string supabaseStatus = string.Empty, supabaseStatusColor = "var(--text3)";
+    private int localEditIntents;
+    private int localDeleteIntents;
 
     // Push notifications
     private bool _updateDone;
@@ -289,6 +298,7 @@
         upBankToken = await UpSync.GetAccessTokenAsync();
         nextPayDate = State.NextPayDate;
         vapidPublicKey = State.VapidPublicKey;
+        await RefreshLocalIntentCountsAsync();
         Sync.OnSyncStateChanged += StateHasChanged;
         UpSync.OnStateChanged += StateHasChanged;
     }
@@ -311,6 +321,7 @@
     {
         syncStatus = "Syncing...";
         syncStatusColor = "var(--text3)";
+        await RefreshLocalIntentCountsAsync();
         StateHasChanged();
 
         var token = await UpSync.GetAccessTokenAsync();
@@ -386,9 +397,17 @@
         await State.LoadAsync();
         if (result.CloudSnapshotPushed)
             await State.MarkPendingChangesSyncedAsync();
+        await RefreshLocalIntentCountsAsync();
         upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, added {result.BalanceAdjustments} balance adjustment{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
         upBankStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
         StateHasChanged();
+    }
+
+    private async Task RefreshLocalIntentCountsAsync()
+    {
+        var counts = await State.GetPersistedTransactionIntentCountsAsync();
+        localEditIntents = counts.Edits;
+        localDeleteIntents = counts.Deletes;
     }
 
     private async Task EnableLocalNotifications()

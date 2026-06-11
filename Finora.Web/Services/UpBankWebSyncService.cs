@@ -96,11 +96,14 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
 
                     var account = GetTransactionAccount(accounts, upTransaction.Relationships.Account.Data?.Id);
                     var description = BuildDescription(upTransaction.Attributes);
+                    var purchaseDate = DateOnlyUnspecified(upTransaction.Attributes.CreatedAt.LocalDateTime);
+                    if (transactionDeletes.Any(d => SameTransactionSignature(d.Deleted.Date, d.Deleted.Description, d.Deleted.AmountCents, purchaseDate, description, amountCents)))
+                        continue;
+
                     var category = GetOrCreateCategory(
                         categories,
                         GetCategoryName(upTransaction.Relationships.Category.Data?.Id, description, amountCents),
                         amountCents > 0 ? CategoryType.Income : CategoryType.Expense);
-                    var purchaseDate = DateOnlyUnspecified(upTransaction.Attributes.CreatedAt.LocalDateTime);
 
                     var transaction = new Transaction
                     {
@@ -254,10 +257,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         }
 
         return transactions.FirstOrDefault(t => t.Id == updated.Id) ??
-            transactions.FirstOrDefault(t =>
-                t.Date.Date == updated.Date.Date &&
-                t.AmountCents == updated.AmountCents &&
-                string.Equals(t.Description, updated.Description, StringComparison.OrdinalIgnoreCase));
+            transactions.FirstOrDefault(t => SameTransactionSignature(t.Date, t.Description, t.AmountCents, updated.Date, updated.Description, updated.AmountCents));
     }
 
     private static Transaction? FindTransaction(List<Transaction> transactions, TransactionDelete deleted)
@@ -270,10 +270,14 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         }
 
         return transactions.FirstOrDefault(t => t.Id == deleted.Id) ??
-            transactions.FirstOrDefault(t =>
-                t.Date.Date == deleted.Date.Date &&
-                t.AmountCents == deleted.AmountCents &&
-                string.Equals(t.Description, deleted.Description, StringComparison.OrdinalIgnoreCase));
+            transactions.FirstOrDefault(t => SameTransactionSignature(t.Date, t.Description, t.AmountCents, deleted.Date, deleted.Description, deleted.AmountCents));
+    }
+
+    private static bool SameTransactionSignature(DateTime leftDate, string leftDescription, int leftAmountCents, DateTime rightDate, string rightDescription, int rightAmountCents)
+    {
+        if (leftAmountCents != rightAmountCents) return false;
+        if (!string.Equals((leftDescription ?? string.Empty).Trim(), (rightDescription ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        return Math.Abs((leftDate.Date - rightDate.Date).TotalDays) <= 3;
     }
 
     private static Category ResolveCategory(List<Category> categories, string? categoryName, int categoryId, int amountCents)
