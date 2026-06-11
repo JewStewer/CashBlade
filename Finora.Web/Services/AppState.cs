@@ -240,10 +240,16 @@ public class AppState(IndexedDbService db, SyncService sync)
         var status = BillStatuses.FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == effectiveDue.Date);
         if (status is null)
         {
-            status = new BillOccurrenceStatus { Id = -(BillStatuses.Count + 1), BillId = bill.Id, DueDate = effectiveDue };
+            status = new BillOccurrenceStatus { Id = NextLocalId(BillStatuses.Select(s => s.Id)), BillId = bill.Id, DueDate = effectiveDue };
             BillStatuses.Add(status);
         }
         return status;
+    }
+
+    private static int NextLocalId(IEnumerable<int> ids)
+    {
+        var min = ids.DefaultIfEmpty(0).Min();
+        return Math.Min(min - 1, -1);
     }
 
     private void ComputeBalances()

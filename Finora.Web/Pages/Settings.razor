@@ -1,6 +1,7 @@
 @page "/settings"
 @inject AppState State
 @inject SyncService Sync
+@inject UpBankWebSyncService UpSync
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -113,6 +114,42 @@
     </div>
 
 
+    <!-- Up Bank direct sync -->
+    <div class="card" style="border-color:@(!string.IsNullOrWhiteSpace(upBankToken)?"var(--teal)":"var(--border)")">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div style="font-size:14px;font-weight:600">Up Bank Sync</div>
+            @if (!string.IsNullOrWhiteSpace(upBankToken))
+            {
+                <span class="badge badge-teal">On iPhone</span>
+            }
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+            Imports Up Bank accounts and settled transactions directly into this app.
+        </div>
+
+        <div>
+            <label class="form-label">Personal Access Token</label>
+            <input class="form-input" @bind="upBankToken" placeholder="up:yeah:..." type="password" />
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-secondary btn-sm" @onclick="SaveUpToken">Save Token</button>
+            <button class="btn btn-primary btn-sm" style="flex:1" @onclick="SyncUpBank" disabled="@UpSync.IsSyncing">
+                @(UpSync.IsSyncing ? "Syncing..." : "Sync Up Bank")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(upBankStatus))
+        {
+            <div style="margin-top:8px;font-size:13px;color:@upBankStatusColor">@upBankStatus</div>
+        }
+        @if (!string.IsNullOrEmpty(UpSync.LastError))
+        {
+            <div style="margin-top:8px;font-size:13px;color:var(--red)">@UpSync.LastError</div>
+        }
+    </div>
+
+
     <!-- Payday -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:12px">Payday</div>
@@ -149,6 +186,17 @@
         }
         else
         {
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+                <button class="btn btn-primary btn-sm" style="flex:1" @onclick="EnableLocalNotifications" disabled="@_pushBusy">
+                    @(_pushPermission == "granted" ? "Notifications Enabled" : "Enable Alerts")
+                </button>
+                <button class="btn btn-secondary btn-sm" @onclick="SendTestNotification" disabled="@(_pushBusy || _pushPermission != "granted")">Test</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_localNotificationStatus))
+            {
+                <div style="margin-bottom:10px;font-size:13px;color:@_localNotificationStatusColor">@_localNotificationStatus</div>
+            }
+
             <div>
                 <label class="form-label">VAPID Public Key</label>
                 <input class="form-input" @bind="vapidPublicKey" placeholder="BHxk… (from npx web-push generate-vapid-keys)" style="font-family:monospace;font-size:12px" />
@@ -212,6 +260,8 @@
     private static readonly string BuildDate = DateTime.Now.ToString("dd MMM yyyy HH:mm");
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
+    private string upBankToken = string.Empty;
+    private string upBankStatus = string.Empty, upBankStatusColor = "var(--text3)";
     private DateTime nextPayDate = DateTime.Today;
     private bool testingSupabase;
     private string supabaseStatus = string.Empty, supabaseStatusColor = "var(--text3)";
@@ -223,15 +273,18 @@
     private bool _pushSubscribed;
     private bool _pushBusy;
     private string _pushStatus = string.Empty, _pushStatusColor = "var(--text3)";
+    private string _localNotificationStatus = string.Empty, _localNotificationStatusColor = "var(--text3)";
     private string vapidPublicKey = string.Empty;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         supabaseUrl = Sync.SupabaseUrl ?? string.Empty;
         supabaseKey = Sync.SupabaseKey ?? string.Empty;
+        upBankToken = await UpSync.GetAccessTokenAsync();
         nextPayDate = State.NextPayDate;
         vapidPublicKey = State.VapidPublicKey;
         Sync.OnSyncStateChanged += StateHasChanged;
+        UpSync.OnStateChanged += StateHasChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -270,6 +323,59 @@
         supabaseStatus = "Saved. Tap Sync Now to load data.";
         supabaseStatusColor = "var(--green)";
         StateHasChanged();
+    }
+
+    private async Task SaveUpToken()
+    {
+        await UpSync.SaveAccessTokenAsync(upBankToken);
+        upBankStatus = "Saved. Tap Sync Up Bank to import transactions.";
+        upBankStatusColor = "var(--green)";
+    }
+
+    private async Task SyncUpBank()
+    {
+        upBankStatus = string.Empty;
+        StateHasChanged();
+        var result = await UpSync.SyncAsync();
+        if (result is null)
+        {
+            upBankStatus = "Could not sync Up Bank.";
+            upBankStatusColor = "var(--red)";
+            return;
+        }
+
+        await State.LoadAsync();
+        upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, added {result.BalanceAdjustments} balance adjustment{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
+        upBankStatusColor = "var(--green)";
+        StateHasChanged();
+    }
+
+    private async Task EnableLocalNotifications()
+    {
+        _pushBusy = true;
+        _localNotificationStatus = string.Empty;
+        StateHasChanged();
+        try
+        {
+            _pushPermission = await JS.InvokeAsync<string>("pushNotifications.requestPermission");
+            _localNotificationStatus = _pushPermission == "granted"
+                ? "Alerts enabled. The app will notify you about bills due soon when it opens."
+                : "Permission was not granted.";
+            _localNotificationStatusColor = _pushPermission == "granted" ? "var(--green)" : "var(--red)";
+        }
+        finally
+        {
+            _pushBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendTestNotification()
+    {
+        var ok = await JS.InvokeAsync<bool>("pushNotifications.showLocal",
+            "Finance Blade", "Notifications are working.", "finora-test");
+        _localNotificationStatus = ok ? "Test notification sent." : "Could not show a notification on this device.";
+        _localNotificationStatusColor = ok ? "var(--green)" : "var(--red)";
     }
 
     private async Task SubscribePush()
@@ -360,5 +466,9 @@
         await State.SaveSettingAsync($"CategoryLimit:{categoryName}", cents.ToString());
     }
 
-    public void Dispose() => Sync.OnSyncStateChanged -= StateHasChanged;
+    public void Dispose()
+    {
+        Sync.OnSyncStateChanged -= StateHasChanged;
+        UpSync.OnStateChanged -= StateHasChanged;
+    }
 }

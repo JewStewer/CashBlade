@@ -2,6 +2,7 @@
 @inject AppState State
 @inject NavigationManager Nav
 @inject SyncService Sync
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="app-shell">
@@ -130,6 +131,7 @@
         try
         {
             await State.LoadAsync();
+            await NotifyUpcomingBillsAsync();
             StartBackgroundSync();
         }
         catch (Exception ex)
@@ -145,6 +147,7 @@
         try
         {
             await State.LoadAsync();
+            await NotifyUpcomingBillsAsync();
             StartBackgroundSync();
         }
         catch (Exception ex) { _initError = ex.Message; }
@@ -175,8 +178,38 @@
 
     private async Task SafeSyncAsync()
     {
-        try { await State.SyncAndReloadAsync(); }
+        try
+        {
+            await State.SyncAndReloadAsync();
+            await NotifyUpcomingBillsAsync();
+        }
         catch { /* SyncService records LastError for the Settings page; nothing to do here */ }
+    }
+
+    private async Task NotifyUpcomingBillsAsync()
+    {
+        if (!State.IsLoaded) return;
+
+        try
+        {
+            var permission = await JS.InvokeAsync<string>("pushNotifications.getPermission");
+            if (permission != "granted") return;
+
+            var upcoming = State.GetUpcomingBills(3);
+            if (!upcoming.Any()) return;
+
+            var key = "bills-" + DateTime.Today.ToString("yyyyMMdd");
+            var alreadyShown = await JS.InvokeAsync<bool>("pushNotifications.wasLocalNotificationShown", key);
+            if (alreadyShown) return;
+
+            var body = string.Join(", ", upcoming.Take(3).Select(b =>
+                b.EffectiveDueDate.Date == DateTime.Today ? $"{b.Name} today" :
+                b.EffectiveDueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} tomorrow" :
+                $"{b.Name} in {(b.EffectiveDueDate.Date - DateTime.Today).Days} days"));
+            await JS.InvokeAsync<bool>("pushNotifications.showLocal", "Bills due soon", body, key);
+            await JS.InvokeVoidAsync("pushNotifications.markLocalNotificationShown", key);
+        }
+        catch { }
     }
 
     public void Dispose()
