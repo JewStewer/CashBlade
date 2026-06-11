@@ -125,14 +125,39 @@ public class IndexedDbService(IJSRuntime js)
     public Task ClearBillOverrideAsync(int billId) =>
         DeleteAsync("pendingBillOverrides", billId);
 
-    public Task<List<PendingBillDelete>> GetPendingBillDeletesAsync() =>
-        GetAllAsync<PendingBillDelete>("billDeletes");
+    public async Task<List<PendingBillDelete>> GetPendingBillDeletesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingBillDelete>("billDeletes");
+        }
+        catch (JSException)
+        {
+            return new List<PendingBillDelete>();
+        }
+    }
 
-    public Task SetBillDeleteAsync(int billId) =>
-        PutAsync("billDeletes", new PendingBillDelete { Id = billId });
+    public async Task SetBillDeleteAsync(int billId)
+    {
+        try
+        {
+            await PutAsync("billDeletes", new PendingBillDelete { Id = billId });
+        }
+        catch (JSException)
+        {
+        }
+    }
 
-    public Task ClearBillDeleteAsync(int billId) =>
-        DeleteAsync("billDeletes", billId);
+    public async Task ClearBillDeleteAsync(int billId)
+    {
+        try
+        {
+            await DeleteAsync("billDeletes", billId);
+        }
+        catch (JSException)
+        {
+        }
+    }
 
     // ── Persistent transaction edits (survive cloud replace until pushed) ─────
     public Task<List<PendingTransactionOverride>> GetPendingTransactionOverridesAsync() =>
@@ -159,8 +184,16 @@ public class IndexedDbService(IJSRuntime js)
     public Task ClearBillOverridesAsync() =>
         ClearAsync("pendingBillOverrides");
 
-    public Task ClearBillDeletesAsync() =>
-        ClearAsync("billDeletes");
+    public async Task ClearBillDeletesAsync()
+    {
+        try
+        {
+            await ClearAsync("billDeletes");
+        }
+        catch (JSException)
+        {
+        }
+    }
 
     public async Task SaveSettingAsync(string key, string value)
     {

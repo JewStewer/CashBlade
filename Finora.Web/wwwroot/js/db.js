@@ -29,9 +29,33 @@ function openDb() {
     });
 }
 
+async function ensureStore(store) {
+    let db = await openDb();
+    if (db.objectStoreNames.contains(store)) return db;
+
+    const nextVersion = db.version + 1;
+    db.close();
+    _db = null;
+
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, nextVersion);
+        req.onupgradeneeded = e => {
+            const upgraded = e.target.result;
+            for (const name of ALL_STORES) {
+                if (!upgraded.objectStoreNames.contains(name)) {
+                    upgraded.createObjectStore(name, { keyPath: 'id' });
+                }
+            }
+        };
+        req.onsuccess = e => { _db = e.target.result; resolve(_db); };
+        req.onerror = e => reject(e.target.error);
+        req.onblocked = () => reject(new Error('Database upgrade blocked. Close other Finance Blade tabs and reopen the app.'));
+    });
+}
+
 window.db = {
     async getAll(store) {
-        const db = await openDb();
+        const db = await ensureStore(store);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readonly');
             const req = tx.objectStore(store).getAll();
@@ -41,7 +65,7 @@ window.db = {
     },
 
     async get(store, id) {
-        const db = await openDb();
+        const db = await ensureStore(store);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readonly');
             const req = tx.objectStore(store).get(id);
@@ -51,7 +75,7 @@ window.db = {
     },
 
     async put(store, record) {
-        const db = await openDb();
+        const db = await ensureStore(store);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
             const req = tx.objectStore(store).put(record);
@@ -61,7 +85,7 @@ window.db = {
     },
 
     async putBulk(store, records) {
-        const db = await openDb();
+        const db = await ensureStore(store);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
             const os = tx.objectStore(store);
@@ -72,7 +96,7 @@ window.db = {
     },
 
     async delete(store, id) {
-        const db = await openDb();
+        const db = await ensureStore(store);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
             const req = tx.objectStore(store).delete(id);
@@ -82,7 +106,7 @@ window.db = {
     },
 
     async clear(store) {
-        const db = await openDb();
+        const db = await ensureStore(store);
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
             const req = tx.objectStore(store).clear();
