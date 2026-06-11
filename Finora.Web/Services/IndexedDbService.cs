@@ -127,6 +127,15 @@ public class IndexedDbService(IJSRuntime js)
     public Task ClearTransactionOverridesAsync() =>
         ClearAsync("transactionOverrides");
 
+    public Task<List<PendingTransactionDelete>> GetPendingTransactionDeletesAsync() =>
+        GetAllAsync<PendingTransactionDelete>("transactionDeletes");
+
+    public Task SetTransactionDeleteAsync(TransactionDelete deleted) =>
+        PutAsync("transactionDeletes", new PendingTransactionDelete { Id = PendingTransactionDelete.GetStableId(deleted), Deleted = deleted });
+
+    public Task ClearTransactionDeletesAsync() =>
+        ClearAsync("transactionDeletes");
+
     public Task ClearBillOverridesAsync() =>
         ClearAsync("pendingBillOverrides");
 
@@ -157,6 +166,17 @@ public class PendingTransactionOverride
 {
     public int Id { get; set; } // = Transaction Id
     public Transaction Transaction { get; set; } = new();
+}
+
+public class PendingTransactionDelete
+{
+    public string Id { get; set; } = string.Empty;
+    public TransactionDelete Deleted { get; set; } = new();
+
+    public static string GetStableId(TransactionDelete deleted) =>
+        !string.IsNullOrWhiteSpace(deleted.UpTransactionId)
+            ? $"up:{deleted.UpTransactionId}"
+            : $"sig:{deleted.Date:yyyyMMdd}:{deleted.AmountCents}:{deleted.Description}".ToLowerInvariant();
 }
 
 public class LentTransaction

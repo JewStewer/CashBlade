@@ -46,6 +46,8 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             var bills = await db.GetBillsAsync();
             var billStatuses = await db.GetBillStatusesAsync();
             var appSettings = await db.GetAppSettingsAsync();
+            var transactionOverrides = await db.GetPendingTransactionOverridesAsync();
+            var transactionDeletes = await db.GetPendingTransactionDeletesAsync();
 
             var sinceUtc = DateTimeOffset.UtcNow.AddDays(-90);
             var newestSeenUtc = sinceUtc;
@@ -83,7 +85,11 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                     var occurredAt = upTransaction.Attributes.SettledAt ?? upTransaction.Attributes.CreatedAt;
                     if (occurredAt > newestSeenUtc) newestSeenUtc = occurredAt;
 
-                    if (existingUpIds.Contains(upTransaction.Id)) continue;
+                    if (existingUpIds.Contains(upTransaction.Id) ||
+                        transactionDeletes.Any(d => string.Equals(d.Deleted.UpTransactionId, upTransaction.Id, StringComparison.Ordinal)))
+                    {
+                        continue;
+                    }
 
                     var amountCents = ParseAmountCents(upTransaction.Attributes.Amount.Value);
                     if (amountCents == 0) continue;
@@ -154,6 +160,8 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             foreach (var bill in bills) await db.PutAsync("bills", bill);
             foreach (var status in billStatuses) await db.PutAsync("billOccurrenceStatuses", status);
 
+            await ApplyPersistedTransactionChangesAsync(categories, transactions, transactionOverrides, transactionDeletes);
+
             await SaveSettingValueAsync(appSettings, LastSyncSettingKey, newestSeenUtc.ToUniversalTime().ToString("O"));
             var pushedSnapshot = await PushCurrentSnapshotToCloudAsync();
 
@@ -201,6 +209,96 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         var setting = settings.FirstOrDefault(s => s.Key == key);
         if (setting is null) settings.Add(new AppSetting { Id = NextLocalId(settings.Select(s => s.Id)), Key = key, Value = value });
         else setting.Value = value;
+    }
+
+    private async Task ApplyPersistedTransactionChangesAsync(
+        List<Category> categories,
+        List<Transaction> transactions,
+        List<PendingTransactionOverride> overrides,
+        List<PendingTransactionDelete> deletes)
+    {
+        foreach (var ov in overrides)
+        {
+            var updated = ov.Transaction;
+            var transaction = FindTransaction(transactions, updated);
+            if (transaction is null) continue;
+
+            transaction.Date = DateOnlyUnspecified(updated.Date);
+            transaction.Description = updated.Description;
+            transaction.AmountCents = updated.AmountCents;
+            transaction.AccountId = updated.AccountId;
+            transaction.CategoryId = ResolveCategory(categories, updated.CategoryName, updated.CategoryId, updated.AmountCents).Id;
+            transaction.TransferId = updated.TransferId;
+            transaction.UpTransactionId = updated.UpTransactionId;
+            transaction.IsUnnecessary = updated.IsUnnecessary;
+            await db.PutAsync("transactions", transaction);
+        }
+
+        foreach (var deleted in deletes.Select(d => d.Deleted))
+        {
+            var transaction = FindTransaction(transactions, deleted);
+            if (transaction is null) continue;
+
+            transactions.Remove(transaction);
+            await db.DeleteAsync("transactions", transaction.Id);
+        }
+    }
+
+    private static Transaction? FindTransaction(List<Transaction> transactions, Transaction updated)
+    {
+        if (!string.IsNullOrWhiteSpace(updated.UpTransactionId))
+        {
+            var byUpId = transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, updated.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return transactions.FirstOrDefault(t => t.Id == updated.Id) ??
+            transactions.FirstOrDefault(t =>
+                t.Date.Date == updated.Date.Date &&
+                t.AmountCents == updated.AmountCents &&
+                string.Equals(t.Description, updated.Description, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static Transaction? FindTransaction(List<Transaction> transactions, TransactionDelete deleted)
+    {
+        if (!string.IsNullOrWhiteSpace(deleted.UpTransactionId))
+        {
+            var byUpId = transactions.FirstOrDefault(t =>
+                string.Equals(t.UpTransactionId, deleted.UpTransactionId, StringComparison.Ordinal));
+            if (byUpId is not null) return byUpId;
+        }
+
+        return transactions.FirstOrDefault(t => t.Id == deleted.Id) ??
+            transactions.FirstOrDefault(t =>
+                t.Date.Date == deleted.Date.Date &&
+                t.AmountCents == deleted.AmountCents &&
+                string.Equals(t.Description, deleted.Description, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static Category ResolveCategory(List<Category> categories, string? categoryName, int categoryId, int amountCents)
+    {
+        if (!string.IsNullOrWhiteSpace(categoryName))
+        {
+            var byName = categories.FirstOrDefault(c => string.Equals(c.Name, categoryName.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (byName is not null) return byName;
+        }
+
+        var byId = categories.FirstOrDefault(c => c.Id == categoryId);
+        if (byId is not null) return byId;
+
+        var fallbackName = amountCents > 0 ? "Income" : "Misc";
+        var fallback = categories.FirstOrDefault(c => string.Equals(c.Name, fallbackName, StringComparison.OrdinalIgnoreCase));
+        if (fallback is not null) return fallback;
+
+        var created = new Category
+        {
+            Id = NextLocalId(categories.Select(c => c.Id)),
+            Name = fallbackName,
+            Type = amountCents > 0 ? CategoryType.Income : CategoryType.Expense
+        };
+        categories.Add(created);
+        return created;
     }
 
     private async Task<bool> PushCurrentSnapshotToCloudAsync()

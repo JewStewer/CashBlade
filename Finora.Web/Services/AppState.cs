@@ -92,6 +92,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         // Apply any phone-side overrides that survived a cloud replace or app restart.
         await ApplyPersistedTransactionOverridesAsync();
+        await ApplyPersistedTransactionDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
 
         await sync.InitAsync();
@@ -159,6 +160,23 @@ public class AppState(IndexedDbService db, SyncService sync)
             ApplyTransactionEdit(transaction, updated);
             await db.PutAsync("transactions", transaction);
             QueueUpdatedTransaction(transaction);
+        }
+    }
+
+    private async Task ApplyPersistedTransactionDeletesAsync()
+    {
+        var deletes = await db.GetPendingTransactionDeletesAsync();
+        foreach (var ov in deletes)
+        {
+            var transaction = FindLocalTransaction(ov.Deleted);
+            if (transaction is null) continue;
+
+            Transactions.Remove(transaction);
+            await db.DeleteAsync("transactions", transaction.Id);
+            _pendingDeletedTransactionIds.RemoveAll(id => id == transaction.Id);
+            if (transaction.Id > 0) _pendingDeletedTransactionIds.Add(transaction.Id);
+            _pendingDeletedTransactions.RemoveAll(d => SameTransactionDelete(d, ov.Deleted));
+            _pendingDeletedTransactions.Add(ov.Deleted);
         }
     }
 
@@ -783,8 +801,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             _pendingDeletedTransactionIds.Add(id);
             if (deleted is not null)
             {
-                _pendingDeletedTransactions.RemoveAll(t => t.Id == id);
-                _pendingDeletedTransactions.Add(ToTransactionDelete(deleted));
+                var deleteIntent = ToTransactionDelete(deleted);
+                _pendingDeletedTransactions.RemoveAll(t => SameTransactionDelete(t, deleteIntent));
+                _pendingDeletedTransactions.Add(deleteIntent);
+                await db.SetTransactionDeleteAsync(deleteIntent);
             }
         }
         await db.DeleteAsync("transactions", id);
@@ -910,6 +930,18 @@ public class AppState(IndexedDbService db, SyncService sync)
         Description = transaction.Description,
         AmountCents = transaction.AmountCents
     };
+
+    private static bool SameTransactionDelete(TransactionDelete left, TransactionDelete right)
+    {
+        if (!string.IsNullOrWhiteSpace(left.UpTransactionId) || !string.IsNullOrWhiteSpace(right.UpTransactionId))
+        {
+            return string.Equals(left.UpTransactionId, right.UpTransactionId, StringComparison.Ordinal);
+        }
+
+        return left.Date.Date == right.Date.Date &&
+            left.AmountCents == right.AmountCents &&
+            string.Equals(left.Description, right.Description, StringComparison.OrdinalIgnoreCase);
+    }
 
     public async Task SaveSettingAsync(string key, string value)
     {
@@ -1122,8 +1154,6 @@ public class AppState(IndexedDbService db, SyncService sync)
                 if (pushed)
                 {
                     sentPush = push;
-                    foreach (var t in push.UpdatedTransactions)
-                        await db.ClearTransactionOverrideAsync(t.Id);
                     foreach (var s in push.UpdatedBillStatuses)
                         await db.ClearBillOverrideAsync(s.BillId);
                     // Remove only what was actually sent (by count, not Clear) —
@@ -1169,7 +1199,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingNewBills.Clear();
         _pendingUpdatedBills.Clear();
         _pendingUpdatedSettings.Clear();
-        await db.ClearTransactionOverridesAsync();
         await db.ClearBillOverridesAsync();
         OnChange?.Invoke();
     }
