@@ -33,19 +33,19 @@
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-lwMl7BCLT18Ca+tV2LN9NcIf0OnhEg+7CTVgEaxut9s=",
+      "hash": "sha256-xZuPHa9nVwg0YKhorV0xxKul9dpOLYUWRtx++Y9e1x8=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-rHPxFE8MzQqcjoHUzLQKuqq+zbU5fAe+1S5k39UIZv0=",
+      "hash": "sha256-aU+iTWos7UaCJ58xahwzvXnNCzzJHw1EYzW1sssKWzQ=",
       "url": "_framework\/Finora.Web.wasm"
     },
     {
-      "hash": "sha256-aYUQ6JQ4VCRdymEdS5aDZbqm0wHwzVsEjB19gS8Y\/2g=",
+      "hash": "sha256-yYcJRU2vV4YKvNA7HPrORiVd4Fn2mxHz0BgwkXM7qxA=",
       "url": "_framework\/Microsoft.AspNetCore.Components.wasm"
     },
     {
-      "hash": "sha256-2NPB\/HG+Kn2QP6b3LSWlupXOAbjsRXrRumJ4sM\/2a84=",
+      "hash": "sha256-borv4TWWMmB1urwwv3LkK9WVx61Y1MGz6J\/vJix5Bm8=",
       "url": "_framework\/Microsoft.AspNetCore.Components.Web.wasm"
     },
     {
@@ -133,7 +133,7 @@
       "url": "_framework\/System.Diagnostics.DiagnosticSource.wasm"
     },
     {
-      "hash": "sha256-TL3zEJ3h6BxCxtGf7WaomJs8dyJNEug\/0jaGpjWHP4I=",
+      "hash": "sha256-IyzfaYACUyExoNy\/NWEMGHHlC5f5g2F7L4J63GkdcNc=",
       "url": "_framework\/System.Linq.wasm"
     },
     {
@@ -157,7 +157,7 @@
       "url": "_framework\/System.ObjectModel.wasm"
     },
     {
-      "hash": "sha256-jWxrPhhGhhZM6fOZO68NLN3wMgHLSrisKuKI5A2C+o0=",
+      "hash": "sha256-NLG5NTDqNn\/n0NVlqKf\/Y8WRRQZxDD\/IHn5guUBsAsA=",
       "url": "_framework\/System.Private.CoreLib.wasm"
     },
     {
@@ -169,8 +169,12 @@
       "url": "_framework\/System.Runtime.InteropServices.JavaScript.wasm"
     },
     {
-      "hash": "sha256-YtH+o22xqO+isSXwp8hQhRyYkEaP+tKek875K2uABs0=",
+      "hash": "sha256-cc+vkqea+Bp+eKLrCc3c4Ihi0bXoyfiqCXIciv0eNWQ=",
       "url": "_framework\/System.Runtime.wasm"
+    },
+    {
+      "hash": "sha256-rad6oRM8f1l1dv0oMvZDs5sQTc3J01Z1UJdZQH9oPzY=",
+      "url": "_framework\/System.Security.Cryptography.wasm"
     },
     {
       "hash": "sha256-sp6NJz\/iyyD3lUXZzKYAWo\/W+1xLj7oBS5AGzzVIuyo=",
@@ -209,7 +213,7 @@
       "url": "icons\/icon-512.png"
     },
     {
-      "hash": "sha256-cFfwrE7MQJCjQFaPGwwTlyep4x4LMUeW2YUenKqafjA=",
+      "hash": "sha256-NfbYGqgDf24DxeXeGcP8ot\/5A9wATRwHk0CcCOfSbtk=",
       "url": "index.html"
     },
     {
@@ -225,5 +229,5 @@
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "W6hFtOq8"
+  "version": "FXRJ8YKx"
 };

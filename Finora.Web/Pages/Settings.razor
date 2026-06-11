@@ -274,6 +274,45 @@
         </div>
     }
 
+    <!-- Data export -->
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">Data</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Export your full transaction history as a CSV file.</div>
+        <button class="btn btn-secondary btn-full" @onclick="ExportTransactionsCsv">Export Transactions (CSV)</button>
+    </div>
+
+    <!-- App lock -->
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">🔒 App Lock</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+            @(State.AppLockEnabled ? "A PIN is required to open the app." : "Set a PIN to lock the app when it's reopened.")
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+                <label class="form-label">@(State.AppLockEnabled ? "New PIN" : "PIN") (4-6 digits)</label>
+                <input class="form-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" @bind="_newPin" placeholder="••••" />
+            </div>
+            <div>
+                <label class="form-label">Confirm PIN</label>
+                <input class="form-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" @bind="_confirmPin" placeholder="••••" />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_pinStatus))
+        {
+            <div style="margin-top:8px;font-size:13px;color:@_pinStatusColor">@_pinStatus</div>
+        }
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary" style="flex:1" @onclick="SetPin">@(State.AppLockEnabled ? "Update PIN" : "Set PIN")</button>
+            @if (State.AppLockEnabled)
+            {
+                <button class="btn btn-secondary" @onclick="RemovePin">Remove PIN</button>
+            }
+        </div>
+    </div>
+
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px">About</div>
         <div style="font-size:13px;color:var(--text3)">Finance Blade Mobile — offline-first, syncs via Supabase</div>
@@ -282,7 +321,7 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.11.6";
+    private const string AppVersion = "v2026.06.12.1";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -306,6 +345,11 @@
     private bool manualSyncActive;
     private int manualSyncProgress;
     private string manualSyncStep = string.Empty;
+
+    // App lock
+    private string _newPin = string.Empty;
+    private string _confirmPin = string.Empty;
+    private string _pinStatus = string.Empty, _pinStatusColor = "var(--text3)";
 
     protected override async Task OnInitializedAsync()
     {
@@ -570,6 +614,43 @@
         if (!decimal.TryParse(raw, out var dollars)) dollars = 0;
         var cents = (int)Math.Round(dollars * 100m);
         await State.SaveSettingAsync($"CategoryLimit:{categoryName}", cents.ToString());
+    }
+
+    private async Task ExportTransactionsCsv()
+    {
+        var csv = State.BuildTransactionsCsv();
+        await JS.InvokeVoidAsync("financeBlade.downloadFile", $"transactions-{DateTime.Today:yyyy-MM-dd}.csv", csv, "text/csv");
+    }
+
+    private async Task SetPin()
+    {
+        if (_newPin.Length < 4 || _newPin.Length > 6 || !_newPin.All(char.IsDigit))
+        {
+            _pinStatus = "PIN must be 4-6 digits.";
+            _pinStatusColor = "var(--red)";
+            return;
+        }
+        if (_newPin != _confirmPin)
+        {
+            _pinStatus = "PINs do not match.";
+            _pinStatusColor = "var(--red)";
+            return;
+        }
+
+        await State.SetPinAsync(_newPin);
+        _newPin = string.Empty;
+        _confirmPin = string.Empty;
+        _pinStatus = "PIN set. The app will lock next time it's opened.";
+        _pinStatusColor = "var(--green)";
+    }
+
+    private async Task RemovePin()
+    {
+        await State.DisablePinAsync();
+        _newPin = string.Empty;
+        _confirmPin = string.Empty;
+        _pinStatus = "PIN removed.";
+        _pinStatusColor = "var(--text3)";
     }
 
     public void Dispose()

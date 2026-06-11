@@ -36,6 +36,25 @@ public class AppState(IndexedDbService db, SyncService sync)
     public DateTime NextPayDate { get; private set; } = DateTime.Today;
     public string SummaryPeriod { get; private set; } = "Monthly";
 
+    // ── Affordability savings goal (shared setting keys with WPF) ─────────────
+    public decimal AffordabilityGoalAmount { get; private set; }
+    public int AffordabilityGoalWeeks { get; private set; } = 4;
+    public string AffordabilityGoalAccountName { get; private set; } = string.Empty;
+    public Account? AffordabilityGoalAccount =>
+        string.IsNullOrWhiteSpace(AffordabilityGoalAccountName)
+            ? null
+            : Accounts.FirstOrDefault(a => string.Equals(a.Name, AffordabilityGoalAccountName, StringComparison.OrdinalIgnoreCase));
+
+    // ── App lock (PIN) ──────────────────────────────────────────────────────────
+    private const string AppLockPinHashKey = "AppLockPinHash";
+    private const string AppLockSalt = "Finora-AppLock-v1";
+    private bool _lockStateInitialized;
+
+    public bool AppLockEnabled { get; private set; }
+    // In-memory only: reset on the first Compute() after a fresh app load, then
+    // left alone so background syncs/setting changes don't re-lock mid-session.
+    public bool IsUnlocked { get; private set; } = true;
+
     // ── Pending phone-side changes (synced on next push) ──────────────────────
     private readonly List<Transaction> _pendingNewTransactions = new();
     private readonly List<Transaction> _pendingUpdatedTransactions = new();
@@ -228,6 +247,21 @@ public class AppState(IndexedDbService db, SyncService sync)
             NextPayDate = DateTime.Today;
 
         SummaryPeriod = GetSetting("SummaryPeriod") ?? "Monthly";
+
+        AffordabilityGoalAmount = decimal.TryParse(GetSetting("AffordabilityAmount"), out var goalAmount) && goalAmount > 0
+            ? goalAmount
+            : 0m;
+        AffordabilityGoalWeeks = int.TryParse(GetSetting("AffordabilityWeeks"), out var goalWeeks) && goalWeeks > 0
+            ? goalWeeks
+            : 4;
+        AffordabilityGoalAccountName = GetSetting("AffordabilityAccountName") ?? string.Empty;
+
+        AppLockEnabled = !string.IsNullOrEmpty(GetSetting(AppLockPinHashKey));
+        if (!_lockStateInitialized)
+        {
+            _lockStateInitialized = true;
+            IsUnlocked = !AppLockEnabled;
+        }
 
         var budget = WeeklyBudgets.FirstOrDefault();
         if (budget is not null)
@@ -547,14 +581,192 @@ public class AppState(IndexedDbService db, SyncService sync)
             .ToList();
     }
 
-    public string VapidPublicKey =>
-        AppSettings.FirstOrDefault(s => s.Key == "VapidPublicKey")?.Value ?? string.Empty;
+    // Default VAPID keypair bundled with the app so push works out of the box.
+    // Matching private key is held in GitHub Actions secrets for bill-reminders.yml.
+    private const string DefaultVapidPublicKey = "BMtvXPfYQjzAND9Kjp3uL5cUbmL9w_MxU1J1SOEFNLEEG8Ge2mUApMhQ3TvnlVPH46rheyXVPG5JcBVNTf1_YBc";
+
+    public string VapidPublicKey
+    {
+        get
+        {
+            var saved = AppSettings.FirstOrDefault(s => s.Key == "VapidPublicKey")?.Value;
+            return string.IsNullOrWhiteSpace(saved) ? DefaultVapidPublicKey : saved;
+        }
+    }
 
     public decimal GetCategoryLimitDollars(string categoryName)
     {
         var val = AppSettings.FirstOrDefault(s => s.Key == $"CategoryLimit:{categoryName}")?.Value;
         return int.TryParse(val, out var cents) ? cents / 100m : 0m;
     }
+
+    // ── Subscriptions / recurring payments ────────────────────────────────────
+    private const string IgnoredSubscriptionsSettingKey = "IgnoredSubscriptions";
+
+    private List<string> GetIgnoredSubscriptions()
+    {
+        var json = GetSetting(IgnoredSubscriptionsSettingKey);
+        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    public List<RecurringPayment> GetRecurringPayments()
+    {
+        var ignored = GetIgnoredSubscriptions().ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var recurring = Transactions
+            .Where(t => t.AmountCents < 0 && !IsInternalMovement(t) && !string.IsNullOrWhiteSpace(t.Description))
+            .GroupBy(t => NormalizeRecurringDescription(t.Description))
+            .Where(g => g.Count() >= 2)
+            .Select(g => BuildRecurringPayment(g.OrderBy(t => t.Date).ToList()))
+            .Where(row => row is not null)
+            .Cast<RecurringPayment>()
+            .Where(row => !ignored.Contains(row.Name))
+            .OrderBy(row => row.NextExpected)
+            .ThenBy(row => row.Name)
+            .Take(30)
+            .ToList();
+
+        foreach (var row in recurring)
+        {
+            row.IsAlreadyBill = Bills.Any(b =>
+                string.Equals(NormalizeRecurringDescription(b.Name), row.Name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return recurring;
+    }
+
+    public decimal SubscriptionWeeklyTotal => GetRecurringPayments().Sum(r => r.WeeklyAmount);
+
+    public int SubscriptionsNotInBillsCount => GetRecurringPayments().Count(r => !r.IsAlreadyBill);
+
+    public async Task IgnoreSubscriptionAsync(string name)
+    {
+        var ignored = GetIgnoredSubscriptions();
+        if (!ignored.Contains(name, StringComparer.OrdinalIgnoreCase))
+        {
+            ignored.Add(name);
+            await SaveSettingAsync(IgnoredSubscriptionsSettingKey, System.Text.Json.JsonSerializer.Serialize(ignored));
+        }
+    }
+
+    private static RecurringPayment? BuildRecurringPayment(IReadOnlyList<Transaction> transactions)
+    {
+        var gaps = transactions
+            .Zip(transactions.Skip(1), (previous, next) => (next.Date.Date - previous.Date.Date).TotalDays)
+            .Where(d => d > 0)
+            .OrderBy(d => d)
+            .ToList();
+
+        if (gaps.Count == 0) return null;
+
+        var medianGap = gaps[gaps.Count / 2];
+        var (frequency, days) = GetRecurringFrequency(medianGap);
+        if (days == 0) return null;
+
+        var last = transactions[^1];
+        var amounts = transactions.Select(t => Math.Abs(t.AmountDollars)).ToList();
+        var averageAmount = Math.Round(amounts.Average(), 2);
+
+        return new RecurringPayment
+        {
+            Name = NormalizeRecurringDescription(last.Description),
+            Amount = Math.Abs(last.AmountDollars),
+            AverageAmount = averageAmount,
+            MinAmount = amounts.Min(),
+            MaxAmount = amounts.Max(),
+            WeeklyAmount = GetWeeklyAmount(averageAmount, frequency),
+            Frequency = frequency,
+            AccountName = last.AccountName,
+            LastPaid = last.Date.Date,
+            NextExpected = last.Date.Date.AddDays(days),
+            TimesSeen = transactions.Count,
+            CategoryName = string.IsNullOrWhiteSpace(last.CategoryName) ? "Misc" : last.CategoryName
+        };
+    }
+
+    private static decimal GetWeeklyAmount(decimal amount, string frequency) => frequency switch
+    {
+        "Weekly" => Math.Round(amount, 2),
+        "Fortnightly" => Math.Round(amount / 2m, 2),
+        "Monthly" => Math.Round(amount * 12m / 52m, 2),
+        "Quarterly" => Math.Round(amount * 4m / 52m, 2),
+        "Yearly" => Math.Round(amount / 52m, 2),
+        _ => 0
+    };
+
+    private static (string Frequency, int Days) GetRecurringFrequency(double medianGap) => medianGap switch
+    {
+        >= 5 and <= 9 => ("Weekly", 7),
+        >= 12 and <= 17 => ("Fortnightly", 14),
+        >= 26 and <= 35 => ("Monthly", 30),
+        >= 80 and <= 100 => ("Quarterly", 91),
+        >= 350 and <= 380 => ("Yearly", 365),
+        _ => ("", 0)
+    };
+
+    private static string NormalizeRecurringDescription(string description)
+    {
+        var cleaned = description.Trim();
+        var separatorIndex = cleaned.IndexOf(" - ", StringComparison.Ordinal);
+        if (separatorIndex > 0)
+        {
+            cleaned = cleaned[..separatorIndex];
+        }
+        return cleaned;
+    }
+
+    // ── Data export ────────────────────────────────────────────────────────────
+    public string BuildTransactionsCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("Date,Description,Account,Category,Amount\r\n");
+        foreach (var t in Transactions.OrderBy(t => t.Date).ThenBy(t => t.Id))
+        {
+            sb.Append(t.Date.ToString("yyyy-MM-dd")).Append(',')
+              .Append(CsvField(t.Description)).Append(',')
+              .Append(CsvField(t.AccountName)).Append(',')
+              .Append(CsvField(t.CategoryName)).Append(',')
+              .Append(t.AmountDollars.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))
+              .Append("\r\n");
+        }
+        return sb.ToString();
+    }
+
+    private static string CsvField(string value)
+    {
+        if (value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0)
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
+    // ── App lock (PIN) ────────────────────────────────────────────────────────
+    public bool TryUnlock(string pin)
+    {
+        var stored = GetSetting(AppLockPinHashKey);
+        if (string.IsNullOrEmpty(stored) || HashPin(pin) != stored) return false;
+        IsUnlocked = true;
+        OnChange?.Invoke();
+        return true;
+    }
+
+    public async Task SetPinAsync(string pin) =>
+        await SaveSettingAsync(AppLockPinHashKey, HashPin(pin));
+
+    public async Task DisablePinAsync() =>
+        await SaveSettingAsync(AppLockPinHashKey, string.Empty);
+
+    private static string HashPin(string pin) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(AppLockSalt + pin)));
 
     public List<Bill> GetUpcomingBills(int days = 3) =>
         Bills.Where(b => !IsBillPaid(b) &&

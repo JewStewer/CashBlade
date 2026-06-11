@@ -41,7 +41,11 @@
     }
 
     <main class="page-content">
-        @if (_initError is not null)
+        @if (State.AppLockEnabled && !State.IsUnlocked)
+        {
+            <LockScreen />
+        }
+        else if (_initError is not null)
         {
             <div style="padding:16px">
                 <div class="card" style="border-color:var(--red)">

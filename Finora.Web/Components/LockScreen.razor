@@ -1,0 +1,63 @@
+@inject AppState State
+
+<div style="position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
+    <div style="width:56px;height:56px;border-radius:16px;background:var(--surface2);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:28px;height:28px">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+    </div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">Finance Blade is locked</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:24px">Enter your PIN to continue</div>
+
+    <input @ref="_pinInput" class="form-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+           @bind="_pin" @bind:event="oninput" @onkeydown="OnKeyDown"
+           placeholder="••••" style="width:160px;text-align:center;font-size:28px;letter-spacing:10px;padding:10px 0" />
+
+    <div style="height:20px;margin-top:8px">
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <span style="color:var(--red);font-size:13px">@_error</span>
+        }
+    </div>
+
+    <button class="btn btn-primary" style="width:160px;margin-top:8px" @onclick="Unlock" disabled="@(string.IsNullOrEmpty(_pin))">Unlock</button>
+</div>
+
+@code {
+    private ElementReference _pinInput;
+    private string _pin = string.Empty;
+    private string _error = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await _pinInput.FocusAsync();
+        }
+    }
+
+    private void Unlock()
+    {
+        if (string.IsNullOrEmpty(_pin)) return;
+
+        if (State.TryUnlock(_pin))
+        {
+            _pin = string.Empty;
+            _error = string.Empty;
+        }
+        else
+        {
+            _error = "Incorrect PIN";
+            _pin = string.Empty;
+        }
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Unlock();
+        }
+    }
+}
