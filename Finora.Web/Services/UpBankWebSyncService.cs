@@ -9,7 +9,7 @@ namespace Finora.Web.Services;
 public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncService sync)
 {
     public const string AccessTokenSettingKey = "UpBankAccessToken";
-    private const string LastSyncSettingKey = "UpBankLastSyncUtc";
+    private const string LastSyncSettingKey = "UpBankPhoneLastSyncUtc";
     private const string ApiBaseUrl = "https://api.up.com.au/api/v1";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -47,7 +47,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             var billStatuses = await db.GetBillStatusesAsync();
             var appSettings = await db.GetAppSettingsAsync();
 
-            var sinceUtc = GetLastSyncUtc(appSettings) ?? DateTimeOffset.UtcNow.AddDays(-90);
+            var sinceUtc = DateTimeOffset.UtcNow.AddDays(-90);
             var newestSeenUtc = sinceUtc;
             var imported = 0;
             var balanceAdjustments = 0;
@@ -58,32 +58,12 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             var upAccounts = await FetchAccountsAsync();
             foreach (var upAccount in upAccounts)
             {
-                var account = GetOrCreateAccount(
+                GetOrCreateAccount(
                     accounts,
                     upAccount.Id,
                     GetLocalAccountName(upAccount.Attributes),
                     GetAccountType(upAccount.Attributes),
                     GetAccountColor(upAccount.Attributes));
-
-                var upBalanceCents = ParseAmountCents(upAccount.Attributes.Balance.Value);
-                var currentBalanceCents = transactions.Where(t => t.AccountId == account.Id).Sum(t => t.AmountCents);
-                var adjustmentCents = upBalanceCents - currentBalanceCents;
-                if (adjustmentCents == 0) continue;
-
-                var category = GetOrCreateCategory(categories, "Balance Adjustment", CategoryType.Expense);
-                var adjustment = new Transaction
-                {
-                    Id = NextLocalId(transactions.Select(t => t.Id)),
-                    Date = TodayUnspecified(),
-                    Description = "Up balance adjustment",
-                    AmountCents = adjustmentCents,
-                    AccountId = account.Id,
-                    CategoryId = category.Id,
-                    TransferId = Guid.Empty
-                };
-                transactions.Add(adjustment);
-                await db.PutAsync("transactions", adjustment);
-                balanceAdjustments++;
             }
 
             var existingUpIds = transactions
@@ -108,8 +88,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                     var amountCents = ParseAmountCents(upTransaction.Attributes.Amount.Value);
                     if (amountCents == 0) continue;
 
-                    var account = accounts.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.UpAccountId))
-                        ?? GetOrCreateAccount(accounts, null, "Spending", AccountType.Spending, "#16A34A");
+                    var account = GetTransactionAccount(accounts, upTransaction.Relationships.Account.Data?.Id);
                     var description = BuildDescription(upTransaction.Attributes);
                     var category = GetOrCreateCategory(
                         categories,
@@ -138,6 +117,36 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                 }
 
                 url = page.Links.Next;
+            }
+
+            foreach (var upAccount in upAccounts)
+            {
+                var account = GetOrCreateAccount(
+                    accounts,
+                    upAccount.Id,
+                    GetLocalAccountName(upAccount.Attributes),
+                    GetAccountType(upAccount.Attributes),
+                    GetAccountColor(upAccount.Attributes));
+
+                var upBalanceCents = ParseAmountCents(upAccount.Attributes.Balance.Value);
+                var currentBalanceCents = transactions.Where(t => t.AccountId == account.Id).Sum(t => t.AmountCents);
+                var adjustmentCents = upBalanceCents - currentBalanceCents;
+                if (adjustmentCents == 0) continue;
+
+                var category = GetOrCreateCategory(categories, "Balance Adjustment", CategoryType.Expense);
+                var adjustment = new Transaction
+                {
+                    Id = NextLocalId(transactions.Select(t => t.Id)),
+                    Date = TodayUnspecified(),
+                    Description = "Up balance adjustment",
+                    AmountCents = adjustmentCents,
+                    AccountId = account.Id,
+                    CategoryId = category.Id,
+                    TransferId = Guid.Empty
+                };
+                transactions.Add(adjustment);
+                await db.PutAsync("transactions", adjustment);
+                balanceAdjustments++;
             }
 
             foreach (var account in accounts) await db.PutAsync("accounts", account);
@@ -271,6 +280,18 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             account.ColorHex = colorHex;
         }
         return account;
+    }
+
+    private static Account GetTransactionAccount(List<Account> accounts, string? upAccountId)
+    {
+        if (!string.IsNullOrWhiteSpace(upAccountId))
+        {
+            var linked = accounts.FirstOrDefault(a => a.UpAccountId == upAccountId);
+            if (linked is not null) return linked;
+        }
+
+        return accounts.FirstOrDefault(a => a.Type == AccountType.Spending)
+            ?? GetOrCreateAccount(accounts, null, "Spending", AccountType.Spending, "#16A34A");
     }
 
     private static Category GetOrCreateCategory(List<Category> categories, string name, CategoryType type)
@@ -413,7 +434,13 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
 
     private sealed class UpTransactionRelationships
     {
+        public UpAccountRelationship Account { get; set; } = new();
         public UpCategoryRelationship Category { get; set; } = new();
+    }
+
+    private sealed class UpAccountRelationship
+    {
+        public UpRelationshipData? Data { get; set; }
     }
 
     private sealed class UpCategoryRelationship

@@ -42,6 +42,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<BillOccurrenceStatus> _pendingBillStatuses = new();
     private readonly List<Bill> _pendingNewBills = new();
     private readonly List<Bill> _pendingUpdatedBills = new();
+    private readonly List<AppSetting> _pendingUpdatedSettings = new();
 
     // Debounce + re-entrancy guard for ScheduleSyncSoon/SyncAndReloadAsync —
     // iOS suspends a backgrounded PWA almost immediately, so the 5-minute
@@ -55,7 +56,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingDeletedTransactionIds.Count > 0 ||
         _pendingBillStatuses.Count > 0 ||
         _pendingNewBills.Count > 0 ||
-        _pendingUpdatedBills.Count > 0;
+        _pendingUpdatedBills.Count > 0 ||
+        _pendingUpdatedSettings.Count > 0;
 
     public event Action? OnChange;
 
@@ -154,7 +156,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         RecentTransactions = Transactions
             .OrderByDescending(t => t.Date)
             .ThenByDescending(t => t.Id)
-            .Take(200)
             .ToList();
     }
 
@@ -730,8 +731,15 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         await db.SaveSettingAsync(key, value);
         AppSettings = await db.GetAppSettingsAsync();
+        var setting = AppSettings.FirstOrDefault(s => s.Key == key);
+        if (setting is not null)
+        {
+            _pendingUpdatedSettings.RemoveAll(s => s.Key == key);
+            _pendingUpdatedSettings.Add(setting);
+        }
         Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
     }
 
     // ── Merge phone-side pending changes into the cloud's finance_sync ────────
@@ -790,6 +798,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (bill is not null) bill.IsPaid = s.IsPaid;
         }
 
+        foreach (var setting in push.UpdatedSettings)
+        {
+            var existing = cloud.AppSettings.FirstOrDefault(s => s.Key == setting.Key);
+            if (existing is null)
+            {
+                cloud.AppSettings.Add(setting);
+            }
+            else
+            {
+                existing.Value = setting.Value;
+            }
+        }
+
         cloud.SyncedAt = DateTime.UtcNow;
         return cloud;
     }
@@ -813,7 +834,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     DeletedTransactionIds = new List<int>(_pendingDeletedTransactionIds),
                     UpdatedBillStatuses = new List<BillOccurrenceStatus>(_pendingBillStatuses),
                     NewBills = new List<Bill>(_pendingNewBills),
-                    UpdatedBills = new List<Bill>(_pendingUpdatedBills)
+                    UpdatedBills = new List<Bill>(_pendingUpdatedBills),
+                    UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings)
                 };
 
                 bool pushed = false;
@@ -850,6 +872,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingBillStatuses.RemoveRange(0, push.UpdatedBillStatuses.Count);
                     _pendingNewBills.RemoveRange(0, push.NewBills.Count);
                     _pendingUpdatedBills.RemoveRange(0, push.UpdatedBills.Count);
+                    _pendingUpdatedSettings.RemoveRange(0, push.UpdatedSettings.Count);
                 }
             }
 
@@ -946,6 +969,22 @@ public class AppState(IndexedDbService db, SyncService sync)
             bill.AccountId = pb.AccountId;
             bill.AccountName = pb.AccountName;
             await db.PutAsync("bills", bill);
+            changed = true;
+        }
+
+        // Re-apply phone-side settings such as category limits/payday/summary period.
+        foreach (var ps in _pendingUpdatedSettings)
+        {
+            await db.SaveSettingAsync(ps.Key, ps.Value);
+            var existing = AppSettings.FirstOrDefault(s => s.Key == ps.Key);
+            if (existing is null)
+            {
+                AppSettings.Add(ps);
+            }
+            else
+            {
+                existing.Value = ps.Value;
+            }
             changed = true;
         }
 

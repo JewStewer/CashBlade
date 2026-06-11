@@ -63,11 +63,6 @@ public class IndexedDbService(IJSRuntime js)
         var meta = existingMeta.FirstOrDefault() ?? new SyncMeta { Id = 1 };
         meta.LastSyncedAt = p.SyncedAt;
 
-        // Limit transactions to the last 12 months so iOS Safari doesn't hit
-        // storage-quota limits with multi-year datasets.
-        var cutoff = DateTime.Today.AddMonths(-12);
-        var recentTxns = p.Transactions.Where(t => t.Date >= cutoff).ToList();
-
         // Single atomic IndexedDB transaction via db.replaceAll:
         //   • clears all sync-managed stores
         //   • writes new records for every store
@@ -77,7 +72,7 @@ public class IndexedDbService(IJSRuntime js)
         {
             accounts               = p.Accounts,
             categories             = p.Categories,
-            transactions           = recentTxns,
+            transactions           = p.Transactions,
             bills                  = p.Bills,
             billOccurrenceStatuses = p.BillOccurrenceStatuses,
             debts                  = p.Debts,

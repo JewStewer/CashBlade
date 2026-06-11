@@ -1,7 +1,7 @@
 {
   "mainAssemblyName": "Finora.Web",
   "resources": {
-    "hash": "sha256-Flx3YriEC/Y1djOF/AKnKUJK7AH2Q5ZLC2+TvjVi/jE=",
+    "hash": "sha256-RPV9NU/wvJppN6pFuosPAd+DSzgTlu6TtXgKutIXBzY=",
     "jsModuleNative": {
       "dotnet.native.8.0.27.im9y30eqtq.js": "sha256-sn/g61GjVPhViOYQDkq1OMlk0eyS9r2Hi0qgU2o0HIU="
     },
@@ -17,7 +17,7 @@
       "icudt_no_CJK.dat": "sha256-L7sV7NEYP37/Qr2FPCePo5cJqRgTXRwGHuwF5Q+0Nfs="
     },
     "assembly": {
-      "Finora.Web.wasm": "sha256-JC5tRel8eiO/v1XxMS9pVuj0zPwH7G5uGe3yfYeUG4w=",
+      "Finora.Web.wasm": "sha256-rAxNvCnC1sUCpJJ7zIeA3OLSuUmRollsMJeJeuhpeo8=",
       "Microsoft.AspNetCore.Components.wasm": "sha256-aYUQ6JQ4VCRdymEdS5aDZbqm0wHwzVsEjB19gS8Y/2g=",
       "Microsoft.AspNetCore.Components.Web.wasm": "sha256-2NPB/HG+Kn2QP6b3LSWlupXOAbjsRXrRumJ4sM/2a84=",
       "Microsoft.AspNetCore.Components.WebAssembly.wasm": "sha256-dNxo29aPtc4pOCNKiTVrqWRq25ONtaVHwGSk8iHxb68=",
