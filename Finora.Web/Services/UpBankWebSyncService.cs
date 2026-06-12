@@ -46,9 +46,28 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             var transactions = await db.GetTransactionsAsync();
             var bills = await db.GetBillsAsync();
             var billStatuses = await db.GetBillStatusesAsync();
+            var debts = await db.GetDebtsAsync();
+            var savingsGoals = await db.GetSavingsGoalsAsync();
+            var weeklyBudgets = await db.GetWeeklyBudgetsAsync();
             var appSettings = await db.GetAppSettingsAsync();
             var transactionOverrides = await db.GetPendingTransactionOverridesAsync();
             var transactionDeletes = await db.GetPendingTransactionDeletesAsync();
+
+            if (!HasPlanningData(bills, debts, savingsGoals, weeklyBudgets) && (sync.HasCloudSync || sync.HasLocalSync))
+            {
+                await sync.AutoSyncAsync();
+                accounts = await db.GetAccountsAsync();
+                categories = await db.GetCategoriesAsync();
+                transactions = await db.GetTransactionsAsync();
+                bills = await db.GetBillsAsync();
+                billStatuses = await db.GetBillStatusesAsync();
+                debts = await db.GetDebtsAsync();
+                savingsGoals = await db.GetSavingsGoalsAsync();
+                weeklyBudgets = await db.GetWeeklyBudgetsAsync();
+                appSettings = await db.GetAppSettingsAsync();
+                transactionOverrides = await db.GetPendingTransactionOverridesAsync();
+                transactionDeletes = await db.GetPendingTransactionDeletesAsync();
+            }
 
             var sinceUtc = DateTimeOffset.UtcNow.AddDays(-90);
             var newestSeenUtc = sinceUtc;
@@ -391,8 +410,40 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             SyncedAt = DateTime.UtcNow
         };
 
-        return await sync.PushFullSyncAsync(payload);
+        if (!HasPlanningData(payload))
+        {
+            var cloud = await sync.FetchCloudPayloadAsync();
+            if (cloud is not null && HasPlanningData(cloud))
+            {
+                payload.Bills = cloud.Bills;
+                payload.BillOccurrenceStatuses = cloud.BillOccurrenceStatuses;
+                payload.Debts = cloud.Debts;
+                payload.DebtPayments = cloud.DebtPayments;
+                payload.SavingsGoals = cloud.SavingsGoals;
+                payload.WeeklyBudgets = cloud.WeeklyBudgets;
+            }
+        }
+
+        var pushed = await sync.PushFullSyncAsync(payload);
+        if (!pushed)
+        {
+            LastError = sync.LastError;
+        }
+        return pushed;
     }
+
+    private static bool HasPlanningData(SyncPayload payload) =>
+        HasPlanningData(payload.Bills, payload.Debts, payload.SavingsGoals, payload.WeeklyBudgets);
+
+    private static bool HasPlanningData(
+        IReadOnlyCollection<Bill>? bills,
+        IReadOnlyCollection<Debt>? debts,
+        IReadOnlyCollection<SavingsGoal>? savingsGoals,
+        IReadOnlyCollection<WeeklyBudget>? weeklyBudgets) =>
+        (bills?.Count ?? 0) > 0 ||
+        (debts?.Count ?? 0) > 0 ||
+        (savingsGoals?.Count ?? 0) > 0 ||
+        (weeklyBudgets?.Count ?? 0) > 0;
 
     private bool TryMarkMatchingBillPaid(List<Bill> bills, List<BillOccurrenceStatus> statuses, int accountId, DateTime paidOn, int amountCents, int transactionId)
     {

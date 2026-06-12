@@ -1,7 +1,7 @@
 {
   "name": "Finance Blade",
   "short_name": "Finance Blade",
-  "version": "v2026.06.13.8",
+  "version": "v2026.06.13.9",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

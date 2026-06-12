@@ -334,7 +334,7 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.13.8";
+    private const string AppVersion = "v2026.06.13.9";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -416,7 +416,7 @@
                 }
                 syncStatus = result.CloudSnapshotPushed
                     ? $"Synced Up Bank: imported {result.ImportedTransactions}, balanced accounts {result.BalanceAdjustments}, matched bills {result.MatchedBills}."
-                    : $"Imported from Up Bank, but cloud push did not complete.";
+                    : $"Imported from Up Bank, but cloud push did not complete: {UpSync.LastError ?? Sync.LastError ?? "open Windows and sync the planning data first"}.";
                 syncStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
                 upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, balanced {result.BalanceAdjustments} account{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
                 upBankStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
@@ -511,7 +511,9 @@
         if (result.CloudSnapshotPushed)
             await State.MarkPendingChangesSyncedAsync();
         await RefreshLocalIntentCountsAsync();
-        upBankStatus = $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, balanced {result.BalanceAdjustments} account{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}.";
+        upBankStatus = result.CloudSnapshotPushed
+            ? $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, balanced {result.BalanceAdjustments} account{(result.BalanceAdjustments == 1 ? "" : "s")}, matched {result.MatchedBills} bill{(result.MatchedBills == 1 ? "" : "s")}."
+            : $"Imported {result.ImportedTransactions} transaction{(result.ImportedTransactions == 1 ? "" : "s")}, but cloud push did not complete: {UpSync.LastError ?? Sync.LastError ?? "open Windows and sync the planning data first"}.";
         upBankStatusColor = result.CloudSnapshotPushed ? "var(--green)" : "var(--amber)";
         StateHasChanged();
     }
