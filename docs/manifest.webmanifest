@@ -1,7 +1,7 @@
 {
   "name": "Finance Blade",
   "short_name": "Finance Blade",
-  "version": "v2026.06.12.7",
+  "version": "v2026.06.13.4",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
@@ -18,6 +18,22 @@
       "src": "icons/icon-512.png",
       "type": "image/png",
       "sizes": "512x512"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Safe to Spend",
+      "short_name": "Safe Spend",
+      "description": "Open the dashboard safe-to-spend view.",
+      "url": ".",
+      "icons": [{ "src": "icons/icon-192.png", "type": "image/png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Bills Due",
+      "short_name": "Bills",
+      "description": "Open bills due before payday.",
+      "url": "bills",
+      "icons": [{ "src": "icons/icon-192.png", "type": "image/png", "sizes": "192x192" }]
     }
   ]
 }
