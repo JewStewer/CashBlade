@@ -144,7 +144,7 @@ else
         {
             var paidOff = Math.Max(debt.OriginalBalanceDollars - debt.BalanceDollars, 0);
             var progress = debt.OriginalBalanceDollars > 0 ? Math.Clamp(paidOff / debt.OriginalBalanceDollars, 0, 1) : 0;
-            <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+            <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _debtDraft = debt">
                 <div style="display:flex;align-items:center">
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@debt.Name</div>
@@ -210,3 +210,14 @@ else
 }
 
 <div style="height:16px"></div>
+
+@if (_debtDraft is not null)
+{
+    <AddEditDebtModal Debt="@_debtDraft"
+        OnClose="() => _debtDraft = null"
+        OnSaved="() => _debtDraft = null" />
+}
+
+@code {
+    private Debt? _debtDraft;
+}

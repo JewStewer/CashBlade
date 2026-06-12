@@ -1513,7 +1513,13 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)
     {
-        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id) return true;
+        // IDs can be recycled (e.g. SQLite reuses a freed primary key), so an ID
+        // match alone isn't proof it's the same bill. Require it to also share
+        // its frequency plus its name or amount before treating it as a match.
+        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id
+            && bill.Frequency == deleted.Frequency
+            && (string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase) || bill.AmountCents == deleted.AmountCents))
+            return true;
         if (bill.AmountCents != deleted.AmountCents) return false;
         if (bill.Frequency != deleted.Frequency) return false;
         if (!string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;

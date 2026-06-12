@@ -37,6 +37,9 @@ public class IndexedDbService(IJSRuntime js)
     public async Task DeleteAsync(string store, int id) =>
         await js.InvokeVoidAsync("db.delete", store, id);
 
+    public async Task DeleteAsync(string store, string id) =>
+        await js.InvokeVoidAsync("db.delete", store, id);
+
     public async Task ClearAsync(string store) =>
         await js.InvokeVoidAsync("db.clear", store);
 
@@ -177,6 +180,9 @@ public class IndexedDbService(IJSRuntime js)
 
     public Task SetTransactionDeleteAsync(TransactionDelete deleted) =>
         PutAsync("transactionDeletes", new PendingTransactionDelete { Id = PendingTransactionDelete.GetStableId(deleted), Deleted = deleted });
+
+    public Task ClearTransactionDeleteAsync(string id) =>
+        DeleteAsync("transactionDeletes", id);
 
     public Task ClearTransactionDeletesAsync() =>
         ClearAsync("transactionDeletes");

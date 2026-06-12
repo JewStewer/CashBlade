@@ -184,11 +184,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
         }
 
         var deletes = await db.GetPendingTransactionDeletesAsync();
-        foreach (var deleted in deletes.Select(d => d.Deleted))
+        foreach (var pending in deletes)
         {
+            var deleted = pending.Deleted;
             var transaction = FindPayloadTransaction(payload.Transactions, deleted);
             if (transaction is not null)
+            {
                 payload.Transactions.Remove(transaction);
+            }
+            else
+            {
+                // No longer present in the incoming snapshot, so the delete has
+                // propagated server-side. Drop the tombstone so its signature
+                // match can't keep suppressing unrelated future transactions.
+                await db.ClearTransactionDeleteAsync(pending.Id);
+            }
         }
 
         var deletedBills = await db.GetPendingBillDeletesAsync();
@@ -210,7 +220,13 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)
     {
-        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id) return true;
+        // IDs can be recycled (e.g. SQLite reuses a freed primary key), so an ID
+        // match alone isn't proof it's the same bill. Require it to also share
+        // its frequency plus its name or amount before treating it as a match.
+        if (bill.Id > 0 && deleted.Id > 0 && bill.Id == deleted.Id
+            && bill.Frequency == deleted.Frequency
+            && (string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase) || bill.AmountCents == deleted.AmountCents))
+            return true;
         if (bill.AmountCents != deleted.AmountCents) return false;
         if (bill.Frequency != deleted.Frequency) return false;
         if (!string.Equals(bill.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
