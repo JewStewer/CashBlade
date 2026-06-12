@@ -126,8 +126,34 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<Transaction> RecentTransactions { get; private set; } = new();
 
     public bool IsLoaded { get; private set; }
+    public bool HasAnyFinanceData =>
+        Accounts.Count > 0 ||
+        Transactions.Count > 0 ||
+        Bills.Count > 0 ||
+        Debts.Count > 0 ||
+        SavingsGoals.Count > 0 ||
+        WeeklyBudgets.Count > 0;
 
     public async Task LoadAsync()
+    {
+        await LoadStoresAsync();
+        await sync.InitAsync();
+
+        if (!HasAnyFinanceData && (sync.HasCloudSync || sync.HasLocalSync))
+        {
+            var restored = await sync.AutoSyncAsync();
+            if (restored)
+            {
+                await LoadStoresAsync();
+            }
+        }
+
+        Compute();
+        IsLoaded = true;
+        OnChange?.Invoke();
+    }
+
+    private async Task LoadStoresAsync()
     {
         Accounts = await db.GetAccountsAsync();
         Categories = await db.GetCategoriesAsync();
@@ -148,11 +174,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedBillDeletesAsync();
         await ApplyPersistedDebtDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
-
-        await sync.InitAsync();
-        Compute();
-        IsLoaded = true;
-        OnChange?.Invoke();
     }
 
     // ── Lent money tracking ──────────────────────────────────────────────────
@@ -978,12 +999,12 @@ public class AppState(IndexedDbService db, SyncService sync)
             var spending = dayTxns?.Sum(t => Math.Abs(t.AmountDollars)) ?? 0m;
             var unnecessary = dayTxns?.Where(t => t.IsUnnecessary).Sum(t => Math.Abs(t.AmountDollars)) ?? 0m;
             var necessary = spending - unnecessary;
-            var score = spending == 0 ? 100 : (int)(necessary / spending * 100);
-            var grade = spending == 0 ? "A+" : score switch
+            var score = spending == 0 ? 0 : (int)(necessary / spending * 100);
+            var grade = spending == 0 ? "-" : score switch
             {
                 100 => "A+", >= 90 => "A", >= 80 => "B", >= 70 => "C", >= 50 => "D", _ => "F"
             };
-            var color = spending == 0 ? "#34D399" : score switch
+            var color = spending == 0 ? "#6E7681" : score switch
             {
                 100 => "#34D399", >= 80 => "#6EE7B7", >= 60 => "#FBBF24", >= 40 => "#F97316", _ => "#F87171"
             };
@@ -1003,7 +1024,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         for (var i = 1; i <= 60; i++)
         {
             var date = DateTime.Today.AddDays(-i);
-            if (!txByDay.TryGetValue(date, out var dayTx) || dayTx.Count == 0) { streak++; continue; }
+            if (!txByDay.TryGetValue(date, out var dayTx) || dayTx.Count == 0) break;
             if (dayTx.Any(t => t.IsUnnecessary)) break;
             streak++;
         }

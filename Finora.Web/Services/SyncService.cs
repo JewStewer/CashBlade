@@ -387,6 +387,13 @@ public class SyncService(HttpClient http, IndexedDbService db)
     public async Task<bool> PushFullSyncAsync(SyncPayload payload)
     {
         if (!HasCloudSync) return false;
+        if (IsEmptyFinancePayload(payload))
+        {
+            LastError = "Refusing to push an empty finance snapshot. Sync from Windows or Supabase first.";
+            OnSyncStateChanged?.Invoke();
+            return false;
+        }
+
         try
         {
             var baseUrl = NormaliseUrl(SupabaseUrl!);
@@ -415,6 +422,14 @@ public class SyncService(HttpClient http, IndexedDbService db)
     }
 
     // ── Save push subscription to Supabase ───────────────────────────────────
+    private static bool IsEmptyFinancePayload(SyncPayload payload) =>
+        payload.Accounts.Count == 0 &&
+        payload.Transactions.Count == 0 &&
+        payload.Bills.Count == 0 &&
+        payload.Debts.Count == 0 &&
+        payload.SavingsGoals.Count == 0 &&
+        payload.WeeklyBudgets.Count == 0;
+
     public async Task<bool> SavePushSubscriptionAsync(string subscriptionJson)
     {
         if (!HasCloudSync) return false;

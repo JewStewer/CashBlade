@@ -61,6 +61,11 @@ public class IndexedDbService(IJSRuntime js)
 
     public async Task SaveSyncPayloadAsync(SyncPayload p)
     {
+        if (IsEmptyFinancePayload(p) && await HasLocalFinanceDataAsync())
+        {
+            return;
+        }
+
         // Preserve PC host / Supabase credentials stored in syncMeta
         var existingMeta = await GetSyncMetaAsync();
         var meta = existingMeta.FirstOrDefault() ?? new SyncMeta { Id = 1 };
@@ -101,6 +106,22 @@ public class IndexedDbService(IJSRuntime js)
         var element = JsonSerializer.Deserialize<JsonElement>(json);
         await js.InvokeVoidAsync("db.replaceAll", element);
     }
+
+    private async Task<bool> HasLocalFinanceDataAsync() =>
+        (await GetAccountsAsync()).Count > 0 ||
+        (await GetTransactionsAsync()).Count > 0 ||
+        (await GetBillsAsync()).Count > 0 ||
+        (await GetDebtsAsync()).Count > 0 ||
+        (await GetSavingsGoalsAsync()).Count > 0 ||
+        (await GetWeeklyBudgetsAsync()).Count > 0;
+
+    private static bool IsEmptyFinancePayload(SyncPayload p) =>
+        p.Accounts.Count == 0 &&
+        p.Transactions.Count == 0 &&
+        p.Bills.Count == 0 &&
+        p.Debts.Count == 0 &&
+        p.SavingsGoals.Count == 0 &&
+        p.WeeklyBudgets.Count == 0;
 
     public async Task<string?> GetSettingAsync(string key)
     {
