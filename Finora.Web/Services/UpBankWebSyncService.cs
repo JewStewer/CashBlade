@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -176,7 +177,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         }
         catch (Exception ex)
         {
-            LastError = ex.Message.Length > 160 ? ex.Message[..160] : ex.Message;
+            LastError = BuildErrorMessage(ex);
             return null;
         }
         finally
@@ -184,6 +185,22 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             IsSyncing = false;
             OnStateChanged?.Invoke();
         }
+    }
+
+    // HttpRequestException.Message is built from a System.Net.Http resource
+    // string that gets trimmed in Blazor WASM, leaving the raw resource key
+    // (e.g. "Net_http_message_not_success_statuscode_reason,401,Unauthorized")
+    // instead of a readable message. Build our own message from StatusCode.
+    private static string BuildErrorMessage(Exception ex)
+    {
+        if (ex is HttpRequestException http)
+        {
+            if (http.StatusCode == HttpStatusCode.Unauthorized)
+                return "Your Up Bank token is invalid or has expired. Add a new token in Settings.";
+            if (http.StatusCode is { } code)
+                return $"Up Bank returned HTTP {(int)code} ({code}).";
+        }
+        return ex.Message.Length > 160 ? ex.Message[..160] : ex.Message;
     }
 
     private async Task<List<UpAccount>> FetchAccountsAsync()

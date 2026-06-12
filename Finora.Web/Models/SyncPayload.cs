@@ -30,6 +30,7 @@ public class PushPayload
     public List<BillDelete> DeletedBills { get; set; } = new();
     public List<Debt> NewDebts { get; set; } = new();
     public List<Debt> UpdatedDebts { get; set; } = new();
+    public List<int> DeletedDebtIds { get; set; } = new();
     public List<DebtPayment> NewDebtPayments { get; set; } = new();
     public List<int> DeletedDebtPaymentIds { get; set; } = new();
     public List<Account> UpdatedAccounts { get; set; } = new();

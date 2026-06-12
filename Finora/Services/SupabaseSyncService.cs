@@ -235,11 +235,29 @@ public static class SupabaseSyncService
                 debtIdMap[d.Id] = entity;
             }
 
-            // Updated debts from phone (balance changes from bill payments)
+            // Updated debts from phone
             foreach (var d in push.UpdatedDebts.Where(x => x.Id > 0))
             {
                 var existing = await db.Debts.FindAsync(d.Id);
-                if (existing is not null) existing.BalanceCents = d.BalanceCents;
+                if (existing is null) continue;
+                existing.Name = d.Name;
+                existing.BalanceCents = d.BalanceCents;
+                existing.MinimumPaymentCents = d.MinimumPaymentCents;
+                existing.PaymentPeriod = d.PaymentPeriod;
+                existing.InterestRate = d.InterestRate;
+                existing.OriginalBalanceCents = d.OriginalBalanceCents;
+            }
+
+            // Deleted debts from phone (cascade payments, unlink bills)
+            foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
+            {
+                var existing = await db.Debts.FindAsync(id);
+                if (existing is null) continue;
+                var payments = await db.DebtPayments.Where(p => p.DebtId == id).ToListAsync();
+                db.DebtPayments.RemoveRange(payments);
+                var linkedBills = await db.Bills.Where(b => b.DebtId == id).ToListAsync();
+                foreach (var linkedBill in linkedBills) linkedBill.DebtId = null;
+                db.Debts.Remove(existing);
             }
 
             // New bills from phone

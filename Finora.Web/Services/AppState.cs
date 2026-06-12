@@ -75,6 +75,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<BillDelete> _pendingDeletedBills = new();
     private readonly List<Debt> _pendingNewDebts = new();
     private readonly List<Debt> _pendingUpdatedDebts = new();
+    private readonly List<int> _pendingDeletedDebtIds = new();
     private readonly List<DebtPayment> _pendingNewDebtPayments = new();
     private readonly List<int> _pendingDeletedDebtPaymentIds = new();
     private readonly List<Account> _pendingUpdatedAccounts = new();
@@ -98,6 +99,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingDeletedBills.Count > 0 ||
         _pendingNewDebts.Count > 0 ||
         _pendingUpdatedDebts.Count > 0 ||
+        _pendingDeletedDebtIds.Count > 0 ||
         _pendingNewDebtPayments.Count > 0 ||
         _pendingDeletedDebtPaymentIds.Count > 0 ||
         _pendingUpdatedAccounts.Count > 0;
@@ -1114,6 +1116,58 @@ public class AppState(IndexedDbService db, SyncService sync)
         return d;
     }
 
+    public async Task UpdateDebtAsync(Debt d)
+    {
+        var existing = Debts.FirstOrDefault(x => x.Id == d.Id);
+        if (existing is null) return;
+        existing.Name = d.Name;
+        existing.BalanceCents = d.BalanceCents;
+        existing.MinimumPaymentCents = d.MinimumPaymentCents;
+        existing.PaymentPeriod = d.PaymentPeriod;
+        existing.InterestRate = d.InterestRate;
+        existing.OriginalBalanceCents = d.OriginalBalanceCents;
+        await db.PutAsync("debts", existing);
+        // Negative-id (not-yet-synced) debts are mutated in place via the
+        // same object reference already queued in _pendingNewDebts.
+        if (existing.Id > 0)
+            QueueUpdatedDebt(existing);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    // Cascades like WPF's FK delete behaviors: DebtPayment.Debt -> Cascade
+    // (remove payments tied to this debt) and Bill.Debt -> SetNull (unlink
+    // any installment bill that was tracking this debt).
+    public async Task DeleteDebtAsync(int id)
+    {
+        Debts.RemoveAll(d => d.Id == id);
+        _pendingNewDebts.RemoveAll(d => d.Id == id);
+        _pendingUpdatedDebts.RemoveAll(d => d.Id == id);
+
+        foreach (var payment in DebtPayments.Where(p => p.DebtId == id).ToList())
+        {
+            DebtPayments.Remove(payment);
+            await db.DeleteAsync("debtPayments", payment.Id);
+            _pendingNewDebtPayments.RemoveAll(x => x.Id == payment.Id);
+            if (payment.Id > 0) _pendingDeletedDebtPaymentIds.Add(payment.Id);
+        }
+
+        foreach (var bill in Bills.Where(b => b.DebtId == id))
+        {
+            bill.DebtId = null;
+            await db.PutAsync("bills", bill);
+            if (bill.Id > 0 && !_pendingUpdatedBills.Any(x => x.Id == bill.Id))
+                _pendingUpdatedBills.Add(bill);
+        }
+
+        if (id > 0) _pendingDeletedDebtIds.Add(id);
+        await db.DeleteAsync("debts", id);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
     // Used when a new bill is created from the "Add to Budget as a Bill"
     // installment-plan flow: also create a matching Debt so the remaining
     // balance shows progress as installments are paid off, same as other
@@ -1573,12 +1627,26 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         cloud.Bills.AddRange(push.NewBills);
 
-        cloud.Debts.AddRange(push.NewDebts);
+        cloud.Debts.RemoveAll(d => push.DeletedDebtIds.Contains(d.Id));
+        cloud.DebtPayments.RemoveAll(p => push.DeletedDebtIds.Contains(p.DebtId));
+        foreach (var bill in cloud.Bills.Where(b => b.DebtId.HasValue && push.DeletedDebtIds.Contains(b.DebtId.Value)))
+            bill.DebtId = null;
+
         foreach (var u in push.UpdatedDebts)
         {
             var existing = cloud.Debts.FirstOrDefault(d => d.Id == u.Id);
-            if (existing is not null) existing.BalanceCents = u.BalanceCents;
+            if (existing is not null)
+            {
+                existing.Name = u.Name;
+                existing.BalanceCents = u.BalanceCents;
+                existing.MinimumPaymentCents = u.MinimumPaymentCents;
+                existing.PaymentPeriod = u.PaymentPeriod;
+                existing.InterestRate = u.InterestRate;
+                existing.OriginalBalanceCents = u.OriginalBalanceCents;
+            }
         }
+        cloud.Debts.AddRange(push.NewDebts);
+
         cloud.DebtPayments.AddRange(push.NewDebtPayments);
         cloud.DebtPayments.RemoveAll(p => push.DeletedDebtPaymentIds.Contains(p.Id));
 
@@ -1696,6 +1764,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     DeletedBills = new List<BillDelete>(_pendingDeletedBills),
                     NewDebts = new List<Debt>(_pendingNewDebts),
                     UpdatedDebts = new List<Debt>(_pendingUpdatedDebts),
+                    DeletedDebtIds = new List<int>(_pendingDeletedDebtIds),
                     NewDebtPayments = new List<DebtPayment>(_pendingNewDebtPayments),
                     DeletedDebtPaymentIds = new List<int>(_pendingDeletedDebtPaymentIds),
                     UpdatedAccounts = new List<Account>(_pendingUpdatedAccounts),
@@ -1749,6 +1818,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingDeletedBills.RemoveRange(0, push.DeletedBills.Count);
                     _pendingNewDebts.RemoveRange(0, push.NewDebts.Count);
                     _pendingUpdatedDebts.RemoveRange(0, push.UpdatedDebts.Count);
+                    _pendingDeletedDebtIds.RemoveRange(0, push.DeletedDebtIds.Count);
                     _pendingNewDebtPayments.RemoveRange(0, push.NewDebtPayments.Count);
                     _pendingDeletedDebtPaymentIds.RemoveRange(0, push.DeletedDebtPaymentIds.Count);
                     _pendingUpdatedAccounts.RemoveRange(0, push.UpdatedAccounts.Count);
@@ -1788,6 +1858,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingDeletedBills.Clear();
         _pendingNewDebts.Clear();
         _pendingUpdatedDebts.Clear();
+        _pendingDeletedDebtIds.Clear();
         _pendingNewDebtPayments.Clear();
         _pendingDeletedDebtPaymentIds.Clear();
         _pendingUpdatedAccounts.Clear();
@@ -1813,6 +1884,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             DeletedBills = new List<BillDelete>(_pendingDeletedBills),
             NewDebts = new List<Debt>(_pendingNewDebts),
             UpdatedDebts = new List<Debt>(_pendingUpdatedDebts),
+            DeletedDebtIds = new List<int>(_pendingDeletedDebtIds),
             NewDebtPayments = new List<DebtPayment>(_pendingNewDebtPayments),
             DeletedDebtPaymentIds = new List<int>(_pendingDeletedDebtPaymentIds),
             UpdatedAccounts = new List<Account>(_pendingUpdatedAccounts),
@@ -1977,14 +2049,41 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
-        // Re-apply debt balance changes made on phone
+        // Re-apply debt edits made on phone
         foreach (var ud in push.UpdatedDebts)
         {
             var debt = Debts.FirstOrDefault(x => x.Id == ud.Id);
             if (debt is null) continue;
+            debt.Name = ud.Name;
             debt.BalanceCents = ud.BalanceCents;
+            debt.MinimumPaymentCents = ud.MinimumPaymentCents;
+            debt.PaymentPeriod = ud.PaymentPeriod;
+            debt.InterestRate = ud.InterestRate;
+            debt.OriginalBalanceCents = ud.OriginalBalanceCents;
             await db.PutAsync("debts", debt);
             changed = true;
+        }
+
+        // Re-remove phone-deleted debts (cascade payments, unlink bills)
+        foreach (var id in push.DeletedDebtIds)
+        {
+            if (Debts.RemoveAll(x => x.Id == id) > 0)
+            {
+                await db.DeleteAsync("debts", id);
+                changed = true;
+            }
+            foreach (var payment in DebtPayments.Where(p => p.DebtId == id).ToList())
+            {
+                DebtPayments.Remove(payment);
+                await db.DeleteAsync("debtPayments", payment.Id);
+                changed = true;
+            }
+            foreach (var bill in Bills.Where(b => b.DebtId == id))
+            {
+                bill.DebtId = null;
+                await db.PutAsync("bills", bill);
+                changed = true;
+            }
         }
 
         // Re-add phone-created debt payments the server doesn't know about yet
