@@ -65,6 +65,10 @@ public class IndexedDbService(IJSRuntime js)
         {
             return;
         }
+        if (IsMissingPlanningPayload(p) && await HasLocalPlanningDataAsync())
+        {
+            return;
+        }
 
         // Preserve PC host / Supabase credentials stored in syncMeta
         var existingMeta = await GetSyncMetaAsync();
@@ -115,6 +119,12 @@ public class IndexedDbService(IJSRuntime js)
         (await GetSavingsGoalsAsync()).Count > 0 ||
         (await GetWeeklyBudgetsAsync()).Count > 0;
 
+    private async Task<bool> HasLocalPlanningDataAsync() =>
+        (await GetBillsAsync()).Count > 0 ||
+        (await GetDebtsAsync()).Count > 0 ||
+        (await GetSavingsGoalsAsync()).Count > 0 ||
+        (await GetWeeklyBudgetsAsync()).Count > 0;
+
     private static bool IsEmptyFinancePayload(SyncPayload p) =>
         p.Accounts.Count == 0 &&
         p.Transactions.Count == 0 &&
@@ -122,6 +132,13 @@ public class IndexedDbService(IJSRuntime js)
         p.Debts.Count == 0 &&
         p.SavingsGoals.Count == 0 &&
         p.WeeklyBudgets.Count == 0;
+
+    private static bool IsMissingPlanningPayload(SyncPayload p) =>
+        p.Bills.Count == 0 &&
+        p.Debts.Count == 0 &&
+        p.SavingsGoals.Count == 0 &&
+        p.WeeklyBudgets.Count == 0 &&
+        (p.Accounts.Count > 0 || p.Transactions.Count > 0);
 
     public async Task<string?> GetSettingAsync(string key)
     {

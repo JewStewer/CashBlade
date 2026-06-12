@@ -90,20 +90,38 @@ public static class SupabaseSyncService
             await db.SaveChangesAsync();
             // AsNoTracking prevents EF Core from wiring up navigation properties
             // which would cause circular reference errors when serialising to JSON
+            var accounts = await db.Accounts.AsNoTracking().ToListAsync();
+            var categories = await db.Categories.AsNoTracking().ToListAsync();
+            var transactions = await db.Transactions.AsNoTracking().ToListAsync();
+            var bills = await db.Bills.AsNoTracking().ToListAsync();
+            var billOccurrenceStatuses = await db.BillOccurrenceStatuses.AsNoTracking().ToListAsync();
+            var debts = await db.Debts.AsNoTracking().ToListAsync();
+            var debtPayments = await db.DebtPayments.AsNoTracking().ToListAsync();
+            var savingsGoals = await db.SavingsGoals.AsNoTracking().ToListAsync();
+            var weeklyBudgets = await db.WeeklyBudgets.AsNoTracking().ToListAsync();
+            var appSettings = await db.AppSettings.AsNoTracking().ToListAsync();
+
+            if (bills.Count == 0 && debts.Count == 0 && savingsGoals.Count == 0 && weeklyBudgets.Count == 0
+                && (accounts.Count > 0 || transactions.Count > 0))
+            {
+                Log("Cloud sync push skipped: local database has no bills, debts, savings goals, or weekly budgets.");
+                return;
+            }
+
             var payload = new
             {
                 id = "main",
                 syncedAt = DateTime.UtcNow,
-                accounts = await db.Accounts.AsNoTracking().ToListAsync(),
-                categories = await db.Categories.AsNoTracking().ToListAsync(),
-                transactions = await db.Transactions.AsNoTracking().ToListAsync(),
-                bills = await db.Bills.AsNoTracking().ToListAsync(),
-                billOccurrenceStatuses = await db.BillOccurrenceStatuses.AsNoTracking().ToListAsync(),
-                debts = await db.Debts.AsNoTracking().ToListAsync(),
-                debtPayments = await db.DebtPayments.AsNoTracking().ToListAsync(),
-                savingsGoals = await db.SavingsGoals.AsNoTracking().ToListAsync(),
-                weeklyBudgets = await db.WeeklyBudgets.AsNoTracking().ToListAsync(),
-                appSettings = await db.AppSettings.AsNoTracking().ToListAsync()
+                accounts,
+                categories,
+                transactions,
+                bills,
+                billOccurrenceStatuses,
+                debts,
+                debtPayments,
+                savingsGoals,
+                weeklyBudgets,
+                appSettings
             };
 
             var baseUrl = NormaliseUrl(_config.Url);

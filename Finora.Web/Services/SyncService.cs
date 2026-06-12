@@ -97,6 +97,16 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
             var payload = JsonSerializer.Deserialize<SyncPayload>(rows[0].Payload, _opts);
             if (payload is null) { LastError = "Could not read sync data."; return false; }
+            if (IsEmptyFinancePayload(payload))
+            {
+                LastError = "Supabase has an empty finance snapshot. Open Windows and sync/push the real data again.";
+                return false;
+            }
+            if (IsMissingPlanningPayload(payload))
+            {
+                LastError = "Supabase is missing bills, debts, savings goals, and budget data. Open Windows and sync/push the real data again.";
+                return false;
+            }
 
             await ApplyLocalIntentsAsync(payload);
             await db.SaveSyncPayloadAsync(payload);
@@ -128,6 +138,17 @@ public class SyncService(HttpClient http, IndexedDbService db)
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var payload = await http.GetFromJsonAsync<SyncPayload>($"{PcHost}/api/sync", _opts, cts.Token);
             if (payload is null) { LastError = "Empty response from PC."; return false; }
+            if (IsEmptyFinancePayload(payload))
+            {
+                LastError = "PC returned an empty finance snapshot. Open Windows and confirm your data is visible there.";
+                return false;
+            }
+            if (IsMissingPlanningPayload(payload))
+            {
+                LastError = "PC returned no bills, debts, savings goals, or budget data. Confirm Windows is using the right database.";
+                return false;
+            }
+
             await ApplyLocalIntentsAsync(payload);
             await db.SaveSyncPayloadAsync(payload);
             LastSyncedAt = payload.SyncedAt;
@@ -387,9 +408,11 @@ public class SyncService(HttpClient http, IndexedDbService db)
     public async Task<bool> PushFullSyncAsync(SyncPayload payload)
     {
         if (!HasCloudSync) return false;
-        if (IsEmptyFinancePayload(payload))
+        if (IsEmptyFinancePayload(payload) || IsMissingPlanningPayload(payload))
         {
-            LastError = "Refusing to push an empty finance snapshot. Sync from Windows or Supabase first.";
+            LastError = IsEmptyFinancePayload(payload)
+                ? "Refusing to push an empty finance snapshot. Sync from Windows or Supabase first."
+                : "Refusing to push a snapshot with no bills, debts, savings goals, or budget data.";
             OnSyncStateChanged?.Invoke();
             return false;
         }
@@ -429,6 +452,13 @@ public class SyncService(HttpClient http, IndexedDbService db)
         payload.Debts.Count == 0 &&
         payload.SavingsGoals.Count == 0 &&
         payload.WeeklyBudgets.Count == 0;
+
+    private static bool IsMissingPlanningPayload(SyncPayload payload) =>
+        payload.Bills.Count == 0 &&
+        payload.Debts.Count == 0 &&
+        payload.SavingsGoals.Count == 0 &&
+        payload.WeeklyBudgets.Count == 0 &&
+        (payload.Accounts.Count > 0 || payload.Transactions.Count > 0);
 
     public async Task<bool> SavePushSubscriptionAsync(string subscriptionJson)
     {
