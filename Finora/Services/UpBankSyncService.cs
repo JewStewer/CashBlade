@@ -86,6 +86,10 @@ public class UpBankSyncService
             .Include(t => t.Category)
             .Where(t => t.UpTransactionId != null)
             .ToDictionary(t => t.UpTransactionId!, t => t);
+        var existingDebtPaymentUpIds = db.DebtPayments
+            .Where(p => p.UpTransactionId != "")
+            .Select(p => p.UpTransactionId)
+            .ToHashSet();
 
         using var http = new HttpClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -155,7 +159,7 @@ public class UpBankSyncService
 
                 imported++;
 
-                if (debt is not null)
+                if (debt is not null && existingDebtPaymentUpIds.Add(upTransaction.Id))
                 {
                     var paymentCents = Math.Abs(amountCents);
                     debt.BalanceCents = Math.Max(0, debt.BalanceCents - paymentCents);

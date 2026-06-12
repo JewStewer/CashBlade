@@ -1653,7 +1653,16 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         cloud.Debts.AddRange(push.NewDebts);
 
-        cloud.DebtPayments.AddRange(push.NewDebtPayments);
+        foreach (var payment in push.NewDebtPayments)
+        {
+            var exists = !string.IsNullOrWhiteSpace(payment.UpTransactionId)
+                ? cloud.DebtPayments.Any(p => string.Equals(p.UpTransactionId, payment.UpTransactionId, StringComparison.Ordinal))
+                : cloud.DebtPayments.Any(p => p.Id == payment.Id);
+            if (!exists)
+            {
+                cloud.DebtPayments.Add(payment);
+            }
+        }
         cloud.DebtPayments.RemoveAll(p => push.DeletedDebtPaymentIds.Contains(p.Id));
 
         foreach (var u in push.UpdatedAccounts)
@@ -2095,7 +2104,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         // Re-add phone-created debt payments the server doesn't know about yet
         foreach (var p in push.NewDebtPayments)
         {
-            if (!DebtPayments.Any(x => x.Id == p.Id))
+            var exists = !string.IsNullOrWhiteSpace(p.UpTransactionId)
+                ? DebtPayments.Any(x => string.Equals(x.UpTransactionId, p.UpTransactionId, StringComparison.Ordinal))
+                : DebtPayments.Any(x => x.Id == p.Id);
+            if (!exists)
             {
                 DebtPayments.Add(p);
                 await db.PutAsync("debtPayments", p);

@@ -4932,6 +4932,7 @@ public class MainViewModel : ViewModelBase
                 TopUpAmount    = weeklyTopUp,
                 BillsAmount    = billsThisWeek,
                 PurchaseAmount = weeklyCost,
+                LeftAfterPurchase = RoundSignedDollars(startBalance + weeklyTopUp - weeklyCost),
                 EndBalance     = endBalance,
             });
 

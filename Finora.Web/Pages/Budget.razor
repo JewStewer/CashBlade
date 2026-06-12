@@ -560,6 +560,7 @@
                         @foreach (var (label, fraction, color) in PaceOptions)
                         {
                             var weeklyAmount = Math.Max(Math.Round(weeklySpare * fraction, 2), 0.01m);
+                            var paceLeftOver = weeklySpare - weeklyAmount;
                             var paceWeeks = Math.Max((int)Math.Ceiling(_affordAmount / weeklyAmount), 1);
                             var paceDate = DateTime.Today.AddDays(paceWeeks * 7);
                             var isSelected = paceWeeks == weeks;
@@ -567,6 +568,7 @@
                                 <div>
                                     <div style="font-size:13px;font-weight:700;color:@color">@label</div>
                                     <div style="font-size:11px;color:var(--text3)">@weeklyAmount.ToString("C")/wk</div>
+                                    <div style="font-size:11px;color:@(paceLeftOver>=0?"var(--green)":"var(--red)")">@paceLeftOver.ToString("C")/wk left</div>
                                 </div>
                                 <div style="text-align:right">
                                     <div style="font-size:13px;font-weight:600">@paceWeeks wk@(paceWeeks == 1 ? "" : "s")</div>

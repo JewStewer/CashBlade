@@ -4336,12 +4336,14 @@
                                                                     <ColumnDefinition Width="*"/>
                                                                     <ColumnDefinition Width="*"/>
                                                                     <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="*"/>
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Text="Wk"       Foreground="#6E7681" FontSize="10" FontWeight="SemiBold"/>
                                                                 <TextBlock Grid.Column="1" Text="Start"    Foreground="#6E7681" FontSize="10" FontWeight="SemiBold"/>
                                                                 <TextBlock Grid.Column="2" Text="Bills"    Foreground="#6E7681" FontSize="10" FontWeight="SemiBold"/>
                                                                 <TextBlock Grid.Column="3" Text="Purchase" Foreground="#6E7681" FontSize="10" FontWeight="SemiBold"/>
-                                                                <TextBlock Grid.Column="4" Text="End"      Foreground="#6E7681" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+                                                                <TextBlock Grid.Column="4" Text="Left"     Foreground="#6E7681" FontSize="10" FontWeight="SemiBold"/>
+                                                                <TextBlock Grid.Column="5" Text="End"      Foreground="#6E7681" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Right"/>
                                                             </Grid>
                                                             <!-- Rows -->
                                                             <ItemsControl ItemsSource="{Binding AffordabilityWeekRows}">
@@ -4354,12 +4356,15 @@
                                                                                 <ColumnDefinition Width="*"/>
                                                                                 <ColumnDefinition Width="*"/>
                                                                                 <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="*"/>
                                                                             </Grid.ColumnDefinitions>
                                                                             <TextBlock Text="{Binding WeekLabel}"           Foreground="#6E7681" FontSize="12"/>
                                                                             <TextBlock Grid.Column="1" Text="{Binding StartBalanceDisplay}" Foreground="#8B949E" FontSize="12"/>
                                                                             <TextBlock Grid.Column="2" Text="{Binding BillsDisplay}"         Foreground="#8B949E" FontSize="12"/>
                                                                             <TextBlock Grid.Column="3" Text="{Binding PurchaseDisplay}"      Foreground="#8B949E" FontSize="12"/>
-                                                                            <TextBlock Grid.Column="4" Text="{Binding EndBalanceDisplay}"    FontSize="12" FontWeight="Bold"
+                                                                            <TextBlock Grid.Column="4" Text="{Binding LeftAfterPurchaseDisplay}" FontSize="12"
+                                                                                       Foreground="{Binding LeftAfterPurchaseColorHex, Converter={StaticResource HexToBrushConverter}}"/>
+                                                                            <TextBlock Grid.Column="5" Text="{Binding EndBalanceDisplay}"    FontSize="12" FontWeight="Bold"
                                                                                        HorizontalAlignment="Right"
                                                                                        Foreground="{Binding EndColorHex, Converter={StaticResource HexToBrushConverter}}"/>
                                                                         </Grid>

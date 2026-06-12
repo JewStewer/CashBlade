@@ -317,6 +317,17 @@ public static class SupabaseSyncService
             // reference a debt created earlier in this same push)
             foreach (var p in push.NewDebtPayments)
             {
+                if (!string.IsNullOrWhiteSpace(p.UpTransactionId) &&
+                    await db.DebtPayments.AnyAsync(x => x.UpTransactionId == p.UpTransactionId))
+                {
+                    continue;
+                }
+
+                if (p.Id > 0 && await db.DebtPayments.AnyAsync(x => x.Id == p.Id))
+                {
+                    continue;
+                }
+
                 var entity = new DebtPayment
                 {
                     UpTransactionId = p.UpTransactionId, AmountCents = p.AmountCents,

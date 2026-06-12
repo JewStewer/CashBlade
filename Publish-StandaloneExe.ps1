@@ -72,6 +72,7 @@ if ($LASTEXITCODE -ne 0) {
     -p:IncludeNativeLibrariesForSelfExtract=$($SingleFile.IsPresent.ToString().ToLowerInvariant()) `
     -p:EnableCompressionInSingleFile=false `
     -p:PublishReadyToRun=false `
+    -p:AssemblyName=Cashglade `
     -p:SatelliteResourceLanguages=en `
     -p:DebugType=None `
     -p:DebugSymbols=false `
