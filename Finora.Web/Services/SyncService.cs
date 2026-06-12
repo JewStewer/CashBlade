@@ -216,6 +216,26 @@ public class SyncService(HttpClient http, IndexedDbService db)
                 await db.ClearBillDeleteAsync(deleted.Id);
             }
         }
+
+        var deletedDebts = await db.GetPendingDebtDeletesAsync();
+        foreach (var deleted in deletedDebts)
+        {
+            var matchingIds = payload.Debts
+                .Where(d => SameDebtDelete(d, deleted))
+                .Select(d => d.Id)
+                .ToHashSet();
+            var stillExistsInIncomingSnapshot = matchingIds.Count > 0;
+            payload.Debts.RemoveAll(d => matchingIds.Contains(d.Id));
+            payload.DebtPayments.RemoveAll(p => matchingIds.Contains(p.DebtId));
+            foreach (var bill in payload.Bills.Where(b => b.DebtId.HasValue && matchingIds.Contains(b.DebtId.Value)))
+            {
+                bill.DebtId = null;
+            }
+            if (!stillExistsInIncomingSnapshot)
+            {
+                await db.ClearDebtDeleteAsync(deleted.Id);
+            }
+        }
     }
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)
@@ -234,6 +254,22 @@ public class SyncService(HttpClient http, IndexedDbService db)
         var deletedAccount = string.IsNullOrWhiteSpace(deleted.AccountName) ? deleted.AccountId.ToString() : deleted.AccountName.Trim();
         if (!string.Equals(billAccount, deletedAccount, StringComparison.OrdinalIgnoreCase) && bill.AccountId != deleted.AccountId) return false;
         return Math.Abs((bill.DueDate.Date - deleted.DueDate.Date).TotalDays) <= 7;
+    }
+
+    private static bool SameDebtDelete(Debt debt, PendingDebtDelete deleted)
+    {
+        if (debt.Id > 0 && deleted.Id > 0 && debt.Id == deleted.Id
+            && (string.Equals(debt.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                || debt.BalanceCents == deleted.BalanceCents
+                || debt.OriginalBalanceCents == deleted.OriginalBalanceCents))
+        {
+            return true;
+        }
+
+        if (!string.Equals(debt.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (deleted.OriginalBalanceCents > 0 && debt.OriginalBalanceCents > 0)
+            return debt.OriginalBalanceCents == deleted.OriginalBalanceCents;
+        return debt.BalanceCents == deleted.BalanceCents;
     }
 
     private static Transaction? FindPayloadTransaction(List<Transaction> transactions, Transaction updated)

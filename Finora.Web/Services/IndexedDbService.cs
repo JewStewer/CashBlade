@@ -201,6 +201,51 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    public async Task<List<PendingDebtDelete>> GetPendingDebtDeletesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingDebtDelete>("debtDeletes");
+        }
+        catch (JSException)
+        {
+            return new List<PendingDebtDelete>();
+        }
+    }
+
+    public async Task SetDebtDeleteAsync(Debt debt)
+    {
+        try
+        {
+            await PutAsync("debtDeletes", PendingDebtDelete.FromDebt(debt));
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearDebtDeleteAsync(int debtId)
+    {
+        try
+        {
+            await DeleteAsync("debtDeletes", debtId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearDebtDeletesAsync()
+    {
+        try
+        {
+            await ClearAsync("debtDeletes");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     public async Task SaveSettingAsync(string key, string value)
     {
         var settings = await GetAppSettingsAsync();
@@ -254,6 +299,22 @@ public class PendingBillDelete
         AmountCents = deleted.AmountCents,
         DueDate = deleted.DueDate,
         Frequency = deleted.Frequency
+    };
+}
+
+public class PendingDebtDelete
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int BalanceCents { get; set; }
+    public int OriginalBalanceCents { get; set; }
+
+    public static PendingDebtDelete FromDebt(Debt debt) => new()
+    {
+        Id = debt.Id,
+        Name = debt.Name,
+        BalanceCents = debt.BalanceCents,
+        OriginalBalanceCents = debt.OriginalBalanceCents
     };
 }
 

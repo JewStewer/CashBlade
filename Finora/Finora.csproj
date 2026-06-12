@@ -11,9 +11,9 @@
     <Company>Finance Blade</Company>
     <Product>Finance Blade</Product>
     <ApplicationIcon>Assets\financeblade-app.ico</ApplicationIcon>
-    <Version>1.0.6</Version>
-    <FileVersion>1.0.6.0</FileVersion>
-    <AssemblyVersion>1.0.6.0</AssemblyVersion>
+    <Version>1.0.7</Version>
+    <FileVersion>1.0.7.0</FileVersion>
+    <AssemblyVersion>1.0.7.0</AssemblyVersion>
     <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**;..\Standalone\**;..\.dotnet-home\**</DefaultItemExcludes>
   </PropertyGroup>
 

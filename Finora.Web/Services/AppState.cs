@@ -146,6 +146,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedTransactionOverridesAsync();
         await ApplyPersistedTransactionDeletesAsync();
         await ApplyPersistedBillDeletesAsync();
+        await ApplyPersistedDebtDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
 
         await sync.InitAsync();
@@ -259,6 +260,31 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
             _pendingDeletedBills.RemoveAll(d => SameBillDelete(d, deleteIntent));
             _pendingDeletedBills.Add(deleteIntent);
+        }
+    }
+
+    private async Task ApplyPersistedDebtDeletesAsync()
+    {
+        var deletes = await db.GetPendingDebtDeletesAsync();
+        foreach (var deleted in deletes)
+        {
+            var removedIds = Debts
+                .Where(d => SameDebtDelete(d, deleted))
+                .Select(d => d.Id)
+                .ToHashSet();
+            if (removedIds.Count == 0) continue;
+
+            Debts.RemoveAll(d => removedIds.Contains(d.Id));
+            DebtPayments.RemoveAll(p => removedIds.Contains(p.DebtId));
+            foreach (var bill in Bills.Where(b => b.DebtId.HasValue && removedIds.Contains(b.DebtId.Value)))
+            {
+                bill.DebtId = null;
+            }
+            foreach (var id in removedIds.Where(id => id > 0))
+            {
+                _pendingDeletedDebtIds.RemoveAll(x => x == id);
+                _pendingDeletedDebtIds.Add(id);
+            }
         }
     }
 
@@ -1143,6 +1169,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     // any installment bill that was tracking this debt).
     public async Task DeleteDebtAsync(int id)
     {
+        var deletedDebt = Debts.FirstOrDefault(d => d.Id == id);
         Debts.RemoveAll(d => d.Id == id);
         _pendingNewDebts.RemoveAll(d => d.Id == id);
         _pendingUpdatedDebts.RemoveAll(d => d.Id == id);
@@ -1164,6 +1191,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         if (id > 0) _pendingDeletedDebtIds.Add(id);
+        if (deletedDebt is not null && id > 0)
+            await db.SetDebtDeleteAsync(deletedDebt);
         await db.DeleteAsync("debts", id);
         Compute();
         OnChange?.Invoke();
@@ -1543,6 +1572,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         return Math.Abs((left.DueDate.Date - right.DueDate.Date).TotalDays) <= 7;
     }
 
+    private static bool SameDebtDelete(Debt debt, PendingDebtDelete deleted)
+    {
+        if (debt.Id > 0 && deleted.Id > 0 && debt.Id == deleted.Id
+            && (string.Equals(debt.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                || debt.BalanceCents == deleted.BalanceCents
+                || debt.OriginalBalanceCents == deleted.OriginalBalanceCents))
+        {
+            return true;
+        }
+
+        if (!string.Equals(debt.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (deleted.OriginalBalanceCents > 0 && debt.OriginalBalanceCents > 0)
+            return debt.OriginalBalanceCents == deleted.OriginalBalanceCents;
+        return debt.BalanceCents == deleted.BalanceCents;
+    }
+
     private static bool SameTransactionDelete(TransactionDelete left, TransactionDelete right)
     {
         if (!string.IsNullOrWhiteSpace(left.UpTransactionId) || !string.IsNullOrWhiteSpace(right.UpTransactionId))
@@ -1828,6 +1873,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     sentPush = push;
                     foreach (var s in push.UpdatedBillStatuses)
                         await db.ClearBillOverrideAsync(s.BillId);
+                    foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
+                        await db.ClearDebtDeleteAsync(id);
                     // Remove only what was actually sent (by count, not Clear) —
                     // an edit made while this push was in flight appends to
                     // these lists and must survive for the next sync.
@@ -1890,6 +1937,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedSettings.Clear();
         await db.ClearBillOverridesAsync();
         await db.ClearBillDeletesAsync();
+        await db.ClearDebtDeletesAsync();
         OnChange?.Invoke();
     }
 
@@ -1932,6 +1980,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearTransactionDeletesAsync();
         await db.ClearBillOverridesAsync();
         await db.ClearBillDeletesAsync();
+        await db.ClearDebtDeletesAsync();
         LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
         await LoadAsync();
     }
