@@ -4,7 +4,7 @@
 <div class="modal-backdrop" @onclick="Close">
     <div class="modal-sheet" @onclick:stopPropagation>
         <div class="modal-handle"></div>
-        <div class="modal-title">Edit Debt</div>
+        <div class="modal-title">@(Debt?.Id == 0 ? "Add Debt" : "Edit Debt")</div>
 
         <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:12px">
             <div>
@@ -49,10 +49,13 @@
         }
 
         <div style="padding:14px 16px;display:flex;gap:8px">
-            <button class="btn btn-danger" @onclick="Delete" disabled="@saving">Delete</button>
+            @if (Debt?.Id != 0)
+            {
+                <button class="btn btn-danger" @onclick="Delete" disabled="@saving">Delete</button>
+            }
             <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
             <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
-                @(saving ? "Saving…" : "Save")
+                @(saving ? "Saving…" : (Debt?.Id == 0 ? "Add Debt" : "Save"))
             </button>
         </div>
     </div>
@@ -102,7 +105,10 @@
             InterestRate = interestRate > 0 ? interestRate / 100m : null
         };
 
-        await State.UpdateDebtAsync(d);
+        if (Debt.Id == 0)
+            await State.AddDebtAsync(d);
+        else
+            await State.UpdateDebtAsync(d);
 
         saving = false;
         await OnSaved.InvokeAsync();

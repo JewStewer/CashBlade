@@ -553,6 +553,30 @@
                                    ("✕ Short — not enough spare to hit this goal", "var(--red)");
                 var account = State.AffordabilityGoalAccount;
 
+                @if (weeklySpare > 0)
+                {
+                    <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
+                        <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:600">Savings pace for @_affordAmount.ToString("C")</div>
+                        @foreach (var (label, fraction, color) in PaceOptions)
+                        {
+                            var weeklyAmount = Math.Max(Math.Round(weeklySpare * fraction, 2), 0.01m);
+                            var paceWeeks = Math.Max((int)Math.Ceiling(_affordAmount / weeklyAmount), 1);
+                            var paceDate = DateTime.Today.AddDays(paceWeeks * 7);
+                            var isSelected = paceWeeks == weeks;
+                            <div @onclick="() => SelectPaceAsync(paceWeeks)" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:var(--surface);border:1px solid @(isSelected ? color : "transparent")">
+                                <div>
+                                    <div style="font-size:13px;font-weight:700;color:@color">@label</div>
+                                    <div style="font-size:11px;color:var(--text3)">@weeklyAmount.ToString("C")/wk</div>
+                                </div>
+                                <div style="text-align:right">
+                                    <div style="font-size:13px;font-weight:600">@paceWeeks wk@(paceWeeks == 1 ? "" : "s")</div>
+                                    <div style="font-size:11px;color:var(--text3)">by @paceDate.ToString("dd MMM yy")</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
                 <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
                     <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px">@verdict</div>
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
@@ -749,6 +773,13 @@
     private Bill? _billDraft;
     private Debt? _debtDraft;
 
+    private static readonly (string Label, decimal Fraction, string Color)[] PaceOptions =
+    {
+        ("Aggressive", 1.0m, "var(--red)"),
+        ("Balanced", 0.6m, "var(--amber)"),
+        ("Passive", 0.3m, "var(--green)")
+    };
+
     protected override void OnInitialized()
     {
         _affordMode = State.AffordabilityMode;
@@ -784,6 +815,12 @@
             _goalWeeks = weeks;
             await SaveAffordabilitySettingsAsync();
         }
+    }
+
+    private async Task SelectPaceAsync(int weeks)
+    {
+        _goalWeeks = Math.Max(weeks, 1);
+        await SaveAffordabilitySettingsAsync();
     }
 
     private async Task OnGoalAccountChanged(ChangeEventArgs e)

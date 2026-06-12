@@ -154,7 +154,7 @@
 
         <div>
             <label class="form-label">Personal Access Token</label>
-            <input class="form-input" @bind="upBankToken" placeholder="up:yeah:..." type="password" />
+            <input class="form-input" @bind="upBankToken" placeholder="up:yeah:..." type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         </div>
 
         <div style="display:flex;gap:8px;margin-top:10px">
@@ -321,7 +321,7 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.13.2";
+    private const string AppVersion = "v2026.06.13.3";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -467,9 +467,18 @@
 
     private async Task SaveUpToken()
     {
-        await UpSync.SaveAccessTokenAsync(upBankToken);
-        upBankStatus = "Saved. Tap Sync Up Bank to import transactions.";
-        upBankStatusColor = "var(--green)";
+        var token = upBankToken.Trim();
+        await UpSync.SaveAccessTokenAsync(token);
+        if (!string.IsNullOrEmpty(token) && !token.StartsWith("up:yeah:", StringComparison.Ordinal))
+        {
+            upBankStatus = "Saved, but that doesn't look like an Up Bank token — it should start with \"up:yeah:\". Double-check what you pasted.";
+            upBankStatusColor = "var(--amber)";
+        }
+        else
+        {
+            upBankStatus = "Saved. Tap Sync Up Bank to import transactions.";
+            upBankStatusColor = "var(--green)";
+        }
     }
 
     private async Task SyncUpBank()

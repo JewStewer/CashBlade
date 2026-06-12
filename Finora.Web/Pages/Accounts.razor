@@ -133,12 +133,18 @@ else
 }
 
 <!-- Debts section -->
+<div class="section-header" style="margin-top:8px">
+    <span class="section-title">Debts</span>
+    <div style="display:flex;align-items:center;gap:10px">
+        @if (State.Debts.Any())
+        {
+            <span style="font-size:13px;color:var(--red)">@State.DebtTotal.ToString("C")</span>
+        }
+        <button class="btn btn-secondary btn-sm" @onclick='() => _debtDraft = new Debt { PaymentPeriod = "Weekly" }'>+ Add</button>
+    </div>
+</div>
 @if (State.Debts.Any())
 {
-    <div class="section-header" style="margin-top:8px">
-        <span class="section-title">Debts</span>
-        <span style="font-size:13px;color:var(--red)">@State.DebtTotal.ToString("C")</span>
-    </div>
     <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
         @foreach (var debt in State.Debts.OrderByDescending(d => d.BalanceDollars))
         {
@@ -169,6 +175,12 @@ else
                 }
             </div>
         }
+    </div>
+}
+else
+{
+    <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        No debts tracked yet — tap "+ Add" to add one.
     </div>
 }
 
