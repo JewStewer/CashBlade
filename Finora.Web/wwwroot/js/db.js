@@ -1,6 +1,5 @@
 // IndexedDB helper — called via JS interop from Blazor
 const DB_NAME = 'FinanceBlade';
-const DB_VERSION = 8;
 const STORES = [
     'accounts', 'categories', 'transactions', 'bills',
     'billOccurrenceStatuses', 'debts', 'debtPayments',
@@ -15,7 +14,7 @@ let _db = null;
 function openDb() {
     if (_db) return Promise.resolve(_db);
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        const req = indexedDB.open(DB_NAME);
         req.onupgradeneeded = e => {
             const db = e.target.result;
             for (const store of ALL_STORES) {
