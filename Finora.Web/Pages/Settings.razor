@@ -57,8 +57,17 @@
             </div>
         }
 
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:4px">What changed since Windows sync</div>
+            <div style="font-size:13px;color:var(--text2)">@State.LastSyncChangeSummary</div>
+        </div>
+
         <button class="btn btn-primary btn-full" @onclick="DoAutoSync" disabled="@(Sync.IsSyncing || UpSync.IsSyncing)">
             @((Sync.IsSyncing || UpSync.IsSyncing) ? "Syncing..." : "Sync Now")
+        </button>
+
+        <button class="btn btn-secondary btn-full" style="margin-top:8px" @onclick="RepairPendingSync" disabled="@(Sync.IsSyncing || UpSync.IsSyncing)">
+            Repair stuck pending sync
         </button>
 
         @if (manualSyncActive)
@@ -74,6 +83,10 @@
         @if (!string.IsNullOrEmpty(syncStatus))
         {
             <div style="margin-top:8px;font-size:13px;color:@syncStatusColor">@syncStatus</div>
+        }
+        @if (!string.IsNullOrEmpty(repairStatus))
+        {
+            <div style="margin-top:8px;font-size:13px;color:@repairStatusColor">@repairStatus</div>
         }
 
         @if (!string.IsNullOrEmpty(Sync.LastError))
@@ -321,12 +334,13 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.13.3";
+    private const string AppVersion = "v2026.06.13.4";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
     private string upBankStatus = string.Empty, upBankStatusColor = "var(--text3)";
     private string syncStatus = string.Empty, syncStatusColor = "var(--text3)";
+    private string repairStatus = string.Empty, repairStatusColor = "var(--text3)";
     private DateTime nextPayDate = DateTime.Today;
     private bool testingSupabase;
     private string supabaseStatus = string.Empty, supabaseStatusColor = "var(--text3)";
@@ -507,6 +521,18 @@
         var counts = await State.GetPersistedTransactionIntentCountsAsync();
         localEditIntents = counts.Edits;
         localDeleteIntents = counts.Deletes;
+    }
+
+    private async Task RepairPendingSync()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "Clear stuck pending phone sync intents? Existing accounts, transactions, debts, and bills stay on this device.");
+        if (!ok) return;
+
+        await State.RepairPendingSyncAsync();
+        await RefreshLocalIntentCountsAsync();
+        repairStatus = "Pending sync intents cleared. Tap Sync Now to pull the latest cloud/Windows data.";
+        repairStatusColor = "var(--green)";
+        StateHasChanged();
     }
 
     private async Task EnableLocalNotifications()

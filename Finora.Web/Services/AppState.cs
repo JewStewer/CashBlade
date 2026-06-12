@@ -86,6 +86,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     private CancellationTokenSource? _syncDebounceCts;
     private bool _syncInProgress;
 
+    public string LastSyncChangeSummary { get; private set; } = "No sync changes summarized yet.";
+
     public bool HasPendingChanges =>
         _pendingNewTransactions.Count > 0 ||
         _pendingUpdatedTransactions.Count > 0 ||
@@ -1761,6 +1763,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         try
         {
             // Push any phone-side changes — Wi-Fi first, Supabase as fallback
+            var beforeTransactions = Transactions.Select(t => t.Id).ToHashSet();
+            var beforeBills = Bills.Select(b => b.Id).ToHashSet();
+            var beforeDebts = Debts.ToDictionary(d => d.Id, d => d.BalanceCents);
+            var beforeDebtPayments = DebtPayments
+                .Select(p => string.IsNullOrWhiteSpace(p.UpTransactionId) ? $"id:{p.Id}" : $"up:{p.UpTransactionId}")
+                .ToHashSet();
+
             PushPayload? sentPush = null;
 
             if (HasPendingChanges)
@@ -1846,6 +1855,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (ok)
             {
                 await LoadAsync();
+                LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
                 // Sync wipes IndexedDB and replaces with server data; reapply any
                 // phone-side changes that weren't pushed so they aren't lost.
                 if (sentPush is not null)
@@ -1881,6 +1891,49 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearBillOverridesAsync();
         await db.ClearBillDeletesAsync();
         OnChange?.Invoke();
+    }
+
+    private string BuildSyncChangeSummary(
+        HashSet<int> beforeTransactions,
+        HashSet<int> beforeBills,
+        Dictionary<int, int> beforeDebts,
+        HashSet<string> beforeDebtPayments)
+    {
+        var newTransactions = Transactions.Count(t => !beforeTransactions.Contains(t.Id));
+        var newBills = Bills.Count(b => !beforeBills.Contains(b.Id));
+        var newDebtPayments = DebtPayments.Count(p =>
+        {
+            var key = string.IsNullOrWhiteSpace(p.UpTransactionId) ? $"id:{p.Id}" : $"up:{p.UpTransactionId}";
+            return !beforeDebtPayments.Contains(key);
+        });
+        var debtBalanceDelta = Debts.Sum(d => beforeDebts.GetValueOrDefault(d.Id, d.BalanceCents) - d.BalanceCents) / 100m;
+
+        var parts = new List<string>();
+        if (newTransactions > 0) parts.Add($"{newTransactions} new transaction{(newTransactions == 1 ? "" : "s")}");
+        if (newBills > 0) parts.Add($"{newBills} new bill{(newBills == 1 ? "" : "s")}");
+        if (newDebtPayments > 0) parts.Add($"{newDebtPayments} debt payment{(newDebtPayments == 1 ? "" : "s")}");
+        if (Math.Abs(debtBalanceDelta) >= 0.01m)
+        {
+            parts.Add(debtBalanceDelta > 0
+                ? $"{debtBalanceDelta:C} debt paid down"
+                : $"{Math.Abs(debtBalanceDelta):C} added to debt balances");
+        }
+
+        return parts.Count == 0
+            ? $"No major record changes from the last sync ({DateTime.Now:HH:mm})."
+            : $"Last sync ({DateTime.Now:HH:mm}) brought in {string.Join(", ", parts)}.";
+    }
+
+    public async Task RepairPendingSyncAsync()
+    {
+        _syncDebounceCts?.Cancel();
+        await MarkPendingChangesSyncedAsync();
+        await db.ClearTransactionOverridesAsync();
+        await db.ClearTransactionDeletesAsync();
+        await db.ClearBillOverridesAsync();
+        await db.ClearBillDeletesAsync();
+        LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
+        await LoadAsync();
     }
 
     private async Task ReapplyPendingChangesAsync()

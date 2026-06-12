@@ -141,6 +141,39 @@ else
         </div>
     </div>
 
+    @if (DebtProgressCards.Any())
+    {
+        <div class="section-header" style="margin-top:8px">
+            <span class="section-title">Debt Progress</span>
+            <span style="font-size:11px;color:var(--text3)">@DebtProgressCards.Sum(c => c.PaidThisMonth).ToString("C") paid this month</span>
+        </div>
+        <div style="padding:0 16px;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity">
+            @foreach (var debt in DebtProgressCards)
+            {
+                <div class="card" style="min-width:240px;scroll-snap-align:start;padding:14px">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+                        <div style="min-width:0">
+                            <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@debt.Name</div>
+                            <div style="font-size:12px;color:var(--text3);margin-top:2px">@debt.PayoffEstimate</div>
+                        </div>
+                        <div style="font-size:13px;font-weight:700;color:var(--red);white-space:nowrap">@debt.Balance.ToString("C")</div>
+                    </div>
+                    <div style="height:6px;background:var(--surface2);border-radius:999px;overflow:hidden;margin:12px 0 10px">
+                        <div style="height:100%;width:@debt.ProgressPercent%;background:var(--teal)"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px">
+                        <span style="color:var(--text3)">Paid this month</span>
+                        <strong style="color:var(--green)">@debt.PaidThisMonth.ToString("C")</strong>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px">
+                        <span style="color:var(--text3)">Recent match</span>
+                        <strong style="text-align:right;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@debt.RecentPayment</strong>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
     <div class="quick-actions">
         <button class="quick-action" @onclick='() => Nav.NavigateTo("transactions")'>
             <span>+</span>
@@ -436,6 +469,66 @@ else
 
     private record ActionPrompt(string Title, string Message, string Route, string Action, string Tone);
     private record UpcomingItem(DateTime Date, string Name, string Sub, decimal Amount, bool IsIncome, bool IsToday);
+    private record DebtProgressCard(string Name, decimal Balance, decimal PaidThisMonth, int ProgressPercent, string PayoffEstimate, string RecentPayment);
+
+    private List<DebtProgressCard> DebtProgressCards => State.Debts
+        .Where(d => d.BalanceCents > 0)
+        .OrderByDescending(d => d.BalanceCents)
+        .Take(6)
+        .Select(BuildDebtProgressCard)
+        .ToList();
+
+    private DebtProgressCard BuildDebtProgressCard(Finora.Web.Models.Debt debt)
+    {
+        var payments = State.DebtPayments
+            .Where(p => p.DebtId == debt.Id)
+            .OrderByDescending(p => p.PaidOn)
+            .ToList();
+        var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var paidThisMonth = payments
+            .Where(p => p.PaidOn.Date >= monthStart)
+            .Sum(p => p.AmountDollars);
+        var original = debt.OriginalBalanceDollars > 0
+            ? debt.OriginalBalanceDollars
+            : debt.BalanceDollars + payments.Sum(p => p.AmountDollars);
+        var progress = original <= 0 ? 0 : (int)Math.Clamp(Math.Round((original - debt.BalanceDollars) / original * 100m), 0m, 100m);
+        var monthlyPayment = ToMonthlyPayment(debt.MinimumPaymentDollars, debt.PaymentPeriod);
+        var payoff = EstimatePayoff(debt.BalanceDollars, monthlyPayment, debt.InterestRate);
+        var recent = payments.FirstOrDefault();
+        var recentText = recent is null
+            ? "No matched payments"
+            : $"{recent.AmountDollars:C} on {recent.PaidOn:dd MMM}";
+
+        return new DebtProgressCard(debt.Name, debt.BalanceDollars, paidThisMonth, progress, payoff, recentText);
+    }
+
+    private static decimal ToMonthlyPayment(decimal payment, string? period) => period switch
+    {
+        "Weekly" => payment * 52m / 12m,
+        "Fortnightly" => payment * 26m / 12m,
+        _ => payment
+    };
+
+    private static string EstimatePayoff(decimal balance, decimal monthlyPayment, decimal? annualInterestRate)
+    {
+        if (balance <= 0) return "Paid off";
+        if (monthlyPayment <= 0) return "No payment set";
+
+        var monthlyRate = Math.Max(annualInterestRate ?? 0m, 0m) / 12m;
+        var remaining = balance;
+        var months = 0;
+        while (remaining > 0.01m && months < 600)
+        {
+            remaining += remaining * monthlyRate;
+            if (monthlyPayment <= remaining * monthlyRate && monthlyRate > 0) return "Payment below interest";
+            remaining -= monthlyPayment;
+            months++;
+        }
+
+        if (months >= 600) return "50+ years";
+        var date = DateTime.Today.AddMonths(Math.Max(months, 1));
+        return $"{months} mo, around {date:MMM yyyy}";
+    }
 
     private List<UpcomingItem> UpcomingTimeline
     {
