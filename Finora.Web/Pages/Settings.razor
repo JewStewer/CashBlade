@@ -72,11 +72,9 @@
 
         @if (manualSyncActive)
         {
-            <div style="margin-top:10px">
-                <div class="sync-progress-track">
-                    <div class="sync-progress-fill" style="width:@manualSyncProgress%"></div>
-                </div>
-                <div style="margin-top:6px;font-size:12px;color:var(--text3)">@manualSyncStep</div>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+                <LoadingRings Size="28" />
+                <div style="font-size:12px;color:var(--text3)">@manualSyncStep</div>
             </div>
         }
 
@@ -334,7 +332,7 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.14.3";
+    private const string AppVersion = "v2026.06.14.4";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -357,7 +355,6 @@
     private string _localNotificationStatus = string.Empty, _localNotificationStatusColor = "var(--text3)";
     private string vapidPublicKey = string.Empty;
     private bool manualSyncActive;
-    private int manualSyncProgress;
     private string manualSyncStep = string.Empty;
 
     // App lock
@@ -394,7 +391,7 @@
 
     private async Task DoAutoSync()
     {
-        StartManualSyncProgress("Preparing sync...", 8);
+        StartManualSyncProgress("Preparing sync...");
         syncStatus = string.Empty;
         syncStatusColor = "var(--text3)";
         await RefreshLocalIntentCountsAsync();
@@ -403,15 +400,15 @@
         var token = await UpSync.GetAccessTokenAsync();
         if (!string.IsNullOrWhiteSpace(token))
         {
-            SetManualSyncProgress("Importing from Up Bank...", 35);
+            SetManualSyncProgress("Importing from Up Bank...");
             var result = await UpSync.SyncAsync();
-            SetManualSyncProgress("Reloading local data...", 72);
+            SetManualSyncProgress("Reloading local data...");
             await State.LoadAsync();
             if (result is not null)
             {
                 if (result.CloudSnapshotPushed)
                 {
-                    SetManualSyncProgress("Marking changes synced...", 88);
+                    SetManualSyncProgress("Marking changes synced...");
                     await State.MarkPendingChangesSyncedAsync();
                 }
                 syncStatus = result.CloudSnapshotPushed
@@ -429,7 +426,7 @@
         }
         else
         {
-            SetManualSyncProgress("Pushing and pulling changes...", 45);
+            SetManualSyncProgress("Pushing and pulling changes...");
             await State.SyncAndReloadAsync();
             syncStatus = string.IsNullOrEmpty(Sync.LastError)
                 ? $"Synced at {DateTime.Now:HH:mm}."
@@ -441,24 +438,21 @@
         StateHasChanged();
     }
 
-    private void StartManualSyncProgress(string step, int progress)
+    private void StartManualSyncProgress(string step)
     {
         manualSyncActive = true;
         manualSyncStep = step;
-        manualSyncProgress = progress;
     }
 
-    private void SetManualSyncProgress(string step, int progress)
+    private void SetManualSyncProgress(string step)
     {
         manualSyncStep = step;
-        manualSyncProgress = progress;
         StateHasChanged();
     }
 
     private void CompleteManualSyncProgress(string step)
     {
         manualSyncStep = step;
-        manualSyncProgress = 100;
     }
 
     private async Task TestSupabase()

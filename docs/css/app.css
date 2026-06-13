@@ -277,22 +277,6 @@ button, a, input, select, textarea, [role="button"] {
 
 .list-row:last-child { border-bottom: none; }
 
-.sync-progress-track {
-    width: 100%;
-    height: 6px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--surface2);
-}
-
-.sync-progress-fill {
-    height: 100%;
-    min-width: 8px;
-    border-radius: inherit;
-    background: var(--teal);
-    transition: width 180ms ease;
-}
-
 .row-icon {
     width: 36px; height: 36px;
     border-radius: 9px;
@@ -465,17 +449,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     text-align: center;
 }
 
-/* ── Loading spinner ── */
-@keyframes spin { to { transform: rotate(360deg); } }
-.spinner {
-    width: 20px; height: 20px;
-    border: 2px solid var(--border);
-    border-top-color: var(--teal);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-}
-
-/* ── PWA boot screen rings ── */
+/* ── Pulsing rings loading indicator (boot screen + LoadingRings component) ── */
 @keyframes ring-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.18); opacity: 0.45; }
