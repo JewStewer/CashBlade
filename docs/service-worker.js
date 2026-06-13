@@ -75,8 +75,14 @@ self.addEventListener('fetch', event => {
                 const response = await fetchWithTimeout(event.request, 5000);
                 if (response.ok) return response;
                 return (await cache.match('index.html')) ?? (await cache.match('./index.html')) ?? response;
-            } catch {
-                return (await cache.match('index.html')) ?? (await cache.match('./index.html')) ?? Response.error();
+            } catch (err) {
+                const cached = (await cache.match('index.html')) ?? (await cache.match('./index.html'));
+                if (cached) return cached;
+                // No cache and the network failed — let the request fail normally.
+                // Responding with Response.error() makes the browser surface
+                // "Response served by service worker is an error" instead of a
+                // normal failed navigation the page-level watchdog can recover from.
+                throw err;
             }
         }
 
@@ -92,8 +98,9 @@ self.addEventListener('fetch', event => {
             } catch {}
         }
 
-        // For other assets: cache first, fall back to network
-        return (await cache.match(event.request)) ?? fetchWithTimeout(event.request, 10000).catch(() => Response.error());
+        // For other assets: cache first, fall back to network. If both miss, let
+        // the fetch rejection propagate instead of Response.error() (see above).
+        return (await cache.match(event.request)) ?? (await fetchWithTimeout(event.request, 10000));
     })());
 });
-/* Manifest version: whkPdfeR */
+/* Manifest version: C9JlBEge */
