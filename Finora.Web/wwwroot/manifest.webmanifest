@@ -1,7 +1,7 @@
 {
-  "name": "Finance Blade",
-  "short_name": "Finance Blade",
-  "version": "v2026.06.13.9",
+  "name": "Evergrove",
+  "short_name": "Evergrove",
+  "version": "v2026.06.14.3",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

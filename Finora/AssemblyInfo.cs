@@ -14,7 +14,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        LogStartup("Cashglade startup began.");
+        LogStartup("Evergrove startup began.");
 
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -47,7 +47,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             LogStartup($"Database setup failed: {ex}");
-            MessageBox.Show($"Cashglade could not finish database setup, but it will still try to open.{Environment.NewLine}{ex.Message}");
+            MessageBox.Show($"Evergrove could not finish database setup, but it will still try to open.{Environment.NewLine}{ex.Message}");
         }
 
         // Start local Wi-Fi sync server
@@ -101,7 +101,7 @@ public partial class App : Application
     private static void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         LogStartup($"UI error: {e.Exception}");
-        MessageBox.Show($"Cashglade hit a startup/display problem and logged it for repair.{Environment.NewLine}{e.Exception.Message}");
+        MessageBox.Show($"Evergrove hit a startup/display problem and logged it for repair.{Environment.NewLine}{e.Exception.Message}");
         e.Handled = true;
     }
 

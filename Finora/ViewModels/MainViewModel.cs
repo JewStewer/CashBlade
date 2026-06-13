@@ -704,7 +704,7 @@ public class MainViewModel : ViewModelBase
                     ? "Budget getting close"
                     : "Budget has room";
     public string BudgetPressureMessage => WeeklyIncome <= 0
-        ? "Add income so Cashglade can judge whether the weekly budget is realistic."
+        ? "Add income so Evergrove can judge whether the weekly budget is realistic."
         : BudgetUsagePercent >= 1m
             ? $"Your weekly budget is {-BudgetLeftover:C} over income."
             : BudgetUsagePercent >= 0.9m

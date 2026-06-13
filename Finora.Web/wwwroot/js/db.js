@@ -48,7 +48,7 @@ async function ensureStore(store) {
         };
         req.onsuccess = e => { _db = e.target.result; resolve(_db); };
         req.onerror = e => reject(e.target.error);
-        req.onblocked = () => reject(new Error('Database upgrade blocked. Close other Finance Blade tabs and reopen the app.'));
+        req.onblocked = () => reject(new Error('Database upgrade blocked. Close other Evergrove tabs and reopen the app.'));
     });
 }
 

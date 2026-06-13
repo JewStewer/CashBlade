@@ -5,7 +5,7 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<PageTitle>Settings — Finance Blade</PageTitle>
+<PageTitle>Settings — Evergrove</PageTitle>
 
 <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
 
@@ -143,7 +143,7 @@
             <code style="display:block;background:var(--surface2);padding:6px;border-radius:4px;margin-top:4px;font-size:11px;word-break:break-all">
                 CREATE TABLE finance_sync (id TEXT PRIMARY KEY, payload JSONB NOT NULL, synced_at TIMESTAMPTZ DEFAULT NOW()); ALTER TABLE finance_sync DISABLE ROW LEVEL SECURITY;
             </code>
-            4. On your PC, create a file <strong>supabase.json</strong> next to FinanceBlade.exe with:
+            4. On your PC, create a file <strong>supabase.json</strong> next to Cashglade.exe with:
             <code style="display:block;background:var(--surface2);padding:6px;border-radius:4px;margin-top:4px;font-size:11px">
                 @("{")@("{\"url\":\"https://xxxx.supabase.co\",")@("\"anonKey\":\"eyJ...\"}")
             </code>
@@ -328,13 +328,13 @@
 
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px">About</div>
-        <div style="font-size:13px;color:var(--text3)">Finance Blade Mobile — offline-first, syncs via Supabase</div>
+        <div style="font-size:13px;color:var(--text3)">Evergrove Mobile — offline-first, syncs via Supabase</div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">@AppVersion</div>
     </div>
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.14.1";
+    private const string AppVersion = "v2026.06.14.3";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -560,7 +560,7 @@
     private async Task SendTestNotification()
     {
         var ok = await JS.InvokeAsync<bool>("pushNotifications.showLocal",
-            "Finance Blade", "Notifications are working.", "finora-test");
+            "Evergrove", "Notifications are working.", "finora-test");
         _localNotificationStatus = ok ? "Test notification sent." : "Could not show a notification on this device.";
         _localNotificationStatusColor = ok ? "var(--green)" : "var(--red)";
     }

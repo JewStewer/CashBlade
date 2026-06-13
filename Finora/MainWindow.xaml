@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:converters="clr-namespace:Finora.Converters"
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
-        Title="Finance Blade"
+        Title="Evergrove"
         Height="800"
         Width="1280"
         MinHeight="620"
@@ -488,8 +488,8 @@
             <DockPanel LastChildFill="True">
                 <Border DockPanel.Dock="Top" Padding="14,22,14,18" BorderBrush="#1F2A44" BorderThickness="0,0,0,1" Margin="0,0,0,10">
                     <StackPanel>
-                        <TextBlock Text="FB" FontSize="24" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Finance Blade" FontSize="9" Foreground="#7DD3FC" Margin="0,4,0,0" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                        <TextBlock Text="EG" FontSize="24" FontWeight="Bold" Foreground="#38BDF8" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Evergrove" FontSize="9" Foreground="#7DD3FC" Margin="0,4,0,0" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
                     </StackPanel>
                 </Border>
                 <ScrollViewer DockPanel.Dock="Top"
@@ -3905,7 +3905,7 @@
                                                    FontSize="16"
                                                    FontWeight="SemiBold"
                                                    Foreground="#E6EDF3"/>
-                                        <TextBlock Text="Changes here affect the actual budget used throughout Finance Blade."
+                                        <TextBlock Text="Changes here affect the actual budget used throughout Evergrove."
                                                    Foreground="#8B949E"
                                                    Margin="0,3,0,0"/>
                                     </StackPanel>

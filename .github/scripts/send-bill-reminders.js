@@ -95,7 +95,7 @@ async function main() {
     }).join(', ');
 
     const notification = JSON.stringify({
-        title: 'Finance Blade — Bills Due Soon',
+        title: 'Evergrove — Bills Due Soon',
         body: `Upcoming: ${billList}`
     });
 

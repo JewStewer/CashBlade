@@ -6,10 +6,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <AssemblyName>FinanceBlade</AssemblyName>
-    <AssemblyTitle>Finance Blade</AssemblyTitle>
-    <Company>Finance Blade</Company>
-    <Product>Finance Blade</Product>
+    <AssemblyName>Evergrove</AssemblyName>
+    <AssemblyTitle>Evergrove</AssemblyTitle>
+    <Company>Evergrove</Company>
+    <Product>Evergrove</Product>
     <ApplicationIcon>Assets\financeblade-app.ico</ApplicationIcon>
     <Version>1.0.9</Version>
     <FileVersion>1.0.9.0</FileVersion>

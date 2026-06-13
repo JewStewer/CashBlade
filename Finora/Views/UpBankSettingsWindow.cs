@@ -38,7 +38,7 @@ public class UpBankSettingsWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = "Paste a personal access token from Up. Cashglade stores it locally and uses it to import settled transactions.",
+            Text = "Paste a personal access token from Up. Evergrove stores it locally and uses it to import settled transactions.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = System.Windows.Media.Brushes.DimGray,
             Margin = new Thickness(0, 0, 0, 12)

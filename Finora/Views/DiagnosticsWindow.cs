@@ -63,7 +63,7 @@ public class DiagnosticsWindow : Window
 
         return string.Join(Environment.NewLine, new[]
         {
-            "Cashglade diagnostics",
+            "Evergrove diagnostics",
             $"Version: {version}",
             $"Executable: {exePath}",
             $"Database: {dbPath}",

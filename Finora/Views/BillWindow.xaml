@@ -128,7 +128,7 @@
             </StackPanel>
 
             <TextBlock Grid.Row="10"
-                       Text="If the due date is before the next payday, Cashglade counts any shortfall as money needed right now."
+                       Text="If the due date is before the next payday, Evergrove counts any shortfall as money needed right now."
                        TextWrapping="Wrap"
                        Foreground="#64748B"
                        Margin="0,4,0,0"/>

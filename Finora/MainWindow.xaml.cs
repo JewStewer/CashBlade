@@ -1032,7 +1032,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = "Export budget to Excel",
-            FileName = $"Cashglade Budget {DateTime.Today:yyyy-MM-dd}.csv",
+            FileName = $"Evergrove Budget {DateTime.Today:yyyy-MM-dd}.csv",
             Filter = "Excel CSV (*.csv)|*.csv",
             DefaultExt = ".csv",
             AddExtension = true
@@ -1045,7 +1045,7 @@ public partial class MainWindow : Window
 
         var lines = new List<string>
         {
-            CsvRow("Cashglade weekly budget"),
+            CsvRow("Evergrove weekly budget"),
             CsvRow("Exported", DateTime.Now.ToString("g", CultureInfo.CurrentCulture)),
             string.Empty,
             CsvRow("Summary", "Amount"),
@@ -1074,7 +1074,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = "Export cash forecast",
-            FileName = $"Cashglade Cash Forecast {DateTime.Today:yyyy-MM-dd}.csv",
+            FileName = $"Evergrove Cash Forecast {DateTime.Today:yyyy-MM-dd}.csv",
             Filter = "Excel CSV (*.csv)|*.csv",
             DefaultExt = ".csv",
             AddExtension = true
@@ -1087,7 +1087,7 @@ public partial class MainWindow : Window
 
         var lines = new List<string>
         {
-            CsvRow("Cashglade cash forecast"),
+            CsvRow("Evergrove cash forecast"),
             CsvRow("Exported", DateTime.Now.ToString("g", CultureInfo.CurrentCulture)),
             CsvRow("Range", ViewModel.ForecastRange),
             CsvRow("Low point", ViewModel.ForecastLowPointSummary),
@@ -1110,7 +1110,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = "Export transactions",
-            FileName = $"Cashglade Transactions {DateTime.Today:yyyy-MM-dd}.csv",
+            FileName = $"Evergrove Transactions {DateTime.Today:yyyy-MM-dd}.csv",
             Filter = "Excel CSV (*.csv)|*.csv",
             DefaultExt = ".csv",
             AddExtension = true
@@ -1145,7 +1145,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = "Export statement",
-            FileName = $"Cashglade Statement {DateTime.Today:yyyy-MM-dd}.csv",
+            FileName = $"Evergrove Statement {DateTime.Today:yyyy-MM-dd}.csv",
             Filter = "Excel CSV (*.csv)|*.csv",
             DefaultExt = ".csv",
             AddExtension = true
@@ -1313,7 +1313,7 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = "Export monthly report",
-            FileName = $"Cashglade Monthly Report {DateTime.Today:yyyy-MM}.csv",
+            FileName = $"Evergrove Monthly Report {DateTime.Today:yyyy-MM}.csv",
             Filter = "Excel CSV (*.csv)|*.csv",
             DefaultExt = ".csv",
             AddExtension = true
@@ -1326,7 +1326,7 @@ public partial class MainWindow : Window
 
         var lines = new List<string>
         {
-            CsvRow("Cashglade monthly report"),
+            CsvRow("Evergrove monthly report"),
             CsvRow("Exported", DateTime.Now.ToString("g", CultureInfo.CurrentCulture)),
             CsvRow("Period", ViewModel.SummaryDateRange),
             string.Empty,
@@ -1664,9 +1664,9 @@ public partial class MainWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Back up Cashglade database",
-            FileName = $"cashglade-backup-{DateTime.Today:yyyy-MM-dd}.db",
-            Filter = "Cashglade database (*.db)|*.db",
+            Title = "Back up Evergrove database",
+            FileName = $"evergrove-backup-{DateTime.Today:yyyy-MM-dd}.db",
+            Filter = "Evergrove database (*.db)|*.db",
             DefaultExt = ".db",
             AddExtension = true
         };
@@ -1684,8 +1684,8 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Restore Cashglade database",
-            Filter = "Cashglade database (*.db)|*.db|All files (*.*)|*.*"
+            Title = "Restore Evergrove database",
+            Filter = "Evergrove database (*.db)|*.db|All files (*.*)|*.*"
         };
 
         if (dialog.ShowDialog(this) != true)

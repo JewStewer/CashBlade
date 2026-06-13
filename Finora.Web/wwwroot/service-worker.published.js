@@ -38,7 +38,7 @@ self.addEventListener('activate', event => {
 
 // ── Push notifications ──────────────────────────────────────────────────────
 self.addEventListener('push', event => {
-    let data = { title: 'Finance Blade', body: 'You have a bill due soon.' };
+    let data = { title: 'Evergrove', body: 'You have a bill due soon.' };
     try { if (event.data) data = event.data.json(); } catch {}
     event.waitUntil(
         self.registration.showNotification(data.title, {

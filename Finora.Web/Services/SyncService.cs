@@ -91,7 +91,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
             var rows = JsonSerializer.Deserialize<List<SupabaseRow>>(body, _opts);
             if (rows is null || rows.Count == 0)
             {
-                LastError = "No data in Supabase yet. Open Finance Blade on your PC to push data.";
+                LastError = "No data in Supabase yet. Open Evergrove on your PC to push data.";
                 return false;
             }
 
