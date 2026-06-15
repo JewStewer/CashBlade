@@ -1,5 +1,6 @@
 ﻿using Finora.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using System.IO;
 using System.Reflection.Emit;
 
@@ -27,6 +28,7 @@ public class FinoraDbContext : DbContext
     public DbSet<SavingsGoal> SavingsGoals => Set<SavingsGoal>();
     public DbSet<WeeklyBudget> WeeklyBudgets => Set<WeeklyBudget>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<Trip> Trips => Set<Trip>();
 
     public static string DatabasePath
     {
@@ -183,5 +185,41 @@ public class FinoraDbContext : DbContext
             .WithMany()
             .HasForeignKey(p => p.DebtId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Trip>()
+            .Property(t => t.Itinerary)
+            .HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new List<TripItineraryItem>()
+                    : System.Text.Json.JsonSerializer.Deserialize<List<TripItineraryItem>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<TripItineraryItem>())
+            .Metadata.SetValueComparer(new ValueComparer<List<TripItineraryItem>>(
+                (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<TripItineraryItem>>(System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null), (System.Text.Json.JsonSerializerOptions?)null) ?? new List<TripItineraryItem>()));
+
+        modelBuilder.Entity<Trip>()
+            .Property(t => t.Checklist)
+            .HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new List<TripChecklistItem>()
+                    : System.Text.Json.JsonSerializer.Deserialize<List<TripChecklistItem>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<TripChecklistItem>())
+            .Metadata.SetValueComparer(new ValueComparer<List<TripChecklistItem>>(
+                (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<TripChecklistItem>>(System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null), (System.Text.Json.JsonSerializerOptions?)null) ?? new List<TripChecklistItem>()));
+
+        modelBuilder.Entity<Trip>()
+            .Property(t => t.BudgetItems)
+            .HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => string.IsNullOrWhiteSpace(v)
+                    ? new List<TripBudgetItem>()
+                    : System.Text.Json.JsonSerializer.Deserialize<List<TripBudgetItem>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<TripBudgetItem>())
+            .Metadata.SetValueComparer(new ValueComparer<List<TripBudgetItem>>(
+                (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<TripBudgetItem>>(System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null), (System.Text.Json.JsonSerializerOptions?)null) ?? new List<TripBudgetItem>()));
     }
 }

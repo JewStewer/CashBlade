@@ -12,6 +12,7 @@ public class SyncPayload
     public List<SavingsGoal> SavingsGoals { get; set; } = new();
     public List<WeeklyBudget> WeeklyBudgets { get; set; } = new();
     public List<AppSetting> AppSettings { get; set; } = new();
+    public List<Trip> Trips { get; set; } = new();
     public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -37,6 +38,9 @@ public class PushPayload
     public List<SavingsGoal> NewSavingsGoals { get; set; } = new();
     public List<SavingsGoal> UpdatedSavingsGoals { get; set; } = new();
     public List<int> DeletedSavingsGoalIds { get; set; } = new();
+    public List<Trip> NewTrips { get; set; } = new();
+    public List<Trip> UpdatedTrips { get; set; } = new();
+    public List<int> DeletedTripIds { get; set; } = new();
 }
 
 public class TransactionEdit

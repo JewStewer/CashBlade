@@ -272,6 +272,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
                 await db.ClearSavingsGoalDeleteAsync(deleted.Id);
             }
         }
+
+        var deletedTrips = await db.GetPendingTripDeletesAsync();
+        foreach (var deleted in deletedTrips)
+        {
+            var matchingIds = payload.Trips
+                .Where(t => SameTripDelete(t, deleted))
+                .Select(t => t.Id)
+                .ToHashSet();
+            var stillExistsInIncomingSnapshot = matchingIds.Count > 0;
+            payload.Trips.RemoveAll(t => matchingIds.Contains(t.Id));
+            if (!stillExistsInIncomingSnapshot)
+            {
+                await db.ClearTripDeleteAsync(deleted.Id);
+            }
+        }
     }
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)
@@ -322,6 +337,22 @@ public class SyncService(HttpClient http, IndexedDbService db)
         if (deleted.TargetCents > 0 && goal.TargetCents > 0)
             return goal.TargetCents == deleted.TargetCents;
         return goal.CurrentCents == deleted.CurrentCents;
+    }
+
+    private static bool SameTripDelete(Trip trip, PendingTripDelete deleted)
+    {
+        if (trip.Id > 0 && deleted.Id > 0 && trip.Id == deleted.Id
+            && (string.Equals(trip.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trip.Destination?.Trim() ?? "", deleted.Destination?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
+                || trip.StartDate == deleted.StartDate))
+        {
+            return true;
+        }
+
+        if (!string.Equals(trip.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (deleted.StartDate.HasValue && trip.StartDate.HasValue)
+            return trip.StartDate == deleted.StartDate;
+        return string.Equals(trip.Destination?.Trim() ?? "", deleted.Destination?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Transaction? FindPayloadTransaction(List<Transaction> transactions, Transaction updated)
@@ -489,6 +520,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
         payload.Debts.Count == 0 &&
         payload.SavingsGoals.Count == 0 &&
         payload.WeeklyBudgets.Count == 0 &&
+        payload.Trips.Count == 0 &&
         (payload.Accounts.Count > 0 || payload.Transactions.Count > 0);
 
     public async Task<bool> SavePushSubscriptionAsync(string subscriptionJson)

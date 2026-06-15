@@ -100,6 +100,7 @@ public static class SupabaseSyncService
             var savingsGoals = await db.SavingsGoals.AsNoTracking().ToListAsync();
             var weeklyBudgets = await db.WeeklyBudgets.AsNoTracking().ToListAsync();
             var appSettings = await db.AppSettings.AsNoTracking().ToListAsync();
+            var trips = await db.Trips.AsNoTracking().ToListAsync();
 
             if (bills.Count == 0 && debts.Count == 0 && savingsGoals.Count == 0 && weeklyBudgets.Count == 0
                 && (accounts.Count > 0 || transactions.Count > 0))
@@ -121,7 +122,8 @@ public static class SupabaseSyncService
                 debtPayments,
                 savingsGoals,
                 weeklyBudgets,
-                appSettings
+                appSettings,
+                trips
             };
 
             var baseUrl = NormaliseUrl(_config.Url);
@@ -308,6 +310,44 @@ public static class SupabaseSyncService
             {
                 var existing = await db.SavingsGoals.FindAsync(id);
                 if (existing is not null) db.SavingsGoals.Remove(existing);
+            }
+
+            // New trips from phone (negative temp IDs, get real IDs on save)
+            foreach (var t in push.NewTrips)
+            {
+                db.Trips.Add(new Trip
+                {
+                    Name = t.Name,
+                    Destination = t.Destination,
+                    Notes = t.Notes,
+                    StartDate = t.StartDate,
+                    EndDate = t.EndDate,
+                    Itinerary = t.Itinerary,
+                    Checklist = t.Checklist,
+                    BudgetItems = t.BudgetItems
+                });
+            }
+
+            // Updated trips from phone
+            foreach (var t in push.UpdatedTrips.Where(x => x.Id > 0))
+            {
+                var existing = await db.Trips.FindAsync(t.Id);
+                if (existing is null) continue;
+                existing.Name = t.Name;
+                existing.Destination = t.Destination;
+                existing.Notes = t.Notes;
+                existing.StartDate = t.StartDate;
+                existing.EndDate = t.EndDate;
+                existing.Itinerary = t.Itinerary;
+                existing.Checklist = t.Checklist;
+                existing.BudgetItems = t.BudgetItems;
+            }
+
+            // Deleted trips from phone
+            foreach (var id in push.DeletedTripIds.Where(id => id > 0))
+            {
+                var existing = await db.Trips.FindAsync(id);
+                if (existing is not null) db.Trips.Remove(existing);
             }
 
             // New bills from phone

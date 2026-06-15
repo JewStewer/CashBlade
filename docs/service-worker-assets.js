@@ -33,15 +33,15 @@
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-5AGDZtsjx3\/cJHNY0uDQVP3gHkoRYHz7bljZHvYMtnQ=",
+      "hash": "sha256-SmsIHx8ScKqF9YlI9I7v7o6S8uu6OcZZ7FCfZhsFjUw=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-VP5QEk7c2vBmkR1KyNg\/bYTnJ1jc0uGRZjeYsePHcB8=",
+      "hash": "sha256-PWnO9MJa1bouhA9LPfBIQn5VOLNi\/SsXIFjcnQ+rdMs=",
       "url": "_framework\/Finora.Web.wasm"
     },
     {
-      "hash": "sha256-17JstKSWY2aVqBHBd9RUBknDEYpphgGc0X2Dt7GYs2E=",
+      "hash": "sha256-Wq46HjD9O1rq+O7Qr9tOPZ\/gABSv2gwHPzw7Eaye7S4=",
       "url": "_framework\/Microsoft.AspNetCore.Components.wasm"
     },
     {
@@ -133,7 +133,7 @@
       "url": "_framework\/System.Diagnostics.DiagnosticSource.wasm"
     },
     {
-      "hash": "sha256-IyzfaYACUyExoNy\/NWEMGHHlC5f5g2F7L4J63GkdcNc=",
+      "hash": "sha256-cTL48f9iJc3qRn8kLdi3u54JQ3CeTJF8vAZBt2d9ZQs=",
       "url": "_framework\/System.Linq.wasm"
     },
     {
@@ -217,7 +217,7 @@
       "url": "index.html"
     },
     {
-      "hash": "sha256-I8xr\/zce7vu8fCWJ4tQcfdjfqPLduTxKoVAtce7rE1s=",
+      "hash": "sha256-LL6myTsio5Nj3QCq4nmtBj+KhPR9mCMnAUI2Oi9L0oo=",
       "url": "js\/db.js"
     },
     {
@@ -225,9 +225,9 @@
       "url": "js\/push.js"
     },
     {
-      "hash": "sha256-oTAAtvGFXhb8Rj74xLbmMZkW95HG40Gd2KhCCt0Apm8=",
+      "hash": "sha256-rsKEPmTOSZRV4kemcikds4RJXB5Sil5KZIEnKnTW1UM=",
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "LiT5evFM"
+  "version": "UjfH4H0C"
 };

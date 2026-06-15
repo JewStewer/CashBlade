@@ -3,10 +3,10 @@ const DB_NAME = 'FinanceBlade';
 const STORES = [
     'accounts', 'categories', 'transactions', 'bills',
     'billOccurrenceStatuses', 'debts', 'debtPayments',
-    'savingsGoals', 'weeklyBudgets', 'appSettings', 'syncMeta'
+    'savingsGoals', 'weeklyBudgets', 'appSettings', 'syncMeta', 'trips'
 ];
 // Stores that survive clearAll (phone-side overrides, lent money tracking)
-const PERSISTENT_STORES = ['pendingBillOverrides', 'billDeletes', 'debtDeletes', 'savingsGoalDeletes', 'lentTxns', 'transactionOverrides', 'transactionDeletes'];
+const PERSISTENT_STORES = ['pendingBillOverrides', 'billDeletes', 'debtDeletes', 'savingsGoalDeletes', 'lentTxns', 'transactionOverrides', 'transactionDeletes', 'tripDeletes'];
 const ALL_STORES = [...STORES, ...PERSISTENT_STORES];
 
 let _db = null;
@@ -153,6 +153,7 @@ window.db = {
                 savingsGoals:           data.savingsGoals           ?? [],
                 weeklyBudgets:          data.weeklyBudgets          ?? [],
                 appSettings:            data.appSettings            ?? [],
+                trips:                  data.trips                  ?? [],
             };
             for (const [store, records] of Object.entries(storeMap)) {
                 const os = tx.objectStore(store);

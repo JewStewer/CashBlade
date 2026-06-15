@@ -66,6 +66,7 @@ public static class SyncServer
                     SavingsGoals = await db.SavingsGoals.ToListAsync(),
                     WeeklyBudgets = await db.WeeklyBudgets.ToListAsync(),
                     AppSettings = await db.AppSettings.ToListAsync(),
+                    Trips = await db.Trips.ToListAsync(),
                     SyncedAt = DateTime.UtcNow
                 };
                 ctx.Response.ContentType = "application/json";
@@ -249,6 +250,44 @@ public static class SyncServer
                 {
                     var existing = await db.SavingsGoals.FindAsync(id);
                     if (existing is not null) db.SavingsGoals.Remove(existing);
+                }
+
+                // New trips from phone (negative temp IDs, get real IDs on save)
+                foreach (var t in push.NewTrips)
+                {
+                    db.Trips.Add(new Trip
+                    {
+                        Name = t.Name,
+                        Destination = t.Destination,
+                        Notes = t.Notes,
+                        StartDate = t.StartDate,
+                        EndDate = t.EndDate,
+                        Itinerary = t.Itinerary,
+                        Checklist = t.Checklist,
+                        BudgetItems = t.BudgetItems
+                    });
+                }
+
+                // Updated trips from phone
+                foreach (var t in push.UpdatedTrips.Where(x => x.Id > 0))
+                {
+                    var existing = await db.Trips.FindAsync(t.Id);
+                    if (existing is null) continue;
+                    existing.Name = t.Name;
+                    existing.Destination = t.Destination;
+                    existing.Notes = t.Notes;
+                    existing.StartDate = t.StartDate;
+                    existing.EndDate = t.EndDate;
+                    existing.Itinerary = t.Itinerary;
+                    existing.Checklist = t.Checklist;
+                    existing.BudgetItems = t.BudgetItems;
+                }
+
+                // Deleted trips from phone
+                foreach (var id in push.DeletedTripIds.Where(id => id > 0))
+                {
+                    var existing = await db.Trips.FindAsync(id);
+                    if (existing is not null) db.Trips.Remove(existing);
                 }
 
                 // New bills from phone (negative temp IDs)
@@ -463,6 +502,7 @@ public class SyncPayload
     public List<SavingsGoal> SavingsGoals { get; set; } = new();
     public List<WeeklyBudget> WeeklyBudgets { get; set; } = new();
     public List<AppSetting> AppSettings { get; set; } = new();
+    public List<Trip> Trips { get; set; } = new();
     public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -488,6 +528,9 @@ public class PushPayload
     public List<SavingsGoal> NewSavingsGoals { get; set; } = new();
     public List<SavingsGoal> UpdatedSavingsGoals { get; set; } = new();
     public List<int> DeletedSavingsGoalIds { get; set; } = new();
+    public List<Trip> NewTrips { get; set; } = new();
+    public List<Trip> UpdatedTrips { get; set; } = new();
+    public List<int> DeletedTripIds { get; set; } = new();
 }
 
 public class TransactionEdit

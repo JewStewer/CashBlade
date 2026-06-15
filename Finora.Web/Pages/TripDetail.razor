@@ -1,0 +1,440 @@
+@page "/trips/{Id:int}"
+@inject AppState State
+@inject NavigationManager Nav
+
+<PageTitle>@(_trip?.Name ?? "Holiday") - Evergrove</PageTitle>
+
+@if (!State.IsLoaded)
+{
+    <div class="empty-state" style="margin-top:40px">
+        <span>Loading...</span>
+    </div>
+}
+else if (_trip is null)
+{
+    <div class="empty-state" style="margin-top:40px">
+        <span>Holiday not found.</span>
+    </div>
+}
+else
+{
+    var plannedTotal = PlannedTotal;
+    var paidTotal = PaidTotal;
+    var remainingTotal = RemainingTotal;
+    var budgetProgress = plannedTotal > 0 ? Math.Clamp(paidTotal / plannedTotal, 0, 1) : 0;
+    var daysToGo = DaysToGo;
+    var tripDays = TripDays;
+    var weeklyNeeded = WeeklyNeeded;
+    var spareAfterSaving = State.BudgetLeftover - weeklyNeeded;
+    var dailyGuide = tripDays is > 0 ? remainingTotal / tripDays.Value : 0m;
+    var checklistProgress = ChecklistProgress;
+
+    <div style="padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+            <div style="font-size:20px;font-weight:700">@_trip.Name</div>
+            @if (!string.IsNullOrWhiteSpace(_trip.Destination))
+            {
+                <div style="font-size:13px;color:var(--text3);margin-top:2px">@_trip.Destination</div>
+            }
+            @if (_trip.StartDate is not null || _trip.EndDate is not null)
+            {
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">@FormatDateRange(_trip.StartDate, _trip.EndDate)</div>
+            }
+        </div>
+        <button class="btn btn-secondary btn-sm" @onclick="() => _editDraft = _trip">Edit</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_trip.Notes))
+    {
+        <div style="padding:10px 16px 0">
+            <div style="font-size:13px;color:var(--text2);line-height:1.45;white-space:pre-wrap">@_trip.Notes</div>
+        </div>
+    }
+
+    <div class="metric-strip">
+        <div>
+            <span>To go</span>
+            <strong>@(daysToGo is null ? "-" : $"{daysToGo}d")</strong>
+        </div>
+        <div>
+            <span>Length</span>
+            <strong>@(tripDays is null ? "-" : $"{tripDays}d")</strong>
+        </div>
+        <div>
+            <span>Planned</span>
+            <strong>@plannedTotal.ToString("C")</strong>
+        </div>
+    </div>
+
+    <div style="padding:0 16px 0">
+        <div class="card" style="margin-top:12px">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Holiday Readiness</div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+                <span style="color:var(--text3)">Paid / booked</span>
+                <span style="font-weight:700">@paidTotal.ToString("C") of @plannedTotal.ToString("C")</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width:@((int)(budgetProgress * 100))%;background:var(--teal)"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
+                <span>@budgetProgress.ToString("P0") funded</span>
+                <span>@remainingTotal.ToString("C") remaining</span>
+            </div>
+            <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;font-size:13px">
+                <span style="color:var(--text3)">Suggested saving</span>
+                <span style="font-weight:700;color:@(spareAfterSaving >= 0 ? "var(--green)" : "var(--red)")">@weeklyNeeded.ToString("C")/wk</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:5px">
+                <span style="color:var(--text3)">Spare after that</span>
+                <span style="font-weight:700;color:@(spareAfterSaving >= 0 ? "var(--green)" : "var(--red)")">@spareAfterSaving.ToString("C")/wk</span>
+            </div>
+            @if (dailyGuide > 0)
+            {
+                <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:5px">
+                    <span style="color:var(--text3)">Trip-day guide</span>
+                    <span style="font-weight:700">@dailyGuide.ToString("C")/day</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Budget breakdown -->
+    <div class="section-header" style="margin-top:16px">
+        <span class="section-title">Budget</span>
+        <button class="btn btn-secondary btn-sm" @onclick="ToggleBudgetForm">+ Add</button>
+    </div>
+    @if (_showBudgetForm)
+    {
+        <div style="padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+            <input class="form-input" @bind="_newBudgetCategory" placeholder="Category (e.g. Flights, hotel, food)" />
+            <div style="display:flex;gap:8px">
+                <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetAmount" placeholder="Planned" />
+                <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetActual" placeholder="Paid/spent" />
+            </div>
+            <input class="form-input" @bind="_newBudgetNotes" placeholder="Notes (booking ref, due date, link)" />
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
+                <input type="checkbox" @bind="_newBudgetPaid" style="width:18px;height:18px;accent-color:var(--teal)" />
+                Paid or booked
+            </label>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-secondary" style="flex:1" @onclick="ToggleBudgetForm">Cancel</button>
+                <button class="btn btn-primary" style="flex:1" @onclick="AddBudgetItem">Add</button>
+            </div>
+        </div>
+    }
+    @if (_trip.BudgetItems.Any())
+    {
+        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            @foreach (var row in _trip.BudgetItems.Select((item, index) => new { item, index }))
+            {
+                var displayPaid = row.item.ActualDollars > 0 ? row.item.ActualDollars : (row.item.Paid ? row.item.PlannedDollars : 0);
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+                    <input type="checkbox" checked="@row.item.Paid" @onchange="() => ToggleBudgetPaid(row.index)" style="width:18px;height:18px;accent-color:var(--teal)" />
+                    <div style="flex:1">
+                        <div style="font-size:14px;font-weight:600">@row.item.Category</div>
+                        @if (!string.IsNullOrWhiteSpace(row.item.Notes))
+                        {
+                            <div style="font-size:11px;color:var(--text3);margin-top:2px">@row.item.Notes</div>
+                        }
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-size:14px;font-weight:700">@row.item.PlannedDollars.ToString("C")</div>
+                        @if (displayPaid > 0)
+                        {
+                            <div style="font-size:11px;color:var(--green)">@displayPaid.ToString("C") paid</div>
+                        }
+                    </div>
+                    <button class="btn btn-icon" @onclick="() => RemoveBudgetItem(row.index)">x</button>
+                </div>
+            }
+            <div style="padding:12px 16px;display:flex;justify-content:space-between;font-size:14px;font-weight:700">
+                <span>Remaining</span>
+                <span>@remainingTotal.ToString("C")</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            No budget items yet. Add flights, accommodation, spending money, insurance, transfers, and activities.
+        </div>
+    }
+
+    <!-- Itinerary -->
+    <div class="section-header" style="margin-top:16px">
+        <span class="section-title">Schedule</span>
+        <button class="btn btn-secondary btn-sm" @onclick="ToggleItineraryForm">+ Add</button>
+    </div>
+    @if (_showItineraryForm)
+    {
+        <div style="padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:8px">
+                <input class="form-input" style="flex:1" type="date" @bind="_newItineraryDate" @bind:event="oninput" />
+                <input class="form-input" style="flex:1" type="time" value="@_newItineraryTime" @oninput="(ChangeEventArgs e) => _newItineraryTime = e.Value?.ToString()" />
+            </div>
+            <input class="form-input" @bind="_newItineraryTitle" placeholder="e.g. Flight to Tokyo" />
+            <input class="form-input" @bind="_newItineraryNotes" placeholder="Notes (optional)" />
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-secondary" style="flex:1" @onclick="ToggleItineraryForm">Cancel</button>
+                <button class="btn btn-primary" style="flex:1" @onclick="AddItineraryItem">Add</button>
+            </div>
+        </div>
+    }
+    @if (_trip.Itinerary.Any())
+    {
+        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            @foreach (var row in OrderedItinerary)
+            {
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start">
+                    <div style="min-width:68px">
+                        <div style="font-size:12px;color:var(--text3)">@row.Item.Date.ToString("dd MMM")</div>
+                        @if (!string.IsNullOrWhiteSpace(row.Item.Time))
+                        {
+                            <div style="font-size:12px;color:var(--text3)">@row.Item.Time</div>
+                        }
+                    </div>
+                    <div style="flex:1">
+                        <div style="font-size:14px;font-weight:600">@row.Item.Title</div>
+                        @if (!string.IsNullOrWhiteSpace(row.Item.Notes))
+                        {
+                            <div style="font-size:12px;color:var(--text3);margin-top:2px">@row.Item.Notes</div>
+                        }
+                    </div>
+                    <button class="btn btn-icon" @onclick="() => RemoveItineraryItem(row.Index)">x</button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            No schedule items yet. Add flights, check-in times, activities, bookings, and reminders.
+        </div>
+    }
+
+    <!-- Checklist -->
+    <div class="section-header" style="margin-top:16px">
+        <span class="section-title">Checklist</span>
+        <button class="btn btn-secondary btn-sm" @onclick="ToggleChecklistForm">+ Add</button>
+    </div>
+    @if (_showChecklistForm)
+    {
+        <div style="padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+            <input class="form-input" @bind="_newChecklistText" placeholder="e.g. Renew passport" />
+            <input class="form-input" type="date" @bind="_newChecklistDueDate" @bind:event="oninput" />
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-secondary" style="flex:1" @onclick="ToggleChecklistForm">Cancel</button>
+                <button class="btn btn-primary" style="flex:1" @onclick="AddChecklistItem">Add</button>
+            </div>
+        </div>
+    }
+    @if (_trip.Checklist.Any())
+    {
+        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;font-size:12px;color:var(--text3)">
+                <span>@checklistProgress.ToString("P0") complete</span>
+                <span>@DueSoonCount due soon</span>
+            </div>
+            @foreach (var row in OrderedChecklist)
+            {
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+                    <input type="checkbox" checked="@row.Item.Done" @onchange="(ChangeEventArgs e) => ToggleChecklistItem(row.Index, e)" style="width:18px;height:18px;accent-color:var(--teal)" />
+                    <div style="flex:1">
+                        <div style="font-size:14px;text-decoration:@(row.Item.Done ? "line-through" : "none");color:@(row.Item.Done ? "var(--text3)" : "var(--text)")">@row.Item.Text</div>
+                        @if (row.Item.DueDate is not null)
+                        {
+                            <div style="font-size:11px;color:@(row.Item.Done ? "var(--text3)" : row.Item.DueDate.Value.Date <= DateTime.Today.AddDays(7) ? "var(--amber)" : "var(--text3)")">Due @row.Item.DueDate.Value.ToString("dd MMM yy")</div>
+                        }
+                    </div>
+                    <button class="btn btn-icon" @onclick="() => RemoveChecklistItem(row.Index)">x</button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+            No checklist items yet. Add passports, leave, packing, tickets, insurance, and pet care.
+        </div>
+    }
+
+    <div style="height:16px"></div>
+}
+
+@if (_editDraft is not null)
+{
+    <AddEditTripModal Trip="@_editDraft"
+        OnClose="() => _editDraft = null"
+        OnSaved="() => _editDraft = null" />
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Trip? _trip;
+    private Trip? _editDraft;
+
+    private bool _showBudgetForm;
+    private string _newBudgetCategory = string.Empty;
+    private decimal? _newBudgetAmount;
+    private decimal? _newBudgetActual;
+    private bool _newBudgetPaid;
+    private string _newBudgetNotes = string.Empty;
+
+    private bool _showItineraryForm;
+    private DateTime? _newItineraryDate;
+    private string? _newItineraryTime;
+    private string _newItineraryTitle = string.Empty;
+    private string _newItineraryNotes = string.Empty;
+
+    private bool _showChecklistForm;
+    private string _newChecklistText = string.Empty;
+    private DateTime? _newChecklistDueDate;
+
+    private decimal PlannedTotal => _trip?.BudgetItems.Sum(b => b.PlannedDollars) ?? 0;
+    private decimal PaidTotal => _trip?.BudgetItems.Where(b => b.Paid).Sum(b => b.ActualDollars > 0 ? b.ActualDollars : b.PlannedDollars) ?? 0;
+    private decimal RemainingTotal => Math.Max(PlannedTotal - PaidTotal, 0);
+    private int? DaysToGo => _trip?.StartDate is null ? null : Math.Max((_trip.StartDate.Value.Date - DateTime.Today).Days, 0);
+    private int? TripDays => _trip?.StartDate is null || _trip.EndDate is null ? null : Math.Max((_trip.EndDate.Value.Date - _trip.StartDate.Value.Date).Days + 1, 1);
+    private decimal WeeklyNeeded => DaysToGo is null or 0 ? RemainingTotal : Math.Ceiling((RemainingTotal / Math.Max(DaysToGo.Value / 7m, 1m)) * 100m) / 100m;
+    private decimal ChecklistProgress => _trip is null || _trip.Checklist.Count == 0 ? 0 : (decimal)_trip.Checklist.Count(c => c.Done) / _trip.Checklist.Count;
+    private int DueSoonCount => _trip?.Checklist.Count(c => !c.Done && c.DueDate is not null && c.DueDate.Value.Date <= DateTime.Today.AddDays(7)) ?? 0;
+
+    private IEnumerable<(TripItineraryItem Item, int Index)> OrderedItinerary =>
+        _trip?.Itinerary
+            .Select((item, index) => (Item: item, Index: index))
+            .OrderBy(x => x.Item.Date)
+            .ThenBy(x => x.Item.Time ?? string.Empty)
+        ?? Enumerable.Empty<(TripItineraryItem, int)>();
+
+    private IEnumerable<(TripChecklistItem Item, int Index)> OrderedChecklist =>
+        _trip?.Checklist
+            .Select((item, index) => (Item: item, Index: index))
+            .OrderBy(x => x.Item.Done)
+            .ThenBy(x => x.Item.DueDate ?? DateTime.MaxValue)
+        ?? Enumerable.Empty<(TripChecklistItem, int)>();
+
+    protected override void OnParametersSet()
+    {
+        _trip = State.Trips.FirstOrDefault(t => t.Id == Id);
+        if (_trip is null && State.IsLoaded)
+        {
+            Nav.NavigateTo("trips");
+        }
+    }
+
+    private static string FormatDateRange(DateTime? start, DateTime? end)
+    {
+        if (start is not null && end is not null)
+            return $"{start.Value:dd MMM} - {end.Value:dd MMM yyyy}";
+        if (start is not null)
+            return $"From {start.Value:dd MMM yyyy}";
+        return $"Until {end!.Value:dd MMM yyyy}";
+    }
+
+    private void ToggleBudgetForm()
+    {
+        _showBudgetForm = !_showBudgetForm;
+        _newBudgetCategory = string.Empty;
+        _newBudgetAmount = null;
+        _newBudgetActual = null;
+        _newBudgetPaid = false;
+        _newBudgetNotes = string.Empty;
+    }
+
+    private async Task AddBudgetItem()
+    {
+        if (_trip is null || string.IsNullOrWhiteSpace(_newBudgetCategory)) return;
+
+        _trip.BudgetItems.Add(new TripBudgetItem
+        {
+            Category = _newBudgetCategory.Trim(),
+            PlannedDollars = _newBudgetAmount ?? 0,
+            ActualDollars = _newBudgetActual ?? 0,
+            Paid = _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
+            Notes = string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim()
+        });
+        await State.UpdateTripAsync(_trip);
+        ToggleBudgetForm();
+    }
+
+    private async Task ToggleBudgetPaid(int index)
+    {
+        if (_trip is null) return;
+        _trip.BudgetItems[index].Paid = !_trip.BudgetItems[index].Paid;
+        await State.UpdateTripAsync(_trip);
+    }
+
+    private async Task RemoveBudgetItem(int index)
+    {
+        if (_trip is null) return;
+        _trip.BudgetItems.RemoveAt(index);
+        await State.UpdateTripAsync(_trip);
+    }
+
+    private void ToggleItineraryForm()
+    {
+        _showItineraryForm = !_showItineraryForm;
+        _newItineraryDate = _trip?.StartDate ?? DateTime.Today;
+        _newItineraryTime = null;
+        _newItineraryTitle = string.Empty;
+        _newItineraryNotes = string.Empty;
+    }
+
+    private async Task AddItineraryItem()
+    {
+        if (_trip is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
+
+        _trip.Itinerary.Add(new TripItineraryItem
+        {
+            Date = _newItineraryDate ?? DateTime.Today,
+            Time = string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
+            Title = _newItineraryTitle.Trim(),
+            Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim()
+        });
+        await State.UpdateTripAsync(_trip);
+        ToggleItineraryForm();
+    }
+
+    private async Task RemoveItineraryItem(int index)
+    {
+        if (_trip is null) return;
+        _trip.Itinerary.RemoveAt(index);
+        await State.UpdateTripAsync(_trip);
+    }
+
+    private void ToggleChecklistForm()
+    {
+        _showChecklistForm = !_showChecklistForm;
+        _newChecklistText = string.Empty;
+        _newChecklistDueDate = null;
+    }
+
+    private async Task AddChecklistItem()
+    {
+        if (_trip is null || string.IsNullOrWhiteSpace(_newChecklistText)) return;
+
+        _trip.Checklist.Add(new TripChecklistItem
+        {
+            Text = _newChecklistText.Trim(),
+            Done = false,
+            DueDate = _newChecklistDueDate
+        });
+        await State.UpdateTripAsync(_trip);
+        ToggleChecklistForm();
+    }
+
+    private async Task RemoveChecklistItem(int index)
+    {
+        if (_trip is null) return;
+        _trip.Checklist.RemoveAt(index);
+        await State.UpdateTripAsync(_trip);
+    }
+
+    private async Task ToggleChecklistItem(int index, ChangeEventArgs e)
+    {
+        if (_trip is null) return;
+        _trip.Checklist[index].Done = e.Value is bool b && b;
+        await State.UpdateTripAsync(_trip);
+    }
+}

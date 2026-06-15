@@ -58,6 +58,7 @@ public class IndexedDbService(IJSRuntime js)
     public Task<List<WeeklyBudget>> GetWeeklyBudgetsAsync() => GetAllAsync<WeeklyBudget>("weeklyBudgets");
     public Task<List<AppSetting>> GetAppSettingsAsync() => GetAllAsync<AppSetting>("appSettings");
     public Task<List<SyncMeta>> GetSyncMetaAsync() => GetAllAsync<SyncMeta>("syncMeta");
+    public Task<List<Trip>> GetTripsAsync() => GetAllAsync<Trip>("trips");
 
     public async Task SaveSyncPayloadAsync(SyncPayload p)
     {
@@ -103,6 +104,7 @@ public class IndexedDbService(IJSRuntime js)
             savingsGoals           = p.SavingsGoals,
             weeklyBudgets          = p.WeeklyBudgets,
             appSettings            = p.AppSettings,
+            trips                  = p.Trips,
             syncMeta               = meta
         };
 
@@ -123,7 +125,8 @@ public class IndexedDbService(IJSRuntime js)
         (await GetBillsAsync()).Count > 0 ||
         (await GetDebtsAsync()).Count > 0 ||
         (await GetSavingsGoalsAsync()).Count > 0 ||
-        (await GetWeeklyBudgetsAsync()).Count > 0;
+        (await GetWeeklyBudgetsAsync()).Count > 0 ||
+        (await GetTripsAsync()).Count > 0;
 
     private static bool IsEmptyFinancePayload(SyncPayload p) =>
         p.Accounts.Count == 0 &&
@@ -138,6 +141,7 @@ public class IndexedDbService(IJSRuntime js)
         p.Debts.Count == 0 &&
         p.SavingsGoals.Count == 0 &&
         p.WeeklyBudgets.Count == 0 &&
+        p.Trips.Count == 0 &&
         (p.Accounts.Count > 0 || p.Transactions.Count > 0);
 
     public async Task<string?> GetSettingAsync(string key)
@@ -329,6 +333,51 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    public async Task<List<PendingTripDelete>> GetPendingTripDeletesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingTripDelete>("tripDeletes");
+        }
+        catch (JSException)
+        {
+            return new List<PendingTripDelete>();
+        }
+    }
+
+    public async Task SetTripDeleteAsync(Trip trip)
+    {
+        try
+        {
+            await PutAsync("tripDeletes", PendingTripDelete.FromTrip(trip));
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearTripDeleteAsync(int tripId)
+    {
+        try
+        {
+            await DeleteAsync("tripDeletes", tripId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearTripDeletesAsync()
+    {
+        try
+        {
+            await ClearAsync("tripDeletes");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     public async Task SaveSettingAsync(string key, string value)
     {
         var settings = await GetAppSettingsAsync();
@@ -414,6 +463,22 @@ public class PendingSavingsGoalDelete
         Name = goal.Name,
         TargetCents = goal.TargetCents,
         CurrentCents = goal.CurrentCents
+    };
+}
+
+public class PendingTripDelete
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Destination { get; set; }
+    public DateTime? StartDate { get; set; }
+
+    public static PendingTripDelete FromTrip(Trip trip) => new()
+    {
+        Id = trip.Id,
+        Name = trip.Name,
+        Destination = trip.Destination,
+        StartDate = trip.StartDate
     };
 }
 

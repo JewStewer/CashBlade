@@ -438,6 +438,21 @@ public static class DatabaseInitializer
         SchemaRepair.Apply(db);
 
         TryExecute(db, """
+            CREATE TABLE IF NOT EXISTS Trips (
+                Id INTEGER NOT NULL CONSTRAINT PK_Trips PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                Destination TEXT NULL,
+                Notes TEXT NULL,
+                StartDate TEXT NULL,
+                EndDate TEXT NULL,
+                Itinerary TEXT NOT NULL DEFAULT '[]',
+                Checklist TEXT NOT NULL DEFAULT '[]',
+                BudgetItems TEXT NOT NULL DEFAULT '[]'
+            );
+            """);
+        SchemaRepair.Apply(db);
+
+        TryExecute(db, """
             CREATE TABLE IF NOT EXISTS WeeklyBudgets (
                 Id INTEGER NOT NULL CONSTRAINT PK_WeeklyBudgets PRIMARY KEY AUTOINCREMENT,
                 IncomeCents INTEGER NOT NULL,

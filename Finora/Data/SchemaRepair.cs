@@ -9,7 +9,7 @@ public static class SchemaRepair
     /// DatabaseInitializer.RepairSchema() checks PRAGMA user_version against this value and
     /// skips the entire repair (including EF Core model compilation) when already current.
     /// </summary>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public static void ApplyStartupCompatibility(FinoraDbContext db)
     {
@@ -32,6 +32,20 @@ public static class SchemaRepair
             );
             """);
 
+        Execute(db, """
+            CREATE TABLE IF NOT EXISTS Trips (
+                Id INTEGER NOT NULL CONSTRAINT PK_Trips PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL,
+                Destination TEXT NULL,
+                Notes TEXT NULL,
+                StartDate TEXT NULL,
+                EndDate TEXT NULL,
+                Itinerary TEXT NOT NULL DEFAULT '[]',
+                Checklist TEXT NOT NULL DEFAULT '[]',
+                BudgetItems TEXT NOT NULL DEFAULT '[]'
+            );
+            """);
+
         // Batch PRAGMA table_info queries — one per table instead of one per column.
         // This reduces 22 round-trips to 7 and avoids repeated connection-open overhead.
         var accountCols = GetColumns(db, "Accounts");
@@ -40,6 +54,7 @@ public static class SchemaRepair
         var txCols      = GetColumns(db, "Transactions");
         var debtCols    = GetColumns(db, "Debts");
         var goalCols    = GetColumns(db, "SavingsGoals");
+        var tripCols    = GetColumns(db, "Trips");
         var budgetCols  = GetColumns(db, "WeeklyBudgets");
 
         AddColumn(db, "Accounts", "ColorHex",                    "TEXT NOT NULL DEFAULT '#0F766E'", accountCols);
@@ -70,6 +85,8 @@ public static class SchemaRepair
         AddColumn(db, "Debts", "PaymentPeriod",      "TEXT NOT NULL DEFAULT 'Weekly'", debtCols);
 
         AddColumn(db, "SavingsGoals", "TargetDate", "TEXT NULL", goalCols);
+
+        AddColumn(db, "Trips", "Notes", "TEXT NULL", tripCols);
 
         AddColumn(db, "WeeklyBudgets", "IncomeCents",      "INTEGER NOT NULL DEFAULT 0", budgetCols);
         AddColumn(db, "WeeklyBudgets", "BillsCents",       "INTEGER NOT NULL DEFAULT 0", budgetCols);

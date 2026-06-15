@@ -15,6 +15,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<SavingsGoal> SavingsGoals { get; private set; } = new();
     public List<WeeklyBudget> WeeklyBudgets { get; private set; } = new();
     public List<AppSetting> AppSettings { get; private set; } = new();
+    public List<Trip> Trips { get; private set; } = new();
     // Phone-only: transactions marked as lent (excluded from spending until repaid)
     public List<LentTransaction> LentTransactions { get; private set; } = new();
     private HashSet<int> _unrepaidLentIds = new();
@@ -82,6 +83,9 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<SavingsGoal> _pendingNewSavingsGoals = new();
     private readonly List<SavingsGoal> _pendingUpdatedSavingsGoals = new();
     private readonly List<int> _pendingDeletedSavingsGoalIds = new();
+    private readonly List<Trip> _pendingNewTrips = new();
+    private readonly List<Trip> _pendingUpdatedTrips = new();
+    private readonly List<int> _pendingDeletedTripIds = new();
 
     // Debounce + re-entrancy guard for ScheduleSyncSoon/SyncAndReloadAsync —
     // iOS suspends a backgrounded PWA almost immediately, so the 5-minute
@@ -110,7 +114,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedAccounts.Count > 0 ||
         _pendingNewSavingsGoals.Count > 0 ||
         _pendingUpdatedSavingsGoals.Count > 0 ||
-        _pendingDeletedSavingsGoalIds.Count > 0;
+        _pendingDeletedSavingsGoalIds.Count > 0 ||
+        _pendingNewTrips.Count > 0 ||
+        _pendingUpdatedTrips.Count > 0 ||
+        _pendingDeletedTripIds.Count > 0;
 
     public async Task<(int Edits, int Deletes)> GetPersistedTransactionIntentCountsAsync()
     {
@@ -171,6 +178,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         SavingsGoals = await db.GetSavingsGoalsAsync();
         WeeklyBudgets = await db.GetWeeklyBudgetsAsync();
         AppSettings = await db.GetAppSettingsAsync();
+        Trips = await db.GetTripsAsync();
         LentTransactions = await db.GetLentTransactionsAsync();
         _unrepaidLentIds = LentTransactions.Where(l => !l.Repaid).Select(l => l.Id).ToHashSet();
 
@@ -180,6 +188,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedBillDeletesAsync();
         await ApplyPersistedDebtDeletesAsync();
         await ApplyPersistedSavingsGoalDeletesAsync();
+        await ApplyPersistedTripDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
     }
 
@@ -334,6 +343,28 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 _pendingDeletedSavingsGoalIds.RemoveAll(x => x == id);
                 _pendingDeletedSavingsGoalIds.Add(id);
+            }
+        }
+    }
+
+    private async Task ApplyPersistedTripDeletesAsync()
+    {
+        var deletes = await db.GetPendingTripDeletesAsync();
+        foreach (var deleted in deletes)
+        {
+            var removedIds = Trips
+                .Where(t => SameTripDelete(t, deleted))
+                .Select(t => t.Id)
+                .ToHashSet();
+            if (removedIds.Count == 0) continue;
+
+            Trips.RemoveAll(t => removedIds.Contains(t.Id));
+            _pendingNewTrips.RemoveAll(t => removedIds.Contains(t.Id));
+            _pendingUpdatedTrips.RemoveAll(t => removedIds.Contains(t.Id));
+            foreach (var id in removedIds.Where(id => id > 0))
+            {
+                _pendingDeletedTripIds.RemoveAll(x => x == id);
+                _pendingDeletedTripIds.Add(id);
             }
         }
     }
@@ -1296,6 +1327,56 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    public async Task<Trip> AddTripAsync(Trip t)
+    {
+        var minId = Trips.Count > 0 ? Trips.Min(x => x.Id) : 0;
+        t.Id = Math.Min(minId - 1, -1);
+        Trips.Add(t);
+        _pendingNewTrips.Add(t);
+        await db.PutAsync("trips", t);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+        return t;
+    }
+
+    public async Task UpdateTripAsync(Trip t)
+    {
+        var existing = Trips.FirstOrDefault(x => x.Id == t.Id);
+        if (existing is null) return;
+        existing.Name = t.Name;
+        existing.Destination = t.Destination;
+        existing.Notes = t.Notes;
+        existing.StartDate = t.StartDate;
+        existing.EndDate = t.EndDate;
+        existing.Itinerary = t.Itinerary;
+        existing.Checklist = t.Checklist;
+        existing.BudgetItems = t.BudgetItems;
+        await db.PutAsync("trips", existing);
+        // Negative-id (not-yet-synced) trips are mutated in place via the
+        // same object reference already queued in _pendingNewTrips.
+        if (existing.Id > 0)
+            QueueUpdatedTrip(existing);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    public async Task DeleteTripAsync(int id)
+    {
+        var deletedTrip = Trips.FirstOrDefault(t => t.Id == id);
+        Trips.RemoveAll(t => t.Id == id);
+        _pendingNewTrips.RemoveAll(t => t.Id == id);
+        _pendingUpdatedTrips.RemoveAll(t => t.Id == id);
+        if (id > 0) _pendingDeletedTripIds.Add(id);
+        if (deletedTrip is not null && id > 0)
+            await db.SetTripDeleteAsync(deletedTrip);
+        await db.DeleteAsync("trips", id);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
     // Used when a new bill is created from the "Add to Budget as a Bill"
     // installment-plan flow: also create a matching Debt so the remaining
     // balance shows progress as installments are paid off, same as other
@@ -1388,6 +1469,12 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         _pendingUpdatedSavingsGoals.RemoveAll(x => x.Id == g.Id);
         _pendingUpdatedSavingsGoals.Add(g);
+    }
+
+    private void QueueUpdatedTrip(Trip t)
+    {
+        _pendingUpdatedTrips.RemoveAll(x => x.Id == t.Id);
+        _pendingUpdatedTrips.Add(t);
     }
 
     // Mirrors WPF's DebtPaymentMatcher.ApplyBillDebtPaymentStatus: when a bill
@@ -1737,6 +1824,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         return goal.CurrentCents == deleted.CurrentCents;
     }
 
+    private static bool SameTripDelete(Trip trip, PendingTripDelete deleted)
+    {
+        if (trip.Id > 0 && deleted.Id > 0 && trip.Id == deleted.Id
+            && (string.Equals(trip.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trip.Destination?.Trim() ?? "", deleted.Destination?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)
+                || trip.StartDate == deleted.StartDate))
+        {
+            return true;
+        }
+
+        if (!string.Equals(trip.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (deleted.StartDate.HasValue && trip.StartDate.HasValue)
+            return trip.StartDate == deleted.StartDate;
+        return string.Equals(trip.Destination?.Trim() ?? "", deleted.Destination?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool SameTransactionDelete(TransactionDelete left, TransactionDelete right)
     {
         if (!string.IsNullOrWhiteSpace(left.UpTransactionId) || !string.IsNullOrWhiteSpace(right.UpTransactionId))
@@ -1919,6 +2022,23 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         cloud.SavingsGoals.AddRange(push.NewSavingsGoals);
 
+        cloud.Trips.RemoveAll(t => push.DeletedTripIds.Contains(t.Id));
+        foreach (var u in push.UpdatedTrips)
+        {
+            var existing = cloud.Trips.FirstOrDefault(t => t.Id == u.Id);
+            if (existing is not null)
+            {
+                existing.Name = u.Name;
+                existing.Destination = u.Destination;
+                existing.StartDate = u.StartDate;
+                existing.EndDate = u.EndDate;
+                existing.Itinerary = u.Itinerary;
+                existing.Checklist = u.Checklist;
+                existing.BudgetItems = u.BudgetItems;
+            }
+        }
+        cloud.Trips.AddRange(push.NewTrips);
+
         cloud.SyncedAt = DateTime.UtcNow;
         return cloud;
     }
@@ -2004,7 +2124,10 @@ public class AppState(IndexedDbService db, SyncService sync)
                     UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings),
                     NewSavingsGoals = new List<SavingsGoal>(_pendingNewSavingsGoals),
                     UpdatedSavingsGoals = new List<SavingsGoal>(_pendingUpdatedSavingsGoals),
-                    DeletedSavingsGoalIds = new List<int>(_pendingDeletedSavingsGoalIds)
+                    DeletedSavingsGoalIds = new List<int>(_pendingDeletedSavingsGoalIds),
+                    NewTrips = new List<Trip>(_pendingNewTrips),
+                    UpdatedTrips = new List<Trip>(_pendingUpdatedTrips),
+                    DeletedTripIds = new List<int>(_pendingDeletedTripIds)
                 };
 
                 bool pushedToPc = false;
@@ -2044,6 +2167,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                         await db.ClearDebtDeleteAsync(id);
                     foreach (var id in push.DeletedSavingsGoalIds.Where(id => id > 0))
                         await db.ClearSavingsGoalDeleteAsync(id);
+                    foreach (var id in push.DeletedTripIds.Where(id => id > 0))
+                        await db.ClearTripDeleteAsync(id);
                     // Remove only what was actually sent (by count, not Clear) —
                     // an edit made while this push was in flight appends to
                     // these lists and must survive for the next sync.
@@ -2066,6 +2191,9 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewSavingsGoals.RemoveRange(0, push.NewSavingsGoals.Count);
                     _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
                     _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
+                    _pendingNewTrips.RemoveRange(0, push.NewTrips.Count);
+                    _pendingUpdatedTrips.RemoveRange(0, push.UpdatedTrips.Count);
+                    _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
             }
 
@@ -2110,10 +2238,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingNewSavingsGoals.Clear();
         _pendingUpdatedSavingsGoals.Clear();
         _pendingDeletedSavingsGoalIds.Clear();
+        _pendingNewTrips.Clear();
+        _pendingUpdatedTrips.Clear();
+        _pendingDeletedTripIds.Clear();
         await db.ClearBillOverridesAsync();
         await db.ClearBillDeletesAsync();
         await db.ClearDebtDeletesAsync();
         await db.ClearSavingsGoalDeletesAsync();
+        await db.ClearTripDeletesAsync();
         OnChange?.Invoke();
     }
 
@@ -2158,6 +2290,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearBillDeletesAsync();
         await db.ClearDebtDeletesAsync();
         await db.ClearSavingsGoalDeletesAsync();
+        await db.ClearTripDeletesAsync();
         LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
         await LoadAsync();
     }
@@ -2185,7 +2318,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings),
             NewSavingsGoals = new List<SavingsGoal>(_pendingNewSavingsGoals),
             UpdatedSavingsGoals = new List<SavingsGoal>(_pendingUpdatedSavingsGoals),
-            DeletedSavingsGoalIds = new List<int>(_pendingDeletedSavingsGoalIds)
+            DeletedSavingsGoalIds = new List<int>(_pendingDeletedSavingsGoalIds),
+            NewTrips = new List<Trip>(_pendingNewTrips),
+            UpdatedTrips = new List<Trip>(_pendingUpdatedTrips),
+            DeletedTripIds = new List<int>(_pendingDeletedTripIds)
         };
 
         await ReapplyPushChangesAsync(push);
@@ -2438,6 +2574,43 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (SavingsGoals.RemoveAll(x => x.Id == id) > 0)
             {
                 await db.DeleteAsync("savingsGoals", id);
+                changed = true;
+            }
+        }
+
+        // Re-add phone-created trips the server doesn't know about yet
+        foreach (var t in push.NewTrips)
+        {
+            if (!Trips.Any(x => x.Id == t.Id))
+            {
+                Trips.Add(t);
+                await db.PutAsync("trips", t);
+                changed = true;
+            }
+        }
+
+        // Re-apply trip edits made on phone
+        foreach (var ut in push.UpdatedTrips)
+        {
+            var trip = Trips.FirstOrDefault(x => x.Id == ut.Id);
+            if (trip is null) continue;
+            trip.Name = ut.Name;
+            trip.Destination = ut.Destination;
+            trip.StartDate = ut.StartDate;
+            trip.EndDate = ut.EndDate;
+            trip.Itinerary = ut.Itinerary;
+            trip.Checklist = ut.Checklist;
+            trip.BudgetItems = ut.BudgetItems;
+            await db.PutAsync("trips", trip);
+            changed = true;
+        }
+
+        // Re-remove phone-deleted trips
+        foreach (var id in push.DeletedTripIds)
+        {
+            if (Trips.RemoveAll(x => x.Id == id) > 0)
+            {
+                await db.DeleteAsync("trips", id);
                 changed = true;
             }
         }
