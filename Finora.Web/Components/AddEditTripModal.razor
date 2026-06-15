@@ -29,6 +29,22 @@
                     <input class="form-input" type="date" @bind="endDate" @bind:event="oninput" />
                 </div>
             </div>
+            <div style="display:flex;gap:8px">
+                <div style="flex:1">
+                    <label class="form-label">Saving Account</label>
+                    <select class="form-input" @bind="savingsAccountId">
+                        <option value="">No account</option>
+                        @foreach (var account in State.Accounts.Where(a => a.Type is AccountType.Savings or AccountType.Spending or AccountType.Cash))
+                        {
+                            <option value="@account.Id">@account.Name</option>
+                        }
+                    </select>
+                </div>
+                <div style="flex:1">
+                    <label class="form-label">Weekly Transfer</label>
+                    <input class="form-input" type="number" min="0" step="0.01" @bind="weeklyContribution" placeholder="0.00" />
+                </div>
+            </div>
         </div>
 
         @if (!string.IsNullOrEmpty(error))
@@ -75,6 +91,8 @@
     private string notes = string.Empty;
     private DateTime? startDate;
     private DateTime? endDate;
+    private int? savingsAccountId;
+    private decimal weeklyContribution;
     private string error = string.Empty;
     private bool saving;
     private bool confirmingDelete;
@@ -87,6 +105,8 @@
         notes = Trip.Notes ?? string.Empty;
         startDate = Trip.StartDate;
         endDate = Trip.EndDate;
+        savingsAccountId = Trip.SavingsAccountId;
+        weeklyContribution = Trip.WeeklyContributionDollars;
         confirmingDelete = false;
     }
 
@@ -106,7 +126,9 @@
                 Destination = string.IsNullOrWhiteSpace(destination) ? null : destination.Trim(),
                 Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
                 StartDate = startDate,
-                EndDate = endDate
+                EndDate = endDate,
+                SavingsAccountId = savingsAccountId,
+                WeeklyContributionDollars = weeklyContribution
             };
             var created = await State.AddTripAsync(t);
             saving = false;
@@ -120,6 +142,8 @@
             Trip.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
             Trip.StartDate = startDate;
             Trip.EndDate = endDate;
+            Trip.SavingsAccountId = savingsAccountId;
+            Trip.WeeklyContributionDollars = weeklyContribution;
             await State.UpdateTripAsync(Trip);
             saving = false;
             await OnSaved.InvokeAsync();

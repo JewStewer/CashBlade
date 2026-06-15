@@ -8,6 +8,13 @@ public class Trip
     public string? Notes { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
+    public int? SavingsAccountId { get; set; }
+    public int WeeklyContributionCents { get; set; }
+    public decimal WeeklyContributionDollars
+    {
+        get => WeeklyContributionCents / 100m;
+        set => WeeklyContributionCents = (int)Math.Round(value * 100m);
+    }
     public List<TripItineraryItem> Itinerary { get; set; } = new();
     public List<TripChecklistItem> Checklist { get; set; } = new();
     public List<TripBudgetItem> BudgetItems { get; set; } = new();

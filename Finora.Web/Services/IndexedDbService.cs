@@ -514,6 +514,12 @@ public class LentTransaction
     public int Id { get; set; }          // = Transaction Id
     public string Note { get; set; } = "";  // e.g. "Jake's rego"
     public bool Repaid { get; set; }
+    public int RepaidCents { get; set; }
+    public decimal RepaidDollars
+    {
+        get => RepaidCents / 100m;
+        set => RepaidCents = (int)Math.Round(value * 100m);
+    }
     public DateTime MarkedAt { get; set; } = DateTime.Now;
 }
 

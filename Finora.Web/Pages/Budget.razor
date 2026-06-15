@@ -63,7 +63,7 @@
 
     <!-- Pending reimbursements -->
     @{
-        var unrepaid = State.LentTransactions.Where(l => !l.Repaid)
+        var unrepaid = State.LentTransactions.Where(l => State.IsUnrepaid(l.Id))
             .Select(l => (Lent: l, Txn: State.Transactions.FirstOrDefault(t => t.Id == l.Id)))
             .Where(x => x.Txn is not null)
             .OrderByDescending(x => x.Txn!.Date)
@@ -71,7 +71,7 @@
     }
     @if (unrepaid.Any())
     {
-        var totalOwed = unrepaid.Sum(x => Math.Abs(x.Txn!.AmountDollars));
+        var totalOwed = unrepaid.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
         <div class="card" style="margin-top:12px;border-color:rgba(99,102,241,0.4)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
@@ -90,7 +90,7 @@
                             @if (!string.IsNullOrEmpty(lent.Note)) { <span> · @lent.Note</span> }
                         </div>
                     </div>
-                    <span style="font-size:14px;font-weight:600;color:#818CF8;flex-shrink:0">@Math.Abs(txn.AmountDollars).ToString("C")</span>
+                    <span style="font-size:14px;font-weight:600;color:#818CF8;flex-shrink:0">@State.GetLentOutstandingDollars(txn).ToString("C") owed</span>
                     <button @onclick="() => State.MarkRepaidAsync(lent.Id)" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);color:var(--green);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0">
                         Got paid back ✓
                     </button>
@@ -141,6 +141,38 @@
                             <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
                         }
                     </div>
+                </div>
+            }
+
+            @if (State.PlannedSavingsTransfers > 0)
+            {
+                <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:8px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <span style="font-size:13px;color:var(--text3)">Weekly savings transfers</span>
+                        <span style="font-size:14px;font-weight:700;color:var(--teal)">@State.PlannedSavingsTransfers.ToString("C")/wk</span>
+                    </div>
+                    @foreach (var goal in State.SavingsGoals.Where(g => g.WeeklyContributionDollars > 0))
+                    {
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                            <span style="color:var(--text2)">@goal.Name</span>
+                            <span style="font-weight:600">@goal.WeeklyContributionDollars.ToString("C")/wk</span>
+                        </div>
+                    }
+                    @foreach (var account in State.Accounts.Where(a => State.GetAccountGoalWeeklyContribution(a) > 0))
+                    {
+                        var weekly = State.GetAccountGoalWeeklyContribution(account);
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                            <span style="color:var(--text2)">@account.Name target</span>
+                            <span style="font-weight:600">@weekly.ToString("C")/wk</span>
+                        </div>
+                    }
+                    @foreach (var trip in State.Trips.Where(t => t.WeeklyContributionDollars > 0))
+                    {
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                            <span style="color:var(--text2)">@trip.Name holiday</span>
+                            <span style="font-weight:600">@trip.WeeklyContributionDollars.ToString("C")/wk</span>
+                        </div>
+                    }
                 </div>
             }
 

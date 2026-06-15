@@ -30,6 +30,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal BudgetBills { get; private set; }
     public decimal BudgetEssentials { get; private set; }
     public decimal BudgetSavings { get; private set; }
+    public decimal PlannedSavingsTransfers { get; private set; }
     public decimal BudgetUnplanned { get; private set; }
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned;
     public decimal SafeToSpendAmount => Math.Max(BudgetLeftover, 0);
@@ -145,7 +146,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         Bills.Count > 0 ||
         Debts.Count > 0 ||
         SavingsGoals.Count > 0 ||
-        WeeklyBudgets.Count > 0;
+        WeeklyBudgets.Count > 0 ||
+        Trips.Count > 0;
 
     public async Task LoadAsync()
     {
@@ -180,7 +182,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         AppSettings = await db.GetAppSettingsAsync();
         Trips = await db.GetTripsAsync();
         LentTransactions = await db.GetLentTransactionsAsync();
-        _unrepaidLentIds = LentTransactions.Where(l => !l.Repaid).Select(l => l.Id).ToHashSet();
+        NormaliseLentRepayments();
+        _unrepaidLentIds = LentTransactions.Where(IsLentOutstanding).Select(l => l.Id).ToHashSet();
 
         // Apply any phone-side overrides that survived a cloud replace or app restart.
         await ApplyPersistedTransactionOverridesAsync();
@@ -195,11 +198,20 @@ public class AppState(IndexedDbService db, SyncService sync)
     // ── Lent money tracking ──────────────────────────────────────────────────
     public bool IsLent(int txnId) => LentTransactions.Any(l => l.Id == txnId);
     public bool IsUnrepaid(int txnId) => _unrepaidLentIds.Contains(txnId);
+    public decimal GetLentRepaidDollars(int txnId) =>
+        LentTransactions.FirstOrDefault(l => l.Id == txnId)?.RepaidDollars ?? 0m;
+
+    public decimal GetLentOutstandingDollars(Transaction transaction)
+    {
+        var lent = LentTransactions.FirstOrDefault(l => l.Id == transaction.Id);
+        if (lent is null) return 0m;
+        return Math.Max(Math.Abs(transaction.AmountDollars) - lent.RepaidDollars, 0m);
+    }
 
     public async Task MarkLentAsync(int txnId, string note)
     {
         LentTransactions.RemoveAll(l => l.Id == txnId);
-        var lent = new LentTransaction { Id = txnId, Note = note, Repaid = false, MarkedAt = DateTime.Now };
+        var lent = new LentTransaction { Id = txnId, Note = note, Repaid = false, RepaidCents = 0, MarkedAt = DateTime.Now };
         LentTransactions.Add(lent);
         _unrepaidLentIds.Add(txnId);
         await db.SetLentTransactionAsync(lent);
@@ -218,10 +230,56 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var lent = LentTransactions.FirstOrDefault(l => l.Id == txnId);
         if (lent is null) return;
+        var transaction = Transactions.FirstOrDefault(t => t.Id == txnId);
+        if (transaction is not null)
+        {
+            lent.RepaidCents = Math.Abs(transaction.AmountCents);
+        }
         lent.Repaid = true;
         _unrepaidLentIds.Remove(txnId);
         await db.SetLentTransactionAsync(lent);
         OnChange?.Invoke();
+    }
+
+    public async Task RecordLentRepaymentAsync(int txnId, decimal amountDollars)
+    {
+        var lent = LentTransactions.FirstOrDefault(l => l.Id == txnId);
+        var transaction = Transactions.FirstOrDefault(t => t.Id == txnId);
+        if (lent is null || transaction is null || amountDollars <= 0) return;
+
+        var totalCents = Math.Abs(transaction.AmountCents);
+        var paidCents = Math.Min(totalCents, lent.RepaidCents + (int)Math.Round(amountDollars * 100m));
+        lent.RepaidCents = paidCents;
+        lent.Repaid = paidCents >= totalCents;
+        if (lent.Repaid) _unrepaidLentIds.Remove(txnId);
+        else _unrepaidLentIds.Add(txnId);
+
+        await db.SetLentTransactionAsync(lent);
+        OnChange?.Invoke();
+    }
+
+    private void NormaliseLentRepayments()
+    {
+        foreach (var lent in LentTransactions)
+        {
+            var transaction = Transactions.FirstOrDefault(t => t.Id == lent.Id);
+            if (transaction is null) continue;
+            if (lent.Repaid && lent.RepaidCents <= 0)
+            {
+                lent.RepaidCents = Math.Abs(transaction.AmountCents);
+            }
+            if (lent.RepaidCents >= Math.Abs(transaction.AmountCents))
+            {
+                lent.Repaid = true;
+            }
+        }
+    }
+
+    private bool IsLentOutstanding(LentTransaction lent)
+    {
+        var transaction = Transactions.FirstOrDefault(t => t.Id == lent.Id);
+        if (transaction is null) return !lent.Repaid;
+        return lent.RepaidCents < Math.Abs(transaction.AmountCents);
     }
 
     private async Task ApplyPersistedBillOverridesAsync()
@@ -448,6 +506,27 @@ public class AppState(IndexedDbService db, SyncService sync)
             BudgetSavings = budget.SavingsDollars;
             BudgetUnplanned = budget.UnplannedDollars;
         }
+        PlannedSavingsTransfers = CalculatePlannedSavingsTransfers();
+        BudgetSavings = Math.Max(BudgetSavings, PlannedSavingsTransfers);
+    }
+
+    private decimal CalculatePlannedSavingsTransfers()
+    {
+        var goalTransfers = SavingsGoals.Sum(g => g.WeeklyContributionDollars);
+        var accountTransfers = Accounts.Sum(GetAccountGoalWeeklyContribution);
+        var tripTransfers = Trips.Sum(t => t.WeeklyContributionDollars);
+        return Math.Round(goalTransfers + accountTransfers + tripTransfers, 2);
+    }
+
+    public decimal GetAccountGoalWeeklyContribution(Account account)
+    {
+        if (account.TargetCents is null || account.TargetDate is null) return 0m;
+        var current = Transactions.Where(t => t.AccountId == account.Id).Sum(t => t.AmountDollars);
+        var starting = account.TargetStartingBalanceDollars ?? current;
+        var remaining = Math.Max(account.TargetDollars!.Value - Math.Max(current, starting), 0m);
+        var days = Math.Max((account.TargetDate.Value.Date - DateTime.Today).TotalDays, 1);
+        var weeks = Math.Max((decimal)Math.Ceiling(days / 7d), 1m);
+        return Math.Round(remaining / weeks, 2);
     }
 
     private void DenormaliseTransactions()
@@ -713,7 +792,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsInternalMovement(t) && !_unrepaidLentIds.Contains(t.Id))
+                        && !IsInternalMovement(t) && !IsLent(t.Id))
             .Sum(t => Math.Abs(t.AmountDollars));
     }
 
@@ -728,7 +807,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
                         && !IsInternalMovement(t) && !IsBudgetedBillTransaction(t)
-                        && !_unrepaidLentIds.Contains(t.Id))
+                        && !IsLent(t.Id))
             .Sum(t => Math.Abs(t.AmountDollars));
 
     // Weekly discretionary budget = essentials + unplanned
@@ -749,7 +828,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
-                        && !IsInternalMovement(t) && (!excludeBills || !IsBudgetedBillTransaction(t)))
+                        && !IsInternalMovement(t) && !IsLent(t.Id) && (!excludeBills || !IsBudgetedBillTransaction(t)))
             .GroupBy(t => t.CategoryName)
             .Select(g => (g.Key, g.Sum(t => Math.Abs(t.AmountDollars))))
             .OrderByDescending(x => x.Item2)
@@ -1349,6 +1428,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         existing.Notes = t.Notes;
         existing.StartDate = t.StartDate;
         existing.EndDate = t.EndDate;
+        existing.SavingsAccountId = t.SavingsAccountId;
+        existing.WeeklyContributionCents = t.WeeklyContributionCents;
         existing.Itinerary = t.Itinerary;
         existing.Checklist = t.Checklist;
         existing.BudgetItems = t.BudgetItems;
@@ -2030,8 +2111,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 existing.Name = u.Name;
                 existing.Destination = u.Destination;
+                existing.Notes = u.Notes;
                 existing.StartDate = u.StartDate;
                 existing.EndDate = u.EndDate;
+                existing.SavingsAccountId = u.SavingsAccountId;
+                existing.WeeklyContributionCents = u.WeeklyContributionCents;
                 existing.Itinerary = u.Itinerary;
                 existing.Checklist = u.Checklist;
                 existing.BudgetItems = u.BudgetItems;
@@ -2596,8 +2680,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (trip is null) continue;
             trip.Name = ut.Name;
             trip.Destination = ut.Destination;
+            trip.Notes = ut.Notes;
             trip.StartDate = ut.StartDate;
             trip.EndDate = ut.EndDate;
+            trip.SavingsAccountId = ut.SavingsAccountId;
+            trip.WeeklyContributionCents = ut.WeeklyContributionCents;
             trip.Itinerary = ut.Itinerary;
             trip.Checklist = ut.Checklist;
             trip.BudgetItems = ut.BudgetItems;

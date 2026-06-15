@@ -49,11 +49,12 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             var debts = await db.GetDebtsAsync();
             var savingsGoals = await db.GetSavingsGoalsAsync();
             var weeklyBudgets = await db.GetWeeklyBudgetsAsync();
+            var trips = await db.GetTripsAsync();
             var appSettings = await db.GetAppSettingsAsync();
             var transactionOverrides = await db.GetPendingTransactionOverridesAsync();
             var transactionDeletes = await db.GetPendingTransactionDeletesAsync();
 
-            if (!HasPlanningData(bills, debts, savingsGoals, weeklyBudgets) && (sync.HasCloudSync || sync.HasLocalSync))
+            if (!HasPlanningData(bills, debts, savingsGoals, weeklyBudgets, trips) && (sync.HasCloudSync || sync.HasLocalSync))
             {
                 await sync.AutoSyncAsync();
                 accounts = await db.GetAccountsAsync();
@@ -64,6 +65,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                 debts = await db.GetDebtsAsync();
                 savingsGoals = await db.GetSavingsGoalsAsync();
                 weeklyBudgets = await db.GetWeeklyBudgetsAsync();
+                trips = await db.GetTripsAsync();
                 appSettings = await db.GetAppSettingsAsync();
                 transactionOverrides = await db.GetPendingTransactionOverridesAsync();
                 transactionDeletes = await db.GetPendingTransactionDeletesAsync();
@@ -406,6 +408,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             DebtPayments = await db.GetDebtPaymentsAsync(),
             SavingsGoals = await db.GetSavingsGoalsAsync(),
             WeeklyBudgets = await db.GetWeeklyBudgetsAsync(),
+            Trips = await db.GetTripsAsync(),
             AppSettings = await db.GetAppSettingsAsync(),
             SyncedAt = DateTime.UtcNow
         };
@@ -421,6 +424,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                 payload.DebtPayments = cloud.DebtPayments;
                 payload.SavingsGoals = cloud.SavingsGoals;
                 payload.WeeklyBudgets = cloud.WeeklyBudgets;
+                payload.Trips = cloud.Trips;
             }
         }
 
@@ -433,17 +437,19 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
     }
 
     private static bool HasPlanningData(SyncPayload payload) =>
-        HasPlanningData(payload.Bills, payload.Debts, payload.SavingsGoals, payload.WeeklyBudgets);
+        HasPlanningData(payload.Bills, payload.Debts, payload.SavingsGoals, payload.WeeklyBudgets, payload.Trips);
 
     private static bool HasPlanningData(
         IReadOnlyCollection<Bill>? bills,
         IReadOnlyCollection<Debt>? debts,
         IReadOnlyCollection<SavingsGoal>? savingsGoals,
-        IReadOnlyCollection<WeeklyBudget>? weeklyBudgets) =>
+        IReadOnlyCollection<WeeklyBudget>? weeklyBudgets,
+        IReadOnlyCollection<Trip>? trips) =>
         (bills?.Count ?? 0) > 0 ||
         (debts?.Count ?? 0) > 0 ||
         (savingsGoals?.Count ?? 0) > 0 ||
-        (weeklyBudgets?.Count ?? 0) > 0;
+        (weeklyBudgets?.Count ?? 0) > 0 ||
+        (trips?.Count ?? 0) > 0;
 
     private bool TryMarkMatchingBillPaid(List<Bill> bills, List<BillOccurrenceStatus> statuses, int accountId, DateTime paidOn, int amountCents, int transactionId)
     {

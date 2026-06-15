@@ -33,15 +33,15 @@
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-OITk\/PEch7cxK1wswh9rplw7b0VLatQeiPGvwcFQxdo=",
+      "hash": "sha256-hDT1n4aXlwNQLNw4D7n5CuJVL1aazPWVdHWTVyxkJY0=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-HXp94eq4H2mB6wlqt6bpFM5NSQI0yqJUAHkH12S6O6I=",
+      "hash": "sha256-uFXA4ddhLB0l4DqoqE7xlyL1XAt1MPt6ldpqFaJ65Yw=",
       "url": "_framework\/Finora.Web.wasm"
     },
     {
-      "hash": "sha256-Wq46HjD9O1rq+O7Qr9tOPZ\/gABSv2gwHPzw7Eaye7S4=",
+      "hash": "sha256-dutkRsdm7GJwz9Eqtowhae81KSzwOwdWsRq4i+caBRk=",
       "url": "_framework\/Microsoft.AspNetCore.Components.wasm"
     },
     {
@@ -157,7 +157,7 @@
       "url": "_framework\/System.ObjectModel.wasm"
     },
     {
-      "hash": "sha256-6C1\/XbMd20kc7cdlFJOQJtdFkzmWDw+dYDJjlcz9fws=",
+      "hash": "sha256-2zXJigOgOPDU7uj15sUv7D6SzkYkMtSus8Yhbat8+PE=",
       "url": "_framework\/System.Private.CoreLib.wasm"
     },
     {
@@ -225,9 +225,9 @@
       "url": "js\/push.js"
     },
     {
-      "hash": "sha256-G+LRPouywmM9C1iCKhRtQhnFf3IjVeXZG7EMMDtyAkY=",
+      "hash": "sha256-MUVu6g5MU07Vbj\/VZ7GHTOt8TpLVfzIat5mrII\/4K9Q=",
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "DLQ5PcGK"
+  "version": "f\/g\/vAEm"
 };
