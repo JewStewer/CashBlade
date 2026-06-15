@@ -322,6 +322,8 @@ public static class SupabaseSyncService
                     Notes = t.Notes,
                     StartDate = t.StartDate,
                     EndDate = t.EndDate,
+                    SavingsAccountId = t.SavingsAccountId,
+                    WeeklyContributionCents = t.WeeklyContributionCents,
                     Itinerary = t.Itinerary,
                     Checklist = t.Checklist,
                     BudgetItems = t.BudgetItems
@@ -338,6 +340,8 @@ public static class SupabaseSyncService
                 existing.Notes = t.Notes;
                 existing.StartDate = t.StartDate;
                 existing.EndDate = t.EndDate;
+                existing.SavingsAccountId = t.SavingsAccountId;
+                existing.WeeklyContributionCents = t.WeeklyContributionCents;
                 existing.Itinerary = t.Itinerary;
                 existing.Checklist = t.Checklist;
                 existing.BudgetItems = t.BudgetItems;

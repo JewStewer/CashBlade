@@ -81,6 +81,8 @@ public class IndexedDbService(IJSRuntime js)
             return;
         }
 
+        await PreserveLocalTripsWhenMissingAsync(p);
+
         // Preserve PC host / Supabase credentials stored in syncMeta
         var existingMeta = await GetSyncMetaAsync();
         var meta = existingMeta.FirstOrDefault() ?? new SyncMeta { Id = 1 };
@@ -121,6 +123,56 @@ public class IndexedDbService(IJSRuntime js)
         var json    = JsonSerializer.Serialize(replacePayload, _opts);
         var element = JsonSerializer.Deserialize<JsonElement>(json);
         await js.InvokeVoidAsync("db.replaceAll", element);
+    }
+
+    private async Task PreserveLocalTripsWhenMissingAsync(SyncPayload p)
+    {
+        var localTrips = await GetTripsAsync();
+        if (localTrips.Count == 0) return;
+
+        if (p.Trips.Count == 0)
+        {
+            p.Trips = localTrips;
+            return;
+        }
+
+        foreach (var local in localTrips)
+        {
+            var incoming = p.Trips.FirstOrDefault(t => t.Id == local.Id)
+                ?? p.Trips.FirstOrDefault(t =>
+                    string.Equals(t.Name.Trim(), local.Name.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                    t.StartDate?.Date == local.StartDate?.Date);
+            if (incoming is null)
+            {
+                p.Trips.Add(local);
+                continue;
+            }
+
+            if (IsTripRicher(local, incoming))
+            {
+                var index = p.Trips.IndexOf(incoming);
+                p.Trips[index] = local;
+            }
+        }
+    }
+
+    private static bool IsTripRicher(Trip local, Trip incoming)
+    {
+        var localScore =
+            local.Itinerary.Count +
+            local.Checklist.Count +
+            local.BudgetItems.Count +
+            (string.IsNullOrWhiteSpace(local.Notes) ? 0 : 1) +
+            (local.SavingsAccountId is null ? 0 : 1) +
+            (local.WeeklyContributionCents > 0 ? 1 : 0);
+        var incomingScore =
+            incoming.Itinerary.Count +
+            incoming.Checklist.Count +
+            incoming.BudgetItems.Count +
+            (string.IsNullOrWhiteSpace(incoming.Notes) ? 0 : 1) +
+            (incoming.SavingsAccountId is null ? 0 : 1) +
+            (incoming.WeeklyContributionCents > 0 ? 1 : 0);
+        return localScore > incomingScore;
     }
 
     private async Task<bool> HasLocalFinanceDataAsync() =>

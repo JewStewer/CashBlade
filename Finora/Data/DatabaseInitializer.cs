@@ -445,6 +445,8 @@ public static class DatabaseInitializer
                 Notes TEXT NULL,
                 StartDate TEXT NULL,
                 EndDate TEXT NULL,
+                SavingsAccountId INTEGER NULL,
+                WeeklyContributionCents INTEGER NOT NULL DEFAULT 0,
                 Itinerary TEXT NOT NULL DEFAULT '[]',
                 Checklist TEXT NOT NULL DEFAULT '[]',
                 BudgetItems TEXT NOT NULL DEFAULT '[]'

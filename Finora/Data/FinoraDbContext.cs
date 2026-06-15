@@ -135,6 +135,9 @@ public class FinoraDbContext : DbContext
         modelBuilder.Entity<SavingsGoal>()
             .Ignore(g => g.WeeklyContributionDollars);
 
+        modelBuilder.Entity<Trip>()
+            .Ignore(t => t.WeeklyContributionDollars);
+
         modelBuilder.Entity<WeeklyBudget>()
             .Ignore(b => b.IncomeDollars);
 

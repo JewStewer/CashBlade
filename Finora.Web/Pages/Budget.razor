@@ -158,14 +158,6 @@
                             <span style="font-weight:600">@goal.WeeklyContributionDollars.ToString("C")/wk</span>
                         </div>
                     }
-                    @foreach (var account in State.Accounts.Where(a => State.GetAccountGoalWeeklyContribution(a) > 0))
-                    {
-                        var weekly = State.GetAccountGoalWeeklyContribution(account);
-                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                            <span style="color:var(--text2)">@account.Name target</span>
-                            <span style="font-weight:600">@weekly.ToString("C")/wk</span>
-                        </div>
-                    }
                     @foreach (var trip in State.Trips.Where(t => t.WeeklyContributionDollars > 0))
                     {
                         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
@@ -173,6 +165,14 @@
                             <span style="font-weight:600">@trip.WeeklyContributionDollars.ToString("C")/wk</span>
                         </div>
                     }
+                </div>
+            }
+
+            @if (State.BudgetWeeklyTransfers > 0)
+            {
+                <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:13px;color:var(--text3)">Weekly transfers total</span>
+                    <span style="font-size:15px;font-weight:700;color:var(--green)">@State.BudgetWeeklyTransfers.ToString("C")/wk</span>
                 </div>
             }
 

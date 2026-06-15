@@ -31,6 +31,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal BudgetEssentials { get; private set; }
     public decimal BudgetSavings { get; private set; }
     public decimal PlannedSavingsTransfers { get; private set; }
+    public decimal BudgetWeeklyTransfers => BudgetBills + BudgetSavings;
     public decimal BudgetUnplanned { get; private set; }
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned;
     public decimal SafeToSpendAmount => Math.Max(BudgetLeftover, 0);
@@ -513,9 +514,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     private decimal CalculatePlannedSavingsTransfers()
     {
         var goalTransfers = SavingsGoals.Sum(g => g.WeeklyContributionDollars);
-        var accountTransfers = Accounts.Sum(GetAccountGoalWeeklyContribution);
         var tripTransfers = Trips.Sum(t => t.WeeklyContributionDollars);
-        return Math.Round(goalTransfers + accountTransfers + tripTransfers, 2);
+        return Math.Round(goalTransfers + tripTransfers, 2);
     }
 
     public decimal GetAccountGoalWeeklyContribution(Account account)
