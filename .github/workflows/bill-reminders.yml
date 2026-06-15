@@ -6,21 +6,17 @@ on:
     - cron: '0 8 * * *'
   workflow_dispatch: # Allow manual trigger for testing
 
-# Opt into Node.js 24 for actions now — becomes mandatory June 16th 2026
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   send-reminders:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install web-push
         run: npm install web-push

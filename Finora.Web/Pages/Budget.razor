@@ -557,11 +557,11 @@
                 {
                     <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
                         <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:600">Savings pace for @_affordAmount.ToString("C")</div>
-                        @foreach (var (label, fraction, color) in PaceOptions)
+                        @foreach (var (label, multiplier, color) in PaceOptions)
                         {
-                            var weeklyAmount = Math.Max(Math.Round(weeklySpare * fraction, 2), 0.01m);
+                            var paceWeeks = Math.Max((int)Math.Ceiling(weeks * multiplier), 1);
+                            var weeklyAmount = Math.Round(_affordAmount / paceWeeks, 2);
                             var paceLeftOver = weeklySpare - weeklyAmount;
-                            var paceWeeks = Math.Max((int)Math.Ceiling(_affordAmount / weeklyAmount), 1);
                             var paceDate = DateTime.Today.AddDays(paceWeeks * 7);
                             var isSelected = paceWeeks == weeks;
                             <div @onclick="() => SelectPaceAsync(paceWeeks)" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:var(--surface);border:1px solid @(isSelected ? color : "transparent")">
@@ -775,11 +775,14 @@
     private Bill? _billDraft;
     private Debt? _debtDraft;
 
-    private static readonly (string Label, decimal Fraction, string Color)[] PaceOptions =
+    // Multipliers applied to the user's chosen "Over how many weeks?" value —
+    // Aggressive halves it, Balanced matches it, Passive doubles it, so all
+    // three cards recalculate live as weeks/amount change.
+    private static readonly (string Label, decimal Multiplier, string Color)[] PaceOptions =
     {
-        ("Aggressive", 0.85m, "var(--red)"),
-        ("Balanced", 0.6m, "var(--amber)"),
-        ("Passive", 0.3m, "var(--green)")
+        ("Aggressive", 0.5m, "var(--red)"),
+        ("Balanced", 1m, "var(--amber)"),
+        ("Passive", 2m, "var(--green)")
     };
 
     protected override void OnInitialized()

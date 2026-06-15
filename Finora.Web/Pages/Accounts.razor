@@ -31,7 +31,7 @@
         </div>
         <div>
             <span>Open goals</span>
-            <strong>@State.SavingsGoals.Count</strong>
+            <strong>@(State.SavingsGoals.Count + State.Accounts.Count(a => a.TargetCents is not null))</strong>
         </div>
     </div>
 }
@@ -185,17 +185,21 @@ else
 }
 
 <!-- Savings goals -->
+@{
+    var accountGoals = State.Accounts.Where(a => a.TargetCents is not null).ToList();
+    var hasSavingsGoals = State.SavingsGoals.Any() || accountGoals.Any();
+}
 <div class="section-header" style="margin-top:8px">
     <span class="section-title">Savings Goals</span>
     <div style="display:flex;align-items:center;gap:10px">
-        @if (State.SavingsGoals.Any())
+        @if (hasSavingsGoals)
         {
-            <span style="font-size:13px;color:var(--purple)">@State.SavingsGoals.Sum(g => g.CurrentDollars).ToString("C")</span>
+            <span style="font-size:13px;color:var(--purple)">@((State.SavingsGoals.Sum(g => g.CurrentDollars) + accountGoals.Sum(a => State.GetAccountBalance(a.Id))).ToString("C"))</span>
         }
         <button class="btn btn-secondary btn-sm" @onclick='() => _goalDraft = new SavingsGoal()'>+ Add</button>
     </div>
 </div>
-@if (State.SavingsGoals.Any())
+@if (hasSavingsGoals)
 {
     <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
         @foreach (var goal in State.SavingsGoals)
@@ -227,6 +231,38 @@ else
                 </div>
             </div>
         }
+        @foreach (var acct in accountGoals)
+        {
+            var current = State.GetAccountBalance(acct.Id);
+            var target = acct.TargetDollars!.Value;
+            var progress = target > 0 ? Math.Clamp(current / target, 0, 1) : 0;
+            var weekly = GoalMath.WeeklyRequired(target, current, acct.TargetDate);
+            <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _accountGoalDraft = acct">
+                <div style="display:flex;align-items:center">
+                    <div style="flex:1">
+                        <div style="font-size:15px;font-weight:500">@acct.Name</div>
+                        @if (weekly > 0)
+                        {
+                            <div style="font-size:12px;color:var(--text3)">@weekly.ToString("C")/week</div>
+                        }
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-size:15px;font-weight:600">@current.ToString("C")</div>
+                        <div style="font-size:11px;color:var(--text3)">of @target.ToString("C")</div>
+                    </div>
+                </div>
+                <div class="progress-bar" style="margin-top:8px">
+                    <div class="progress-fill" style="width:@((int)(progress * 100))%;background:@acct.ColorHex"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
+                    <span>@progress.ToString("P0")</span>
+                    @if (acct.TargetDate is not null)
+                    {
+                        <span>@acct.TargetDate.Value.ToString("dd MMM yy")</span>
+                    }
+                </div>
+            </div>
+        }
     </div>
 }
 else
@@ -252,7 +288,15 @@ else
         OnSaved="() => _goalDraft = null" />
 }
 
+@if (_accountGoalDraft is not null)
+{
+    <EditAccountGoalModal Account="@_accountGoalDraft"
+        OnClose="() => _accountGoalDraft = null"
+        OnSaved="() => _accountGoalDraft = null" />
+}
+
 @code {
     private Debt? _debtDraft;
     private SavingsGoal? _goalDraft;
+    private Account? _accountGoalDraft;
 }

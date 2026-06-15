@@ -9,22 +9,37 @@
 //   VAPID_PRIVATE_KEY — from: npx web-push generate-vapid-keys
 //   VAPID_EMAIL       — e.g. mailto:you@example.com
 
-const webpush = require('web-push');
-
 const {
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
     VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY,
-    VAPID_EMAIL = 'mailto:admin@cashblade.app'
+    VAPID_EMAIL
 } = process.env;
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.error('Missing required environment variables. Check GitHub Actions secrets.');
+const vapidEmail = VAPID_EMAIL || 'mailto:admin@cashblade.app';
+
+const requiredSecrets = {
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY
+};
+
+const missingSecrets = Object.entries(requiredSecrets)
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+
+if (missingSecrets.length > 0) {
+    const message = `Missing required GitHub Actions secrets: ${missingSecrets.join(', ')}`;
+    console.error(`::error title=Bill reminders not configured::${message}`);
+    console.error('Add these secrets in GitHub: Settings > Secrets and variables > Actions > Repository secrets.');
     process.exit(1);
 }
 
-webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+const webpush = require('web-push');
+
+webpush.setVapidDetails(vapidEmail, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 const headers = {
     apikey: SUPABASE_ANON_KEY,

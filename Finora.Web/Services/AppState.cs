@@ -1342,6 +1342,36 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    // Edits an existing account goal's target without resetting the
+    // progress-tracking anchors (TargetStartDate/TargetStartingBalance).
+    public async Task UpdateAccountGoalAsync(int accountId, decimal targetDollars, DateTime? targetDate)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null) return;
+        account.TargetDollars = targetDollars;
+        account.TargetDate = targetDate;
+        await db.PutAsync("accounts", account);
+        QueueUpdatedAccount(account);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    public async Task ClearAccountGoalAsync(int accountId)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null) return;
+        account.TargetCents = null;
+        account.TargetDate = null;
+        account.TargetStartDate = null;
+        account.TargetStartingBalanceCents = null;
+        await db.PutAsync("accounts", account);
+        QueueUpdatedAccount(account);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
     private void QueueUpdatedAccount(Account a)
     {
         _pendingUpdatedAccounts.RemoveAll(x => x.Id == a.Id);
