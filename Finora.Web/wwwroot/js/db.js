@@ -11,6 +11,18 @@ const ALL_STORES = [...STORES, ...PERSISTENT_STORES];
 
 let _db = null;
 
+function bindVersionChange(db) {
+    db.onversionchange = () => {
+        db.close();
+        if (_db === db) _db = null;
+    };
+    return db;
+}
+
+function existingStores(db, stores) {
+    return stores.filter(store => db.objectStoreNames.contains(store));
+}
+
 function openDb() {
     if (_db) return Promise.resolve(_db);
     return new Promise((resolve, reject) => {
@@ -23,7 +35,7 @@ function openDb() {
                 }
             }
         };
-        req.onsuccess = e => { _db = e.target.result; resolve(_db); };
+        req.onsuccess = e => { _db = bindVersionChange(e.target.result); resolve(_db); };
         req.onerror = e => reject(e.target.error);
     });
 }
@@ -46,7 +58,7 @@ async function ensureStore(store) {
                 }
             }
         };
-        req.onsuccess = e => { _db = e.target.result; resolve(_db); };
+        req.onsuccess = e => { _db = bindVersionChange(e.target.result); resolve(_db); };
         req.onerror = e => reject(e.target.error);
         req.onblocked = () => reject(new Error('Database upgrade blocked. Close other Evergrove tabs and reopen the app.'));
     });
@@ -117,9 +129,11 @@ window.db = {
     // clearAll only clears sync-managed stores; PERSISTENT_STORES survive
     async clearAll() {
         const db = await openDb();
+        const stores = existingStores(db, STORES);
+        if (stores.length === 0) return;
         return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORES, 'readwrite');
-            for (const s of STORES) tx.objectStore(s).clear();
+            const tx = db.transaction(stores, 'readwrite');
+            for (const s of stores) tx.objectStore(s).clear();
             tx.oncomplete = () => resolve();
             tx.onerror  = e => reject(e.target.error);
             tx.onabort  = () => reject(tx.error ?? new Error('clearAll aborted'));
@@ -132,14 +146,16 @@ window.db = {
     // so the existing data is preserved instead of being left in a half-wiped state.
     async replaceAll(data) {
         const db = await openDb();
+        const stores = existingStores(db, STORES);
+        if (stores.length === 0) return;
         return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORES, 'readwrite');
+            const tx = db.transaction(stores, 'readwrite');
             tx.oncomplete = () => resolve();
             tx.onerror  = e => reject(e.target.error ?? tx.error ?? new Error('replaceAll failed'));
             tx.onabort  = () => reject(tx.error ?? new Error('replaceAll aborted'));
 
             // Clear every sync-managed store first (all inside the same transaction)
-            for (const s of STORES) tx.objectStore(s).clear();
+            for (const s of stores) tx.objectStore(s).clear();
 
             // Write incoming records into each store
             const storeMap = {
@@ -156,12 +172,15 @@ window.db = {
                 trips:                  data.trips                  ?? [],
             };
             for (const [store, records] of Object.entries(storeMap)) {
+                if (!db.objectStoreNames.contains(store)) continue;
                 const os = tx.objectStore(store);
                 for (const r of records) os.put(r);
             }
 
             // Restore sync meta (credentials + last-synced timestamp)
-            if (data.syncMeta) tx.objectStore('syncMeta').put(data.syncMeta);
+            if (data.syncMeta && db.objectStoreNames.contains('syncMeta')) {
+                tx.objectStore('syncMeta').put(data.syncMeta);
+            }
         });
     }
 };

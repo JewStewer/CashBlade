@@ -58,7 +58,17 @@ public class IndexedDbService(IJSRuntime js)
     public Task<List<WeeklyBudget>> GetWeeklyBudgetsAsync() => GetAllAsync<WeeklyBudget>("weeklyBudgets");
     public Task<List<AppSetting>> GetAppSettingsAsync() => GetAllAsync<AppSetting>("appSettings");
     public Task<List<SyncMeta>> GetSyncMetaAsync() => GetAllAsync<SyncMeta>("syncMeta");
-    public Task<List<Trip>> GetTripsAsync() => GetAllAsync<Trip>("trips");
+    public async Task<List<Trip>> GetTripsAsync()
+    {
+        try
+        {
+            return await GetAllAsync<Trip>("trips");
+        }
+        catch (JSException)
+        {
+            return new List<Trip>();
+        }
+    }
 
     public async Task SaveSyncPayloadAsync(SyncPayload p)
     {
