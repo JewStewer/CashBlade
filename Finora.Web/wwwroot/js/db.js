@@ -6,7 +6,7 @@ const STORES = [
     'savingsGoals', 'weeklyBudgets', 'appSettings', 'syncMeta'
 ];
 // Stores that survive clearAll (phone-side overrides, lent money tracking)
-const PERSISTENT_STORES = ['pendingBillOverrides', 'billDeletes', 'debtDeletes', 'lentTxns', 'transactionOverrides', 'transactionDeletes'];
+const PERSISTENT_STORES = ['pendingBillOverrides', 'billDeletes', 'debtDeletes', 'savingsGoalDeletes', 'lentTxns', 'transactionOverrides', 'transactionDeletes'];
 const ALL_STORES = [...STORES, ...PERSISTENT_STORES];
 
 let _db = null;

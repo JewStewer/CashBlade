@@ -284,6 +284,51 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    public async Task<List<PendingSavingsGoalDelete>> GetPendingSavingsGoalDeletesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingSavingsGoalDelete>("savingsGoalDeletes");
+        }
+        catch (JSException)
+        {
+            return new List<PendingSavingsGoalDelete>();
+        }
+    }
+
+    public async Task SetSavingsGoalDeleteAsync(SavingsGoal goal)
+    {
+        try
+        {
+            await PutAsync("savingsGoalDeletes", PendingSavingsGoalDelete.FromSavingsGoal(goal));
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearSavingsGoalDeleteAsync(int goalId)
+    {
+        try
+        {
+            await DeleteAsync("savingsGoalDeletes", goalId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearSavingsGoalDeletesAsync()
+    {
+        try
+        {
+            await ClearAsync("savingsGoalDeletes");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     public async Task SaveSettingAsync(string key, string value)
     {
         var settings = await GetAppSettingsAsync();
@@ -353,6 +398,22 @@ public class PendingDebtDelete
         Name = debt.Name,
         BalanceCents = debt.BalanceCents,
         OriginalBalanceCents = debt.OriginalBalanceCents
+    };
+}
+
+public class PendingSavingsGoalDelete
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int TargetCents { get; set; }
+    public int CurrentCents { get; set; }
+
+    public static PendingSavingsGoalDelete FromSavingsGoal(SavingsGoal goal) => new()
+    {
+        Id = goal.Id,
+        Name = goal.Name,
+        TargetCents = goal.TargetCents,
+        CurrentCents = goal.CurrentCents
     };
 }
 

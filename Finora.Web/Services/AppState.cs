@@ -79,6 +79,9 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<DebtPayment> _pendingNewDebtPayments = new();
     private readonly List<int> _pendingDeletedDebtPaymentIds = new();
     private readonly List<Account> _pendingUpdatedAccounts = new();
+    private readonly List<SavingsGoal> _pendingNewSavingsGoals = new();
+    private readonly List<SavingsGoal> _pendingUpdatedSavingsGoals = new();
+    private readonly List<int> _pendingDeletedSavingsGoalIds = new();
 
     // Debounce + re-entrancy guard for ScheduleSyncSoon/SyncAndReloadAsync —
     // iOS suspends a backgrounded PWA almost immediately, so the 5-minute
@@ -104,7 +107,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingDeletedDebtIds.Count > 0 ||
         _pendingNewDebtPayments.Count > 0 ||
         _pendingDeletedDebtPaymentIds.Count > 0 ||
-        _pendingUpdatedAccounts.Count > 0;
+        _pendingUpdatedAccounts.Count > 0 ||
+        _pendingNewSavingsGoals.Count > 0 ||
+        _pendingUpdatedSavingsGoals.Count > 0 ||
+        _pendingDeletedSavingsGoalIds.Count > 0;
 
     public async Task<(int Edits, int Deletes)> GetPersistedTransactionIntentCountsAsync()
     {
@@ -173,6 +179,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedTransactionDeletesAsync();
         await ApplyPersistedBillDeletesAsync();
         await ApplyPersistedDebtDeletesAsync();
+        await ApplyPersistedSavingsGoalDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
     }
 
@@ -305,6 +312,28 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 _pendingDeletedDebtIds.RemoveAll(x => x == id);
                 _pendingDeletedDebtIds.Add(id);
+            }
+        }
+    }
+
+    private async Task ApplyPersistedSavingsGoalDeletesAsync()
+    {
+        var deletes = await db.GetPendingSavingsGoalDeletesAsync();
+        foreach (var deleted in deletes)
+        {
+            var removedIds = SavingsGoals
+                .Where(g => SameSavingsGoalDelete(g, deleted))
+                .Select(g => g.Id)
+                .ToHashSet();
+            if (removedIds.Count == 0) continue;
+
+            SavingsGoals.RemoveAll(g => removedIds.Contains(g.Id));
+            _pendingNewSavingsGoals.RemoveAll(g => removedIds.Contains(g.Id));
+            _pendingUpdatedSavingsGoals.RemoveAll(g => removedIds.Contains(g.Id));
+            foreach (var id in removedIds.Where(id => id > 0))
+            {
+                _pendingDeletedSavingsGoalIds.RemoveAll(x => x == id);
+                _pendingDeletedSavingsGoalIds.Add(id);
             }
         }
     }
@@ -1220,6 +1249,53 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    public async Task<SavingsGoal> AddSavingsGoalAsync(SavingsGoal g)
+    {
+        var minId = SavingsGoals.Count > 0 ? SavingsGoals.Min(x => x.Id) : 0;
+        g.Id = Math.Min(minId - 1, -1);
+        SavingsGoals.Add(g);
+        _pendingNewSavingsGoals.Add(g);
+        await db.PutAsync("savingsGoals", g);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+        return g;
+    }
+
+    public async Task UpdateSavingsGoalAsync(SavingsGoal g)
+    {
+        var existing = SavingsGoals.FirstOrDefault(x => x.Id == g.Id);
+        if (existing is null) return;
+        existing.Name = g.Name;
+        existing.TargetCents = g.TargetCents;
+        existing.CurrentCents = g.CurrentCents;
+        existing.WeeklyContributionCents = g.WeeklyContributionCents;
+        existing.TargetDate = g.TargetDate;
+        await db.PutAsync("savingsGoals", existing);
+        // Negative-id (not-yet-synced) goals are mutated in place via the
+        // same object reference already queued in _pendingNewSavingsGoals.
+        if (existing.Id > 0)
+            QueueUpdatedSavingsGoal(existing);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    public async Task DeleteSavingsGoalAsync(int id)
+    {
+        var deletedGoal = SavingsGoals.FirstOrDefault(g => g.Id == id);
+        SavingsGoals.RemoveAll(g => g.Id == id);
+        _pendingNewSavingsGoals.RemoveAll(g => g.Id == id);
+        _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == id);
+        if (id > 0) _pendingDeletedSavingsGoalIds.Add(id);
+        if (deletedGoal is not null && id > 0)
+            await db.SetSavingsGoalDeleteAsync(deletedGoal);
+        await db.DeleteAsync("savingsGoals", id);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
     // Used when a new bill is created from the "Add to Budget as a Bill"
     // installment-plan flow: also create a matching Debt so the remaining
     // balance shows progress as installments are paid off, same as other
@@ -1276,6 +1352,12 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         _pendingUpdatedDebts.RemoveAll(x => x.Id == d.Id);
         _pendingUpdatedDebts.Add(d);
+    }
+
+    private void QueueUpdatedSavingsGoal(SavingsGoal g)
+    {
+        _pendingUpdatedSavingsGoals.RemoveAll(x => x.Id == g.Id);
+        _pendingUpdatedSavingsGoals.Add(g);
     }
 
     // Mirrors WPF's DebtPaymentMatcher.ApplyBillDebtPaymentStatus: when a bill
@@ -1609,6 +1691,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         return debt.BalanceCents == deleted.BalanceCents;
     }
 
+    private static bool SameSavingsGoalDelete(SavingsGoal goal, PendingSavingsGoalDelete deleted)
+    {
+        if (goal.Id > 0 && deleted.Id > 0 && goal.Id == deleted.Id
+            && (string.Equals(goal.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                || goal.TargetCents == deleted.TargetCents
+                || goal.CurrentCents == deleted.CurrentCents))
+        {
+            return true;
+        }
+
+        if (!string.Equals(goal.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (deleted.TargetCents > 0 && goal.TargetCents > 0)
+            return goal.TargetCents == deleted.TargetCents;
+        return goal.CurrentCents == deleted.CurrentCents;
+    }
+
     private static bool SameTransactionDelete(TransactionDelete left, TransactionDelete right)
     {
         if (!string.IsNullOrWhiteSpace(left.UpTransactionId) || !string.IsNullOrWhiteSpace(right.UpTransactionId))
@@ -1776,6 +1874,21 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
+        cloud.SavingsGoals.RemoveAll(g => push.DeletedSavingsGoalIds.Contains(g.Id));
+        foreach (var u in push.UpdatedSavingsGoals)
+        {
+            var existing = cloud.SavingsGoals.FirstOrDefault(g => g.Id == u.Id);
+            if (existing is not null)
+            {
+                existing.Name = u.Name;
+                existing.TargetCents = u.TargetCents;
+                existing.CurrentCents = u.CurrentCents;
+                existing.WeeklyContributionCents = u.WeeklyContributionCents;
+                existing.TargetDate = u.TargetDate;
+            }
+        }
+        cloud.SavingsGoals.AddRange(push.NewSavingsGoals);
+
         cloud.SyncedAt = DateTime.UtcNow;
         return cloud;
     }
@@ -1858,7 +1971,10 @@ public class AppState(IndexedDbService db, SyncService sync)
                     NewDebtPayments = new List<DebtPayment>(_pendingNewDebtPayments),
                     DeletedDebtPaymentIds = new List<int>(_pendingDeletedDebtPaymentIds),
                     UpdatedAccounts = new List<Account>(_pendingUpdatedAccounts),
-                    UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings)
+                    UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings),
+                    NewSavingsGoals = new List<SavingsGoal>(_pendingNewSavingsGoals),
+                    UpdatedSavingsGoals = new List<SavingsGoal>(_pendingUpdatedSavingsGoals),
+                    DeletedSavingsGoalIds = new List<int>(_pendingDeletedSavingsGoalIds)
                 };
 
                 bool pushedToPc = false;
@@ -1896,6 +2012,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                         await db.ClearBillOverrideAsync(s.BillId);
                     foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
                         await db.ClearDebtDeleteAsync(id);
+                    foreach (var id in push.DeletedSavingsGoalIds.Where(id => id > 0))
+                        await db.ClearSavingsGoalDeleteAsync(id);
                     // Remove only what was actually sent (by count, not Clear) —
                     // an edit made while this push was in flight appends to
                     // these lists and must survive for the next sync.
@@ -1915,6 +2033,9 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingDeletedDebtPaymentIds.RemoveRange(0, push.DeletedDebtPaymentIds.Count);
                     _pendingUpdatedAccounts.RemoveRange(0, push.UpdatedAccounts.Count);
                     _pendingUpdatedSettings.RemoveRange(0, push.UpdatedSettings.Count);
+                    _pendingNewSavingsGoals.RemoveRange(0, push.NewSavingsGoals.Count);
+                    _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
+                    _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
                 }
             }
 
@@ -1956,9 +2077,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingDeletedDebtPaymentIds.Clear();
         _pendingUpdatedAccounts.Clear();
         _pendingUpdatedSettings.Clear();
+        _pendingNewSavingsGoals.Clear();
+        _pendingUpdatedSavingsGoals.Clear();
+        _pendingDeletedSavingsGoalIds.Clear();
         await db.ClearBillOverridesAsync();
         await db.ClearBillDeletesAsync();
         await db.ClearDebtDeletesAsync();
+        await db.ClearSavingsGoalDeletesAsync();
         OnChange?.Invoke();
     }
 
@@ -2002,6 +2127,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearBillOverridesAsync();
         await db.ClearBillDeletesAsync();
         await db.ClearDebtDeletesAsync();
+        await db.ClearSavingsGoalDeletesAsync();
         LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
         await LoadAsync();
     }
@@ -2026,7 +2152,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             NewDebtPayments = new List<DebtPayment>(_pendingNewDebtPayments),
             DeletedDebtPaymentIds = new List<int>(_pendingDeletedDebtPaymentIds),
             UpdatedAccounts = new List<Account>(_pendingUpdatedAccounts),
-            UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings)
+            UpdatedSettings = new List<AppSetting>(_pendingUpdatedSettings),
+            NewSavingsGoals = new List<SavingsGoal>(_pendingNewSavingsGoals),
+            UpdatedSavingsGoals = new List<SavingsGoal>(_pendingUpdatedSavingsGoals),
+            DeletedSavingsGoalIds = new List<int>(_pendingDeletedSavingsGoalIds)
         };
 
         await ReapplyPushChangesAsync(push);
@@ -2244,6 +2373,41 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (DebtPayments.RemoveAll(x => x.Id == id) > 0)
             {
                 await db.DeleteAsync("debtPayments", id);
+                changed = true;
+            }
+        }
+
+        // Re-add phone-created savings goals the server doesn't know about yet
+        foreach (var g in push.NewSavingsGoals)
+        {
+            if (!SavingsGoals.Any(x => x.Id == g.Id))
+            {
+                SavingsGoals.Add(g);
+                await db.PutAsync("savingsGoals", g);
+                changed = true;
+            }
+        }
+
+        // Re-apply savings goal edits made on phone
+        foreach (var ug in push.UpdatedSavingsGoals)
+        {
+            var goal = SavingsGoals.FirstOrDefault(x => x.Id == ug.Id);
+            if (goal is null) continue;
+            goal.Name = ug.Name;
+            goal.TargetCents = ug.TargetCents;
+            goal.CurrentCents = ug.CurrentCents;
+            goal.WeeklyContributionCents = ug.WeeklyContributionCents;
+            goal.TargetDate = ug.TargetDate;
+            await db.PutAsync("savingsGoals", goal);
+            changed = true;
+        }
+
+        // Re-remove phone-deleted savings goals
+        foreach (var id in push.DeletedSavingsGoalIds)
+        {
+            if (SavingsGoals.RemoveAll(x => x.Id == id) > 0)
+            {
+                await db.DeleteAsync("savingsGoals", id);
                 changed = true;
             }
         }

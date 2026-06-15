@@ -257,6 +257,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
                 await db.ClearDebtDeleteAsync(deleted.Id);
             }
         }
+
+        var deletedSavingsGoals = await db.GetPendingSavingsGoalDeletesAsync();
+        foreach (var deleted in deletedSavingsGoals)
+        {
+            var matchingIds = payload.SavingsGoals
+                .Where(g => SameSavingsGoalDelete(g, deleted))
+                .Select(g => g.Id)
+                .ToHashSet();
+            var stillExistsInIncomingSnapshot = matchingIds.Count > 0;
+            payload.SavingsGoals.RemoveAll(g => matchingIds.Contains(g.Id));
+            if (!stillExistsInIncomingSnapshot)
+            {
+                await db.ClearSavingsGoalDeleteAsync(deleted.Id);
+            }
+        }
     }
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)
@@ -291,6 +306,22 @@ public class SyncService(HttpClient http, IndexedDbService db)
         if (deleted.OriginalBalanceCents > 0 && debt.OriginalBalanceCents > 0)
             return debt.OriginalBalanceCents == deleted.OriginalBalanceCents;
         return debt.BalanceCents == deleted.BalanceCents;
+    }
+
+    private static bool SameSavingsGoalDelete(SavingsGoal goal, PendingSavingsGoalDelete deleted)
+    {
+        if (goal.Id > 0 && deleted.Id > 0 && goal.Id == deleted.Id
+            && (string.Equals(goal.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                || goal.TargetCents == deleted.TargetCents
+                || goal.CurrentCents == deleted.CurrentCents))
+        {
+            return true;
+        }
+
+        if (!string.Equals(goal.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (deleted.TargetCents > 0 && goal.TargetCents > 0)
+            return goal.TargetCents == deleted.TargetCents;
+        return goal.CurrentCents == deleted.CurrentCents;
     }
 
     private static Transaction? FindPayloadTransaction(List<Transaction> transactions, Transaction updated)

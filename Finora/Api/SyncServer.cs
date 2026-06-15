@@ -219,6 +219,38 @@ public static class SyncServer
                     db.Debts.Remove(existing);
                 }
 
+                // New savings goals from phone (negative temp IDs, get real IDs on save)
+                foreach (var g in push.NewSavingsGoals)
+                {
+                    db.SavingsGoals.Add(new SavingsGoal
+                    {
+                        Name = g.Name,
+                        TargetCents = g.TargetCents,
+                        CurrentCents = g.CurrentCents,
+                        WeeklyContributionCents = g.WeeklyContributionCents,
+                        TargetDate = g.TargetDate
+                    });
+                }
+
+                // Updated savings goals from phone
+                foreach (var g in push.UpdatedSavingsGoals.Where(x => x.Id > 0))
+                {
+                    var existing = await db.SavingsGoals.FindAsync(g.Id);
+                    if (existing is null) continue;
+                    existing.Name = g.Name;
+                    existing.TargetCents = g.TargetCents;
+                    existing.CurrentCents = g.CurrentCents;
+                    existing.WeeklyContributionCents = g.WeeklyContributionCents;
+                    existing.TargetDate = g.TargetDate;
+                }
+
+                // Deleted savings goals from phone
+                foreach (var id in push.DeletedSavingsGoalIds.Where(id => id > 0))
+                {
+                    var existing = await db.SavingsGoals.FindAsync(id);
+                    if (existing is not null) db.SavingsGoals.Remove(existing);
+                }
+
                 // New bills from phone (negative temp IDs)
                 foreach (var b in push.NewBills)
                 {
@@ -453,6 +485,9 @@ public class PushPayload
     public List<DebtPayment> NewDebtPayments { get; set; } = new();
     public List<int> DeletedDebtPaymentIds { get; set; } = new();
     public List<Account> UpdatedAccounts { get; set; } = new();
+    public List<SavingsGoal> NewSavingsGoals { get; set; } = new();
+    public List<SavingsGoal> UpdatedSavingsGoals { get; set; } = new();
+    public List<int> DeletedSavingsGoalIds { get; set; } = new();
 }
 
 public class TransactionEdit

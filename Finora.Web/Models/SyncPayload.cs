@@ -34,6 +34,9 @@ public class PushPayload
     public List<DebtPayment> NewDebtPayments { get; set; } = new();
     public List<int> DeletedDebtPaymentIds { get; set; } = new();
     public List<Account> UpdatedAccounts { get; set; } = new();
+    public List<SavingsGoal> NewSavingsGoals { get; set; } = new();
+    public List<SavingsGoal> UpdatedSavingsGoals { get; set; } = new();
+    public List<int> DeletedSavingsGoalIds { get; set; } = new();
 }
 
 public class TransactionEdit
