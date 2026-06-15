@@ -523,12 +523,16 @@
 
         @if (_affordMode == "Savings")
         {
-            <div style="display:flex;gap:8px;margin-top:10px">
-                <div style="flex:1">
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:120px">
                     <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Over how many weeks?</label>
                     <input class="form-input" type="number" min="1" step="1" @bind="_goalWeeks" @bind:event="oninput" @onchange="OnGoalWeeksChanged" style="font-size:14px" />
                 </div>
-                <div style="flex:1">
+                <div style="flex:1;min-width:120px">
+                    <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Or by date</label>
+                    <input class="form-input" type="date" min="@DateTime.Today.ToString("yyyy-MM-dd")" value="@GoalTargetDate.ToString("yyyy-MM-dd")" @onchange="OnGoalTargetDateChanged" style="font-size:14px" />
+                </div>
+                <div style="flex:1;min-width:160px">
                     <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Saving into</label>
                     <select class="form-input" value="@_goalAccountName" @onchange="OnGoalAccountChanged" style="font-size:14px">
                         <option value="">No specific account</option>
@@ -543,6 +547,7 @@
             @if (_affordAmount > 0)
             {
                 var weeks = Math.Max(_goalWeeks, 1);
+                var selectedTargetDate = GoalTargetDate;
                 var weeklyNeeded = Math.Round(_affordAmount / weeks, 2);
                 var weeklySpare = State.BudgetLeftover;
                 var leftOver = weeklySpare - weeklyNeeded;
@@ -597,7 +602,6 @@
                     {
                         var currentBalance = State.GetAccountBalance(account.Id);
                         var projected = currentBalance + _affordAmount;
-                        var targetDate = DateTime.Today.AddDays(weeks * 7);
                         var alreadyTracking = account.TargetCents is not null;
                         <div style="border-top:1px solid var(--border);margin-top:5px;padding-top:8px">
                             <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
@@ -609,7 +613,7 @@
                                 <span style="font-weight:700;color:@(weeklySpare>=weeklyNeeded?"var(--green)":"var(--red)")">@projected.ToString("C")</span>
                             </div>
                         </div>
-                        <button class="btn btn-primary btn-sm btn-full" style="margin-top:10px" @onclick="() => SetSavingsGoalAsync(account.Id, projected, targetDate)">
+                        <button class="btn btn-primary btn-sm btn-full" style="margin-top:10px" @onclick="() => SetSavingsGoalAsync(account.Id, projected, selectedTargetDate)">
                             @(alreadyTracking ? "Update Account Goal" : "Track as Account Goal")
                         </button>
                         @if (alreadyTracking)
@@ -774,6 +778,7 @@
     private int _installmentFrequencyWeeks = 2;
     private Bill? _billDraft;
     private Debt? _debtDraft;
+    private DateTime GoalTargetDate => DateTime.Today.AddDays(Math.Max(_goalWeeks, 1) * 7);
 
     // Multipliers applied to the user's chosen "Over how many weeks?" value —
     // Aggressive halves it, Balanced matches it, Passive doubles it, so all
@@ -822,10 +827,25 @@
         }
     }
 
+    private async Task OnGoalTargetDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var targetDate))
+        {
+            _goalWeeks = WeeksUntil(targetDate);
+            await SaveAffordabilitySettingsAsync();
+        }
+    }
+
     private async Task SelectPaceAsync(int weeks)
     {
         _goalWeeks = Math.Max(weeks, 1);
         await SaveAffordabilitySettingsAsync();
+    }
+
+    private static int WeeksUntil(DateTime targetDate)
+    {
+        var days = Math.Max((targetDate.Date - DateTime.Today).TotalDays, 1);
+        return Math.Max((int)Math.Ceiling(days / 7d), 1);
     }
 
     private async Task OnGoalAccountChanged(ChangeEventArgs e)

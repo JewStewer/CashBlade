@@ -1,5 +1,4 @@
 @inject AppState State
-@inject IJSRuntime JS
 
 <div class="modal-backdrop" @onclick="Close">
     <div class="modal-sheet" @onclick:stopPropagation>
@@ -33,13 +32,29 @@
             <div style="padding:6px 16px;color:var(--red);font-size:13px">@error</div>
         }
 
-        <div style="padding:14px 16px;display:flex;gap:8px">
-            <button class="btn btn-danger" @onclick="Delete" disabled="@saving">Remove Goal</button>
-            <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
-            <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
-                @(saving ? "Saving…" : "Save")
-            </button>
-        </div>
+        @if (confirmingDelete)
+        {
+            <div style="margin:14px 16px 0;padding:10px;border:1px solid var(--red);border-radius:8px;background:rgba(248,113,113,0.08)">
+                <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Remove this account goal?</div>
+                <div style="font-size:12px;color:var(--text2)">This can't be undone.</div>
+            </div>
+            <div style="padding:14px 16px;display:flex;gap:8px">
+                <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
+                <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
+                    @(saving ? "Removing..." : "Remove")
+                </button>
+            </div>
+        }
+        else
+        {
+            <div style="padding:14px 16px;display:flex;gap:8px">
+                <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Remove Goal</button>
+                <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
+                <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
+                    @(saving ? "Saving..." : "Save")
+                </button>
+            </div>
+        }
     </div>
 </div>
 
@@ -53,6 +68,7 @@
     private DateTime? targetDate;
     private string error = string.Empty;
     private bool saving;
+    private bool confirmingDelete;
 
     private decimal WeeklyPreview => GoalMath.WeeklyRequired(target, current, targetDate);
 
@@ -62,6 +78,7 @@
         current = State.GetAccountBalance(Account.Id);
         target = Account.TargetDollars ?? 0;
         targetDate = Account.TargetDate;
+        confirmingDelete = false;
     }
 
     private async Task Save()
@@ -76,11 +93,17 @@
         await OnSaved.InvokeAsync();
     }
 
-    private async Task Delete()
+    private void StartDelete()
+    {
+        confirmingDelete = true;
+        error = string.Empty;
+    }
+
+    private void CancelDelete() => confirmingDelete = false;
+
+    private async Task ConfirmDelete()
     {
         if (Account is null) return;
-        if (!await JS.InvokeAsync<bool>("confirm", $"Remove the savings goal from \"{Account.Name}\"? This can't be undone."))
-            return;
 
         saving = true;
         await State.ClearAccountGoalAsync(Account.Id);
