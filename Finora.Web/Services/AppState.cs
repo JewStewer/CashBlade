@@ -95,6 +95,10 @@ public class AppState(IndexedDbService db, SyncService sync)
     private CancellationTokenSource? _syncDebounceCts;
     private bool _syncInProgress;
 
+    // Called by MainLayout on every app-visible event so a sync interrupted by
+    // iOS suspension doesn't permanently block the guard.
+    public void ForceResetSyncGuard() => _syncInProgress = false;
+
     public string LastSyncChangeSummary { get; private set; } = "No sync changes summarized yet.";
 
     public bool HasPendingChanges =>
@@ -614,6 +618,16 @@ public class AppState(IndexedDbService db, SyncService sync)
         _                         => d.AddMonths(1)
     };
 
+    private static DateTime ReverseDueDate(DateTime d, BillFrequency f) => f switch
+    {
+        BillFrequency.Weekly      => d.AddDays(-7),
+        BillFrequency.Fortnightly => d.AddDays(-14),
+        BillFrequency.Monthly     => d.AddMonths(-1),
+        BillFrequency.Quarterly   => d.AddMonths(-3),
+        BillFrequency.Yearly      => d.AddYears(-1),
+        _                         => d.AddMonths(-1)
+    };
+
     // Find (or create) the BillOccurrenceStatus for a bill's current billing
     // cycle, keyed by EffectiveDueDate to match IsBillPaid's primary check —
     // otherwise a status keyed on the (possibly stale) bill.DueDate never
@@ -719,10 +733,23 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (daysFromEffective <= 3) return latest.IsPaid;
         }
 
-        // 4. No status that matches this cycle's effective due date — default to
-        //    unpaid. bill.IsPaid is never auto-reset between cycles and goes
-        //    stale; relying on it would hide a weekly bill after WPF advances
-        //    its DueDate while leaving IsPaid=true from the previous cycle.
+        // 4. If bill.DueDate is already in the next cycle (WPF paid today and
+        //    bumped DueDate forward), the paid status lives one period back.
+        //    Check prevDue before defaulting to unpaid.  Don't use bill.IsPaid
+        //    — it's never auto-reset between cycles and would falsely show the
+        //    NEW cycle as paid.
+        if (effectiveDue.Date > DateTime.Today)
+        {
+            var prevDue = ReverseDueDate(effectiveDue, bill.Frequency);
+            var prevStatus = BillStatuses
+                .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == prevDue.Date);
+            if (prevStatus is not null) return prevStatus.IsPaid;
+            if (latest is not null)
+            {
+                var daysToPrev = Math.Abs((latest.DueDate.Date - prevDue.Date).TotalDays);
+                if (daysToPrev <= 3) return latest.IsPaid;
+            }
+        }
         return false;
     }
 
@@ -1606,13 +1633,23 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         var paymentCents = Math.Abs(bill.AmountCents);
 
-        // WPF uses Up Bank transaction IDs (not the "bill:…" format), so the
-        // phone-payment check above won't find WPF's payment — leading to a
-        // double deduction and an inflated "paid off" total in the tracker.
+        // WPF uses Up Bank transaction IDs (not the "bill:…" format) and pays
+        // the actual bank amount (which may differ from bill.AmountCents for
+        // partial/overpayments). Check by debt + date window only; don't
+        // compare amounts since bill amount ≠ transaction amount is common.
+        var halfPeriodDays = bill.Frequency switch
+        {
+            BillFrequency.Weekly      => 4,
+            BillFrequency.Fortnightly => 7,
+            BillFrequency.Monthly     => 10,
+            BillFrequency.Quarterly   => 14,
+            BillFrequency.Yearly      => 30,
+            _                         => 7
+        };
         var wpfPaymentExists = DebtPayments.Any(p =>
             p.DebtId == debt.Id &&
-            p.PaidOn.Date == dueDate.Date &&
-            Math.Abs(p.AmountCents - paymentCents) <= 10);
+            p.UpTransactionId != paymentId &&
+            Math.Abs((p.PaidOn.Date - dueDate.Date).TotalDays) <= halfPeriodDays);
         if (wpfPaymentExists) return;
 
         debt.BalanceCents = Math.Max(0, debt.BalanceCents - paymentCents);

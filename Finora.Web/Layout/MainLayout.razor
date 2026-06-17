@@ -173,6 +173,9 @@
     [JSInvokable]
     public async Task OnBrowserVisible()
     {
+        // iOS may have suspended the app mid-sync, leaving _syncInProgress=true.
+        // Reset it so the resume sync isn't silently blocked by the guard.
+        State.ForceResetSyncGuard();
         await SafeSyncAsync();
         await InvokeAsync(StateHasChanged);
     }
