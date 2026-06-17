@@ -132,6 +132,7 @@
     private bool _dismissedBillAlert;
     private PeriodicTimer? _syncTimer;
     private CancellationTokenSource? _syncCts;
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
 
     protected override void OnInitialized()
     {
@@ -160,7 +161,20 @@
         {
             try { await JS.InvokeVoidAsync("financeBlade.appStarted"); }
             catch { }
+            try
+            {
+                _dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("financeBlade.registerOnVisible", _dotNetRef);
+            }
+            catch { }
         }
+    }
+
+    [JSInvokable]
+    public async Task OnBrowserVisible()
+    {
+        await SafeSyncAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task Retry()
@@ -247,5 +261,6 @@
         _syncCts?.Cancel();
         _syncCts?.Dispose();
         _syncTimer?.Dispose();
+        _dotNetRef?.Dispose();
     }
 }

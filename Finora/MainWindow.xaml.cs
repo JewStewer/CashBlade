@@ -46,6 +46,12 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         _upBankSyncTimer.Tick += async (_, _) => await SyncUpBankAsync(showSuccessMessage: false);
         _startupWorkTimer.Tick += StartupWorkTimer_Tick;
+
+        // Refresh the dashboard whenever the background sync service pulls in
+        // changes that the phone pushed to Supabase.
+        SupabaseSyncService.PhoneChangesApplied += () =>
+            Dispatcher.BeginInvoke(() => ViewModel.LoadDashboard());
+
         LogStartup("MainWindow constructor finished.");
     }
 

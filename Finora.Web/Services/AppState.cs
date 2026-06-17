@@ -295,6 +295,12 @@ public class AppState(IndexedDbService db, SyncService sync)
             var status = GetOrCreateCurrentStatus(bill);
             status.IsPaid = ov.IsPaid;
             status.PaidOn = ov.IsPaid ? (status.PaidOn ?? DateTime.Now) : null;
+
+            // Ensure this override reaches the cloud even if the app was
+            // suspended before the debounced sync could fire after the original
+            // MarkBillPaidAsync call.
+            _pendingBillStatuses.RemoveAll(s => s.BillId == status.BillId && s.DueDate.Date == status.DueDate.Date);
+            _pendingBillStatuses.Add(status);
         }
     }
 
@@ -713,10 +719,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (daysFromEffective <= 3) return latest.IsPaid;
         }
 
-        // 4. No status history (or too far from effective date) — fall back to
-        //    bill.IsPaid.  Never check this before the status checks; the flag is
-        //    never auto-reset between billing cycles and goes stale.
-        return bill.IsPaid;
+        // 4. No status that matches this cycle's effective due date — default to
+        //    unpaid. bill.IsPaid is never auto-reset between cycles and goes
+        //    stale; relying on it would hide a weekly bill after WPF advances
+        //    its DueDate while leaving IsPaid=true from the previous cycle.
+        return false;
     }
 
     public List<Transaction> GetTransactionsForPeriod(DateTime from, DateTime to) =>
@@ -1565,29 +1572,32 @@ public class AppState(IndexedDbService db, SyncService sync)
     private async Task ApplyBillDebtPaymentAsync(Bill bill, DateTime dueDate, bool isPaid)
     {
         var paymentId = $"bill:{bill.Id}:{dueDate:yyyyMMdd}";
-        var existingPayment = DebtPayments.FirstOrDefault(p => p.UpTransactionId == paymentId);
+        // Phone-created payment uses the "bill:…" format.
+        var phonePayment = DebtPayments.FirstOrDefault(p => p.UpTransactionId == paymentId);
 
         if (!isPaid)
         {
-            if (existingPayment is null) return;
+            // Only undo a payment the phone itself created — don't touch WPF's
+            // Up Bank payments (different UpTransactionId format).
+            if (phonePayment is null) return;
 
-            var existingDebt = Debts.FirstOrDefault(d => d.Id == existingPayment.DebtId);
+            var existingDebt = Debts.FirstOrDefault(d => d.Id == phonePayment.DebtId);
             if (existingDebt is not null)
             {
-                existingDebt.BalanceCents += existingPayment.AmountCents;
+                existingDebt.BalanceCents += phonePayment.AmountCents;
                 await db.PutAsync("debts", existingDebt);
                 QueueUpdatedDebt(existingDebt);
             }
 
-            DebtPayments.Remove(existingPayment);
-            await db.DeleteAsync("debtPayments", existingPayment.Id);
+            DebtPayments.Remove(phonePayment);
+            await db.DeleteAsync("debtPayments", phonePayment.Id);
             _pendingNewDebtPayments.RemoveAll(p => p.UpTransactionId == paymentId);
-            if (existingPayment.Id > 0)
-                _pendingDeletedDebtPaymentIds.Add(existingPayment.Id);
+            if (phonePayment.Id > 0)
+                _pendingDeletedDebtPaymentIds.Add(phonePayment.Id);
             return;
         }
 
-        if (existingPayment is not null) return;
+        if (phonePayment is not null) return;
 
         var debt = bill.DebtId is { } debtId
             ? Debts.FirstOrDefault(d => d.Id == debtId)
@@ -1595,6 +1605,16 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (debt is null) return;
 
         var paymentCents = Math.Abs(bill.AmountCents);
+
+        // WPF uses Up Bank transaction IDs (not the "bill:…" format), so the
+        // phone-payment check above won't find WPF's payment — leading to a
+        // double deduction and an inflated "paid off" total in the tracker.
+        var wpfPaymentExists = DebtPayments.Any(p =>
+            p.DebtId == debt.Id &&
+            p.PaidOn.Date == dueDate.Date &&
+            Math.Abs(p.AmountCents - paymentCents) <= 10);
+        if (wpfPaymentExists) return;
+
         debt.BalanceCents = Math.Max(0, debt.BalanceCents - paymentCents);
         await db.PutAsync("debts", debt);
         QueueUpdatedDebt(debt);
@@ -1726,6 +1746,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         status.IsPaid = paid;
         status.PaidOn = paid ? DateTime.Now : null;
 
+        _pendingBillStatuses.RemoveAll(s => s.BillId == status.BillId && s.DueDate.Date == status.DueDate.Date);
         _pendingBillStatuses.Add(status);
         await db.PutAsync("billOccurrenceStatuses", status);
         // Persist the override so it survives sync's clearAll and app restarts
@@ -1753,7 +1774,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(2), token);
+            await Task.Delay(TimeSpan.FromMilliseconds(500), token);
         }
         catch (OperationCanceledException) { return; }
         if (token.IsCancellationRequested) return;

@@ -21,6 +21,8 @@ public static class SupabaseSyncService
         Converters = { new JsonStringEnumConverter() }
     };
 
+    public static event Action? PhoneChangesApplied;
+
     private static SupabaseConfig? _config;
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
     private static volatile bool _pushInProgress;
@@ -86,8 +88,9 @@ public static class SupabaseSyncService
             using var db = new FinoraDbContext();
 
             // Pull and apply any phone-side changes first so they're included in this push
-            await ApplyPhonePushAsync(db);
+            var phoneChanges = await ApplyPhonePushAsync(db);
             await db.SaveChangesAsync();
+            if (phoneChanges) PhoneChangesApplied?.Invoke();
             // AsNoTracking prevents EF Core from wiring up navigation properties
             // which would cause circular reference errors when serialising to JSON
             var accounts = await db.Accounts.AsNoTracking().ToListAsync();
@@ -149,9 +152,9 @@ public static class SupabaseSyncService
     }
 
     // ── Read phone-pushed changes from Supabase and apply to local DB ────────────
-    private static async Task ApplyPhonePushAsync(FinoraDbContext db)
+    private static async Task<bool> ApplyPhonePushAsync(FinoraDbContext db)
     {
-        if (_config is null) return;
+        if (_config is null) return false;
         try
         {
             var baseUrl = NormaliseUrl(_config.Url);
@@ -159,14 +162,14 @@ public static class SupabaseSyncService
                 $"{baseUrl}/rest/v1/phone_push?id=eq.main&select=payload");
             AddSupabaseHeaders(req, _config.AnonKey);
             var resp = await _http.SendAsync(req);
-            if (!resp.IsSuccessStatusCode) return;
+            if (!resp.IsSuccessStatusCode) return false;
 
             var body = await resp.Content.ReadAsStringAsync();
             var rows = JsonSerializer.Deserialize<List<PhonePushRow>>(body, _opts);
-            if (rows is null || rows.Count == 0 || string.IsNullOrWhiteSpace(rows[0].Payload)) return;
+            if (rows is null || rows.Count == 0 || string.IsNullOrWhiteSpace(rows[0].Payload)) return false;
 
             var push = JsonSerializer.Deserialize<PushPayload>(rows[0].Payload, _opts);
-            if (push is null) return;
+            if (push is null) return false;
 
             // New transactions (phone-created, negative temp IDs)
             foreach (var t in push.NewTransactions)
@@ -460,8 +463,9 @@ public static class SupabaseSyncService
             await _http.SendAsync(del);
 
             Log("Applied phone push from Supabase.");
+            return true;
         }
-        catch (Exception ex) { Log($"ApplyPhonePush error: {ex.Message}"); }
+        catch (Exception ex) { Log($"ApplyPhonePush error: {ex.Message}"); return false; }
     }
 
     private static SupabaseConfig? LoadConfig()
