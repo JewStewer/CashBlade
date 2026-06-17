@@ -94,6 +94,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     // periodic timer rarely survives long enough to push an edit on its own.
     private CancellationTokenSource? _syncDebounceCts;
     private bool _syncInProgress;
+    private DateTime _syncStartedAt;
 
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
@@ -1809,12 +1810,22 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private async Task DebouncedSyncAsync(CancellationToken token)
     {
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(500), token);
-        }
+        try { await Task.Delay(TimeSpan.FromMilliseconds(500), token); }
         catch (OperationCanceledException) { return; }
         if (token.IsCancellationRequested) return;
+
+        // If the initial auto-sync is still running, wait for it to finish
+        // (up to 25 s — one tick per second).  This prevents edit syncs from
+        // being silently dropped when the user makes a change in the first few
+        // seconds after launch.  SyncAndReloadAsync also has a 25-second watchdog
+        // that force-resets _syncInProgress if iOS suspended the app mid-request.
+        for (int i = 0; i < 25 && _syncInProgress; i++)
+        {
+            try { await Task.Delay(TimeSpan.FromSeconds(1), token); }
+            catch (OperationCanceledException) { return; }
+            if (token.IsCancellationRequested) return;
+        }
+
         try { await SyncAndReloadAsync(); }
         catch { /* SyncService records LastError for the Settings page */ }
     }
@@ -2226,11 +2237,18 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task SyncAndReloadAsync()
     {
-        // Re-entrancy guard: ScheduleSyncSoon (after every edit) and the
-        // 5-minute periodic timer can otherwise overlap and race on
-        // _pendingXxx / IndexedDB.
-        if (_syncInProgress) return;
+        // Re-entrancy guard — but with a watchdog: if iOS suspended the app while
+        // a request was in-flight the `finally` never ran and _syncInProgress is
+        // permanently true.  Self-heal after the Supabase timeout (20s) plus buffer.
+        if (_syncInProgress)
+        {
+            if ((DateTime.UtcNow - _syncStartedAt).TotalSeconds > 25)
+                _syncInProgress = false;
+            else
+                return;
+        }
         _syncInProgress = true;
+        _syncStartedAt  = DateTime.UtcNow;
         try
         {
             // Push any phone-side changes — Wi-Fi first, Supabase as fallback

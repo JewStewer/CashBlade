@@ -287,6 +287,17 @@ public class SyncService(HttpClient http, IndexedDbService db)
                 await db.ClearTripDeleteAsync(deleted.Id);
             }
         }
+
+        // CategoryLimit:* and other phone-only keys are invisible to WPF, so
+        // every WPF push overwrites appSettings without them.  Re-add any local
+        // key the incoming snapshot doesn't include so they survive the replaceAll
+        // that db.SaveSyncPayloadAsync performs.
+        var localSettings = await db.GetAppSettingsAsync();
+        foreach (var local in localSettings)
+        {
+            if (!payload.AppSettings.Any(s => s.Key == local.Key))
+                payload.AppSettings.Add(local);
+        }
     }
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)
