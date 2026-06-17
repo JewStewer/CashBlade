@@ -456,6 +456,19 @@ public static class SupabaseSyncService
                 existing.TargetStartingBalanceCents = a.TargetStartingBalanceCents;
             }
 
+            // Updated settings from phone (NextPayDate, CategoryLimit:*, etc.)
+            // Mirror of SyncServer.cs so the Supabase path behaves the same as Wi-Fi.
+            foreach (var setting in push.UpdatedSettings)
+            {
+                var existing = await db.AppSettings.FirstOrDefaultAsync(x => x.Key == setting.Key);
+                if (existing is null)
+                    db.AppSettings.Add(new AppSetting { Key = setting.Key, Value = setting.Value });
+                else
+                    existing.Value = setting.Value;
+            }
+
+            await db.SaveChangesAsync();
+
             // Delete the phone_push row so it isn't applied again
             var del = new HttpRequestMessage(HttpMethod.Delete,
                 $"{baseUrl}/rest/v1/phone_push?id=eq.main");

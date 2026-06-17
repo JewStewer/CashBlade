@@ -28,12 +28,14 @@
 <!-- Summary bar -->
 <div style="padding:0 16px 12px;display:flex;gap:8px">
     <div class="card-sm" style="flex:1;text-align:center">
-        <div class="stat-label">Due before payday</div>
+        <div class="stat-label">Owed before @State.NextPayDate.ToString("dd MMM")</div>
         <div style="font-size:18px;font-weight:700;color:var(--red)">@State.TotalBillsDue.ToString("C")</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">@State.BillsDueBeforePayday.Count bill@(State.BillsDueBeforePayday.Count == 1 ? "" : "s") unpaid</div>
     </div>
     <div class="card-sm" style="flex:1;text-align:center">
         <div class="stat-label">Payday</div>
         <div style="font-size:15px;font-weight:600;color:var(--text)">@State.NextPayDate.ToString("dd MMM")</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">in @(Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0))d</div>
     </div>
 </div>
 
