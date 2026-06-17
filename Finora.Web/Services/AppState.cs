@@ -2299,7 +2299,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     pushedToCanonicalStore = pushedToPc;
                 }
 
-                var pushed = pushedToCanonicalStore;
+                // Consider the push successful if either phone_push (Supabase) or the PC
+                // received it — both give WPF a path to reconcile.  PushFullSyncAsync
+                // (the direct finance_sync update) is best-effort: failing it should not
+                // permanently block the pending-changes queue or leave the badge stuck.
+                var pushed = pushedToCloud || pushedToPc;
                 if (pushed)
                 {
                     sentPush = push;
@@ -2552,7 +2556,21 @@ public class AppState(IndexedDbService db, SyncService sync)
             bill.IsPaid = ps.IsPaid;
             await db.PutAsync("bills", bill);
 
-            var existing = GetOrCreateCurrentStatus(bill);
+            // Use ps.DueDate (the date the status was originally created) rather than
+            // GetOrCreateCurrentStatus, which uses the current effectiveDue.  If WPF
+            // advanced bill.DueDate to the next cycle during this sync window,
+            // GetOrCreateCurrentStatus would write a paid status for the FUTURE cycle.
+            var existing = BillStatuses.FirstOrDefault(s => s.BillId == ps.BillId && s.DueDate.Date == ps.DueDate.Date);
+            if (existing is null)
+            {
+                existing = new BillOccurrenceStatus
+                {
+                    Id = NextLocalId(BillStatuses.Select(s => s.Id)),
+                    BillId = ps.BillId,
+                    DueDate = ps.DueDate
+                };
+                BillStatuses.Add(existing);
+            }
             existing.IsPaid = ps.IsPaid;
             existing.PaidOn = ps.PaidOn;
             await db.PutAsync("billOccurrenceStatuses", existing);
