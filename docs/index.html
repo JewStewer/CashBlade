@@ -60,6 +60,10 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+            },
+            _visibleCallback: null,
+            registerOnVisible: (dotnetRef) => {
+                window.financeBlade._visibleCallback = dotnetRef;
             }
         };
     </script>
@@ -96,7 +100,9 @@
 
             // On resume: nudge a reflow (works around WKWebView staying black
             // after backgrounding); if the app still hasn't booted shortly
-            // after, reload.
+            // after, reload; if Blazor is already running, trigger a sync so
+            // changes made on the PC while this app was backgrounded are picked
+            // up immediately without waiting for the 1-minute periodic timer.
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState !== 'visible') return;
                 document.body.style.display = 'none';
@@ -106,6 +112,10 @@
                     setTimeout(() => {
                         if (!window.__financeBladeStarted) safeReload();
                     }, 2000);
+                } else {
+                    try {
+                        window.financeBlade._visibleCallback?.invokeMethodAsync('OnBrowserVisible');
+                    } catch (_) {}
                 }
             });
         })();
