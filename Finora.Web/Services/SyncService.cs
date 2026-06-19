@@ -590,7 +590,12 @@ public class SyncService(HttpClient http, IndexedDbService db)
         if (!HasLocalSync) return false;
         try
         {
-            var resp = await http.PostAsJsonAsync($"{PcHost}/api/sync/push", push, _opts);
+            // Unlike SyncFromPcAsync/TestPcConnectionAsync, this had no timeout —
+            // with the PC off or unreachable, it could hang for the default
+            // HttpClient timeout (100s) before falling through to Supabase,
+            // leaving the "unsync'd" badge stuck the whole time.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var resp = await http.PostAsJsonAsync($"{PcHost}/api/sync/push", push, _opts, cts.Token);
             return resp.IsSuccessStatusCode;
         }
         catch { return false; }
