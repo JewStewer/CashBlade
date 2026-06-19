@@ -248,6 +248,7 @@ public static class DatabaseInitializer
             var learnedCategory = group
                 .Where(t => t.Category?.Name is not ("Misc" or "Unplanned"))
                 .OrderByDescending(t => t.Date)
+                .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
                 .ThenByDescending(t => t.Id)
                 .Select(t => t.Category)
                 .FirstOrDefault();

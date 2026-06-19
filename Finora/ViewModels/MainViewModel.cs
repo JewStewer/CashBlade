@@ -1861,6 +1861,7 @@ public class MainViewModel : ViewModelBase
             .Include(t => t.Account)
             .Include(t => t.Category)
             .OrderByDescending(t => t.Date)
+            .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
             .ThenByDescending(t => t.Id)
             .ToList();
 

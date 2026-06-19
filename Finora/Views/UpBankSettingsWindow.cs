@@ -8,6 +8,9 @@ public class UpBankSettingsWindow : Window
 {
     private readonly UpBankSyncService _syncService = new();
     private readonly PasswordBox _tokenBox = new();
+    private TextBlock _repairStatus = new();
+    private Button _repairButton = new();
+    private System.Threading.CancellationTokenSource? _repairCts;
 
     public UpBankSettingsWindow()
     {
@@ -57,6 +60,34 @@ public class UpBankSettingsWindow : Window
             Margin = new Thickness(0, 14, 0, 0)
         });
 
+        panel.Children.Add(new Separator { Margin = new Thickness(0, 18, 0, 14) });
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Fix transaction order",
+            FontWeight = FontWeights.Bold,
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "One-time repair for transactions imported before this fix existed — re-fetches each Up transaction's exact time so same-day imports display in the right order. New imports are already correct; this only affects past ones. Safe to run more than once.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = System.Windows.Media.Brushes.DimGray,
+            Margin = new Thickness(0, 0, 0, 10)
+        });
+
+        _repairButton = new Button { Content = "Repair transaction order", Width = 200, Height = 32, HorizontalAlignment = HorizontalAlignment.Left };
+        _repairButton.Click += RepairButton_Click;
+        panel.Children.Add(_repairButton);
+
+        _repairStatus = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = System.Windows.Media.Brushes.DimGray,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        panel.Children.Add(_repairStatus);
+
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -80,5 +111,48 @@ public class UpBankSettingsWindow : Window
         panel.Children.Add(buttons);
 
         return panel;
+    }
+
+    private async void RepairButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_repairCts is not null)
+        {
+            _repairCts.Cancel();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_tokenBox.Password))
+        {
+            _repairStatus.Text = "Add and save your Up Bank token first.";
+            return;
+        }
+
+        _repairCts = new System.Threading.CancellationTokenSource();
+        _repairButton.Content = "Cancel repair";
+        _repairStatus.Text = "Starting…";
+
+        var progress = new Progress<(int Done, int Total)>(p =>
+            _repairStatus.Text = $"Repairing… {p.Done} / {p.Total}");
+
+        try
+        {
+            var result = await _syncService.BackfillSettledTimestampsAsync(progress, _repairCts.Token);
+            _repairStatus.Text = result.Updated == 0 && result.Skipped == 0 && result.Failed == 0
+                ? "Nothing to repair — all imported transactions already have a precise timestamp."
+                : $"Done. Fixed {result.Updated}, skipped {result.Skipped} (no longer on Up), {result.Failed} failed (will retry next run).";
+        }
+        catch (OperationCanceledException)
+        {
+            _repairStatus.Text = "Repair cancelled. Already-fixed transactions were kept — run again to continue.";
+        }
+        catch (Exception ex)
+        {
+            _repairStatus.Text = $"Repair failed: {ex.Message}";
+        }
+        finally
+        {
+            _repairCts = null;
+            _repairButton.Content = "Repair transaction order";
+        }
     }
 }

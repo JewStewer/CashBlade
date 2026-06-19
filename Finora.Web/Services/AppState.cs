@@ -487,6 +487,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         ComputeBillsDue();
         RecentTransactions = Transactions
             .OrderByDescending(t => t.Date)
+            .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
             .ThenByDescending(t => t.Id)
             .ToList();
     }
@@ -832,6 +833,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Transactions
             .Where(t => t.Date.Date == date.Date)
             .OrderByDescending(t => t.Date)
+            .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
             .ThenByDescending(t => t.Id)
             .ToList();
 

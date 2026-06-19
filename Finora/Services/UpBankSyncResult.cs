@@ -6,3 +6,5 @@ public record UpBankSyncResult(
     int AccountBalanceAdjustments,
     int RenamedBillAdjustments,
     int AmbiguousBillMatches);
+
+public record UpBankOrderRepairResult(int Updated, int Skipped, int Failed);

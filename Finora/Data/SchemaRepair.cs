@@ -9,7 +9,7 @@ public static class SchemaRepair
     /// DatabaseInitializer.RepairSchema() checks PRAGMA user_version against this value and
     /// skips the entire repair (including EF Core model compilation) when already current.
     /// </summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public static void ApplyStartupCompatibility(FinoraDbContext db)
     {
@@ -80,6 +80,7 @@ public static class SchemaRepair
 
         AddColumn(db, "Transactions", "UpTransactionId",   "TEXT NULL",                    txCols);
         AddColumn(db, "Transactions", "IsUnnecessary",     "INTEGER NOT NULL DEFAULT 0",   txCols);
+        AddColumn(db, "Transactions", "UpSettledAt",       "TEXT NULL",                    txCols);
 
         AddColumn(db, "Debts", "UpPaymentMatchText", "TEXT NULL",                      debtCols);
         AddColumn(db, "Debts", "PaymentPeriod",      "TEXT NOT NULL DEFAULT 'Weekly'", debtCols);

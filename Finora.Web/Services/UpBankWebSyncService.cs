@@ -141,7 +141,8 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                         AmountCents = amountCents,
                         AccountId = account.Id,
                         CategoryId = category.Id,
-                        UpTransactionId = upTransaction.Id
+                        UpTransactionId = upTransaction.Id,
+                        UpSettledAt = DateTime.SpecifyKind(upTransaction.Attributes.CreatedAt.LocalDateTime, DateTimeKind.Unspecified)
                     };
 
                     transactions.Add(transaction);

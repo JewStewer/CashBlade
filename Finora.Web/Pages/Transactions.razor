@@ -71,7 +71,7 @@
                     @day.Sum(t => t.AmountDollars).ToString("C")
                 </span>
             </div>
-            @foreach (var t in day.OrderByDescending(x => x.Id))
+            @foreach (var t in day.OrderByDescending(x => x.UpSettledAt ?? DateTime.MinValue).ThenByDescending(x => x.Id))
             {
                 <div>
                     @{

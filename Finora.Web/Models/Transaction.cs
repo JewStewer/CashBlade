@@ -16,6 +16,12 @@ public class Transaction
     public Guid? TransferId { get; set; }
     public string? UpTransactionId { get; set; }
     public bool IsUnnecessary { get; set; }
+    // Precise Up Bank settlement/creation instant (Kind=Unspecified — never
+    // serialised with an offset, so no timezone-shift risk). Null for
+    // manually-entered transactions and any Up import predating this field.
+    // Used only as a same-day sort tiebreaker, never for date grouping —
+    // Date stays the deliberately time-stripped calendar day.
+    public DateTime? UpSettledAt { get; set; }
     // Denormalised for display (filled from join in AppState)
     public string AccountName { get; set; } = string.Empty;
     public string CategoryName { get; set; } = string.Empty;

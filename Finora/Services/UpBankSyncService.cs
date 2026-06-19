@@ -164,7 +164,8 @@ public class UpBankSyncService
                     Account = account,
                     Category = category,
                     TransferId = null,
-                    UpTransactionId = upTransaction.Id
+                    UpTransactionId = upTransaction.Id,
+                    UpSettledAt = DateTime.SpecifyKind(upTransaction.Attributes.CreatedAt.LocalDateTime, DateTimeKind.Unspecified)
                 };
                 pageTransactionsInOrder.Add(newTransaction);
                 existingByUpId[upTransaction.Id] = newTransaction;
@@ -209,6 +210,104 @@ public class UpBankSyncService
         await db.SaveChangesAsync(cancellationToken);
 
         return new UpBankSyncResult(imported, debtPayments, accountBalanceAdjustments, renamedBillAdjustments, ambiguousBillMatches);
+    }
+
+    /// <summary>
+    /// One-time repair for transactions imported before UpSettledAt existed.  Up returns
+    /// transaction pages newest-first, and earlier sync code added them to the DB in that
+    /// same order, so same-day transactions ended up with auto-increment Ids running
+    /// backwards relative to actual time — this re-fetches each affected transaction's
+    /// precise timestamp from Up so OrderByDescending(Date).ThenByDescending(UpSettledAt)
+    /// can display them correctly without touching any Id (Ids are referenced by
+    /// BillOccurrenceStatus.MatchedTransactionId and the phone's lent-money tracking, so
+    /// reassigning them is not safe).
+    /// </summary>
+    public async Task<UpBankOrderRepairResult> BackfillSettledTimestampsAsync(
+        IProgress<(int Done, int Total)>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var token = GetAccessToken();
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            throw new InvalidOperationException("Add your Up Bank API token before repairing transaction order.");
+        }
+
+        using var db = new FinoraDbContext();
+        var pending = db.Transactions
+            .Where(t => t.UpTransactionId != null && t.UpSettledAt == null)
+            .ToList();
+        progress?.Report((0, pending.Count));
+
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var updated = 0;
+        var skipped = 0;
+        var failed = 0;
+
+        for (var i = 0; i < pending.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var transaction = pending[i];
+
+            try
+            {
+                using var response = await http.GetAsync($"{ApiBaseUrl}/transactions/{transaction.UpTransactionId}", cancellationToken);
+
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    var retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(30);
+                    await Task.Delay(retryAfter, cancellationToken);
+                    i--; // retry this same transaction next iteration
+                    continue;
+                }
+
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    skipped++; // deleted on Up's side since it was first imported
+                }
+                else
+                {
+                    response.EnsureSuccessStatusCode();
+                    await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                    var body = await JsonSerializer.DeserializeAsync<UpSingleTransactionResponse>(stream, JsonOptions, cancellationToken);
+                    if (body?.Data is { } upTransaction)
+                    {
+                        transaction.UpSettledAt = DateTime.SpecifyKind(upTransaction.Attributes.CreatedAt.LocalDateTime, DateTimeKind.Unspecified);
+                        updated++;
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+
+                // Stay well clear of Up's rate limit (429 + exponential backoff is the
+                // documented guidance) — slow down further if we're visibly running low.
+                var remainingHeader = response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)
+                    ? values.FirstOrDefault()
+                    : null;
+                var delayMs = int.TryParse(remainingHeader, out var remaining) && remaining < 50 ? 2000 : 150;
+                await Task.Delay(delayMs, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                failed++;
+            }
+
+            if ((i + 1) % 25 == 0)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            progress?.Report((i + 1, pending.Count));
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        return new UpBankOrderRepairResult(updated, skipped, failed);
     }
 
     private static void RestoreOrphanedBillAdjustments(FinoraDbContext db)
@@ -730,6 +829,11 @@ public class UpBankSyncService
         public List<UpTransaction> Data { get; set; } = new();
 
         public UpLinks Links { get; set; } = new();
+    }
+
+    private sealed class UpSingleTransactionResponse
+    {
+        public UpTransaction Data { get; set; } = new();
     }
 
     private sealed class UpLinks
