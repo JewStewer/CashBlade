@@ -739,7 +739,7 @@ public class MainViewModel : ViewModelBase
         get
         {
             var breakdownBills = BudgetBreakdownRows
-                .Where(r => r.IsIncluded && (r.Bucket == "Bills" || IsAccountTargetBudgetRow(r)))
+                .Where(r => r.IsIncluded && r.Bucket == "Bills")
                 .Sum(r => r.Amount);
 
             return breakdownBills > 0
@@ -4003,14 +4003,33 @@ public class MainViewModel : ViewModelBase
         var goalSavings = Math.Round(
             (db.SavingsGoals.Sum(g => (int?)g.WeeklyContributionCents) ?? 0) / 100m, 2);
         BudgetSavings = goalSavings;
-        if (budget is not null && budget.SavingsDollars != goalSavings)
-        {
-            budget.SavingsDollars = goalSavings;
-            db.SaveChanges();
-        }
 
         LoadBudgetBreakdown();
         LoadBillFundingPlan();
+
+        // Bills and Savings always track the live bill list and account savings targets so the
+        // saved budget can't drift out of sync with what's actually been added — no manual
+        // "Sync bills to budget" click required. Account-based targets (e.g. an emergency fund
+        // account) are tagged as Savings rows; fold them in here rather than into Bills.
+        var liveBills = BudgetPlannerWeeklyBills;
+        if (liveBills > 0)
+        {
+            BudgetBills = liveBills;
+        }
+
+        var accountTargetSavings = BudgetBreakdownRows.Where(IsAccountTargetBudgetRow).Sum(r => r.Amount);
+        if (accountTargetSavings > 0)
+        {
+            BudgetSavings = RoundDollars(goalSavings + accountTargetSavings);
+        }
+
+        if (budget is not null && (budget.BillsDollars != BudgetBills || budget.SavingsDollars != BudgetSavings))
+        {
+            budget.BillsDollars = BudgetBills;
+            budget.SavingsDollars = BudgetSavings;
+            db.SaveChanges();
+        }
+
         // BudgetBreakdownRows is now populated — reload tiles so per-bill detail tiles are filled in.
         LoadSavedBudgetTiles();
         if (loadInsights)
@@ -4215,10 +4234,7 @@ public class MainViewModel : ViewModelBase
 
         weeklyBills = RoundDollars(weeklyBills + customRows.Where(r => r.IsIncluded && r.Bucket == "Bills").Sum(r => r.Amount));
         weeklyEssentials = RoundDollars(weeklyEssentials + customRows.Where(r => r.IsIncluded && r.Bucket == "Essentials").Sum(r => r.Amount));
-        // saverRows are account targets (e.g. "Licence") — counted in weeklyBills so they appear
-        // in the Allocated total without inflating the Savings field.
-        ApplyBudgetInclusions(saverRows, includedKeys);
-        weeklyBills = RoundDollars(weeklyBills + saverRows.Where(r => r.IsIncluded).Sum(r => r.Amount));
+        ApplyBudgetInclusions(saverRows, includedKeys, excludedKeys);
         breakdown.AddRange(saverRows);
 
         // Only use the aggregate "Savings allocation" row when there are no individual goal rows.
@@ -4241,7 +4257,8 @@ public class MainViewModel : ViewModelBase
         }
 
         breakdown.AddRange(visibleSavingsRows);
-        weeklySavings = RoundDollars(weeklySavings + customRows.Where(r => r.IsIncluded && r.Bucket == "Savings").Sum(r => r.Amount));
+        weeklySavings = RoundDollars(weeklySavings + customRows.Where(r => r.IsIncluded && r.Bucket == "Savings").Sum(r => r.Amount)
+            + saverRows.Where(r => r.IsIncluded).Sum(r => r.Amount));
 
         ApplyBudgetTransferTargets(breakdown, transferTargets);
         return FitBudgetToIncome(weeklyIncome, weeklyBills, weeklyEssentials, weeklySavings, weeklyUnplanned, breakdown);
@@ -4701,14 +4718,19 @@ public class MainViewModel : ViewModelBase
                 && r.Bucket == "Savings"
                 && r.Name != "Target"
                 && !string.Equals(r.Name, "Saved targets allocation", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(r.Name, "Template savings", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(r.Name, "Budget planner savings", StringComparison.OrdinalIgnoreCase))
-            .Select(row => new SavedBudgetTileRow
+                && !string.Equals(r.Name, "Template savings", StringComparison.OrdinalIgnoreCase))
+            .Select(row =>
             {
-                Name = row.Name,
-                Amount = RoundDollars(row.Amount),
-                Detail = string.IsNullOrWhiteSpace(row.TransferTo) ? "Savings" : $"→ {row.TransferTo}",
-                ColorHex = "#34D399"
+                var isPlannerSavings = string.Equals(row.Name, "Budget planner savings", StringComparison.OrdinalIgnoreCase);
+                return new SavedBudgetTileRow
+                {
+                    Name = isPlannerSavings ? "Savings" : row.Name,
+                    Amount = RoundDollars(row.Amount),
+                    Detail = isPlannerSavings
+                        ? "Not tied to a specific goal or account"
+                        : string.IsNullOrWhiteSpace(row.TransferTo) ? "Savings" : $"→ {row.TransferTo}",
+                    ColorHex = "#34D399"
+                };
             });
 
         return billRows
@@ -6501,10 +6523,10 @@ public class MainViewModel : ViewModelBase
         if (string.Equals(itemKey, "Savings::Budget planner savings", StringComparison.OrdinalIgnoreCase)) return true;
         if (string.Equals(itemKey, "Savings::Template savings", StringComparison.OrdinalIgnoreCase)) return true;
         if (string.Equals(itemKey, "Savings::Saved targets allocation", StringComparison.OrdinalIgnoreCase)) return true;
-        // Account target rows use "Savings::<accountname>" keys (without "Goal:" prefix).
-        // Auto-include them so savings accounts with targets appear in the budget without manual setup.
-        if (itemKey.StartsWith("Savings::", StringComparison.OrdinalIgnoreCase) &&
-            !itemKey.StartsWith("Savings::Goal:", StringComparison.OrdinalIgnoreCase))
+        // Auto-include all Savings rows (account targets and named goals alike) so the visible
+        // breakdown always matches the headline Savings total, which already counts every goal
+        // unconditionally — see LoadBudget()'s goalSavings sum.
+        if (itemKey.StartsWith("Savings::", StringComparison.OrdinalIgnoreCase))
             return true;
         return false;
     }

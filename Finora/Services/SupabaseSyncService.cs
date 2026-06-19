@@ -174,12 +174,22 @@ public static class SupabaseSyncService
             // New transactions (phone-created, negative temp IDs)
             foreach (var t in push.NewTransactions)
             {
+                // Up Bank transactions carry a stable UpTransactionId — skip if this
+                // exact transaction already exists (e.g. WPF's own Up Bank sync beat
+                // the phone to it, or this push is being reprocessed after a retry).
+                if (!string.IsNullOrWhiteSpace(t.UpTransactionId) &&
+                    await db.Transactions.AnyAsync(x => x.UpTransactionId == t.UpTransactionId))
+                {
+                    continue;
+                }
+
                 db.Transactions.Add(new Transaction
                 {
                     Date = DateTime.SpecifyKind(t.Date.Date, DateTimeKind.Unspecified),
                     Description = t.Description, AmountCents = t.AmountCents,
                     AccountId = t.AccountId, CategoryId = t.CategoryId,
-                    TransferId = t.TransferId, IsUnnecessary = t.IsUnnecessary
+                    TransferId = t.TransferId, IsUnnecessary = t.IsUnnecessary,
+                    UpTransactionId = t.UpTransactionId
                 });
             }
 

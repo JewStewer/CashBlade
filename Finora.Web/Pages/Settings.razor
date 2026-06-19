@@ -332,7 +332,7 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.18.5";
+    private const string AppVersion = "v2026.06.20.2";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
@@ -372,6 +372,17 @@
         await RefreshLocalIntentCountsAsync();
         Sync.OnSyncStateChanged += StateHasChanged;
         UpSync.OnStateChanged += StateHasChanged;
+        State.OnChange += OnAppStateChanged;
+    }
+
+    // localEditIntents/localDeleteIntents are a one-time snapshot taken at page load —
+    // without this, a background sync (e.g. MainLayout's on-load/periodic sync) that
+    // clears the underlying IndexedDB overrides wouldn't be reflected here until the
+    // user manually left and re-entered Settings, making the badge look permanently stuck.
+    private async void OnAppStateChanged()
+    {
+        await RefreshLocalIntentCountsAsync();
+        StateHasChanged();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -688,5 +699,6 @@
     {
         Sync.OnSyncStateChanged -= StateHasChanged;
         UpSync.OnStateChanged -= StateHasChanged;
+        State.OnChange -= OnAppStateChanged;
     }
 }

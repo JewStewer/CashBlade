@@ -104,6 +104,18 @@ public class UpBankSyncService
             var page = await JsonSerializer.DeserializeAsync<UpTransactionsPage>(stream, JsonOptions, cancellationToken)
                 ?? new UpTransactionsPage();
 
+            // Up returns transactions newest-first within a page. Collecting this page's
+            // new rows and adding them to the DbContext in chronological order (reversed,
+            // just below) means SQLite's auto-increment Id grows with Date, matching the
+            // OrderByDescending(Date).ThenByDescending(Id) tie-break used when listing
+            // transactions — otherwise same-day imports would get Ids in reverse
+            // chronological order and display backwards within that day. Saving per-page
+            // (rather than once at the end) also means a later page failing — e.g. a
+            // transient network error or Up API rate limit — doesn't roll back transactions
+            // already fetched and matched from earlier pages.
+            var pageTransactionsInOrder = new List<Transaction>();
+            var pageDebtPaymentsInOrder = new List<DebtPayment>();
+
             foreach (var upTransaction in page.Data)
             {
                 if (!string.Equals(upTransaction.Attributes.Status, "SETTLED", StringComparison.OrdinalIgnoreCase))
@@ -154,7 +166,7 @@ public class UpBankSyncService
                     TransferId = null,
                     UpTransactionId = upTransaction.Id
                 };
-                db.Transactions.Add(newTransaction);
+                pageTransactionsInOrder.Add(newTransaction);
                 existingByUpId[upTransaction.Id] = newTransaction;
 
                 imported++;
@@ -163,7 +175,7 @@ public class UpBankSyncService
                 {
                     var paymentCents = Math.Abs(amountCents);
                     debt.BalanceCents = Math.Max(0, debt.BalanceCents - paymentCents);
-                    db.DebtPayments.Add(new DebtPayment
+                    pageDebtPaymentsInOrder.Add(new DebtPayment
                     {
                         Debt = debt,
                         UpTransactionId = upTransaction.Id,
@@ -175,10 +187,15 @@ public class UpBankSyncService
                 }
             }
 
+            pageTransactionsInOrder.Reverse();
+            db.Transactions.AddRange(pageTransactionsInOrder);
+            pageDebtPaymentsInOrder.Reverse();
+            db.DebtPayments.AddRange(pageDebtPaymentsInOrder);
+            await db.SaveChangesAsync(cancellationToken);
+
             url = page.Links.Next;
         }
 
-        await db.SaveChangesAsync(cancellationToken);
         RestoreOrphanedBillAdjustments(db);
         var balanceSync = await SyncAccountBalancesAsync(http, db, cancellationToken);
         accountBalanceAdjustments = balanceSync.Adjustments;

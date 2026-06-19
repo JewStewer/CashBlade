@@ -313,6 +313,20 @@
                         <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden">
                             <div style="height:100%;border-radius:4px;background:@barColor;width:@($"{barW:F1}")%;transition:width 0.4s ease"></div>
                         </div>
+                        @if (hasLimit)
+                        {
+                            var remaining = limitDollars - amt;
+                            <div style="font-size:10px;color:var(--text3);margin-top:3px">
+                                @if (remaining >= 0)
+                                {
+                                    @($"{remaining:C} left of {limitDollars:C} limit")
+                                }
+                                else
+                                {
+                                    <span style="color:var(--red)">@($"{Math.Abs(remaining):C} over {limitDollars:C} limit")</span>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             }
@@ -347,6 +361,20 @@
                         <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden">
                             <div style="height:100%;border-radius:4px;background:@barColor;width:@($"{barW:F1}")%;transition:width 0.4s ease"></div>
                         </div>
+                        @if (hasLimit)
+                        {
+                            var remaining = limitDollars - amt;
+                            <div style="font-size:10px;color:var(--text3);margin-top:3px">
+                                @if (remaining >= 0)
+                                {
+                                    @($"{remaining:C} left of {limitDollars:C} limit")
+                                }
+                                else
+                                {
+                                    <span style="color:var(--red)">@($"{Math.Abs(remaining):C} over {limitDollars:C} limit")</span>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             }

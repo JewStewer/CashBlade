@@ -1974,7 +1974,7 @@
             </Grid>
 
             <!-- TRANSACTIONS SECTION -->
-            <Grid Grid.Row="1" Margin="0,16,16,16" Visibility="{Binding IsTransactionsSection, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid Grid.Row="1" Margin="16,16,16,16" Visibility="{Binding IsTransactionsSection, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Border Background="#111827"
                         CornerRadius="8"
                         Padding="20"
@@ -2210,7 +2210,7 @@
             </Grid>
 
             <!-- CATEGORIES SECTION -->
-            <Grid Grid.Row="1" Margin="0,16,16,16" Visibility="{Binding IsCategoriesSection, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid Grid.Row="1" Margin="16,16,16,16" Visibility="{Binding IsCategoriesSection, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Border Background="#111827"
                         CornerRadius="8"
                         Padding="20"
@@ -2233,7 +2233,7 @@
             </Grid>
 
             <!-- PLANNING SECTION -->
-            <Grid Grid.Row="1" Margin="0,16,16,16" Visibility="{Binding IsPlanningSection, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid Grid.Row="1" Margin="16,16,16,16" Visibility="{Binding IsPlanningSection, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Border Background="#161B22"
                         BorderBrush="#30363D"
                         BorderThickness="1"
@@ -3902,8 +3902,8 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <TextBlock Text="Real saved budget"
-                                                   FontSize="16"
-                                                   FontWeight="SemiBold"
+                                                   FontSize="18"
+                                                   FontWeight="Bold"
                                                    Foreground="#E6EDF3"/>
                                         <TextBlock Text="Changes here affect the actual budget used throughout Evergrove."
                                                    Foreground="#8B949E"
@@ -4045,7 +4045,7 @@
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
                                                 <!-- Empty state when no bills -->
-                                                <TextBlock Text="No bills saved yet. Add bills and click 'Sync bills to budget' to see them here."
+                                                <TextBlock Text="No bills saved yet. Add a bill to see it here."
                                                            Foreground="#6E7681" FontSize="12" TextWrapping="Wrap">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock">

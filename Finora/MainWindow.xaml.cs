@@ -1386,15 +1386,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (row.AccountId.HasValue)
-        {
-            var confirm = MessageBox.Show($"Remove target from \"{row.Bucket}\"?", "Remove Target", MessageBoxButton.YesNo);
-            if (confirm != MessageBoxResult.Yes) return;
-            ViewModel.RemoveAccountTarget(row.AccountId.Value);
-            ViewModel.LoadDashboard();
-            return;
-        }
-
         ViewModel.SetBudgetBreakdownIncluded(row.ExclusionKey, false);
         ViewModel.SaveSuggestedBudget();
         ViewModel.LoadDashboard();

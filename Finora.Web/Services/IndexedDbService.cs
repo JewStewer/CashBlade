@@ -291,6 +291,19 @@ public class IndexedDbService(IJSRuntime js)
     public Task ClearTransactionDeletesAsync() =>
         ClearAsync("transactionDeletes");
 
+    // ── Persistent setting edits (survive cloud replace until pushed) ─────────
+    public Task<List<PendingSettingOverride>> GetPendingSettingOverridesAsync() =>
+        GetAllAsync<PendingSettingOverride>("settingOverrides");
+
+    public Task SetSettingOverrideAsync(AppSetting setting) =>
+        PutAsync("settingOverrides", new PendingSettingOverride { Id = setting.Key, Setting = setting });
+
+    public Task ClearSettingOverrideAsync(string key) =>
+        DeleteAsync("settingOverrides", key);
+
+    public Task ClearSettingOverridesAsync() =>
+        ClearAsync("settingOverrides");
+
     public Task ClearBillOverridesAsync() =>
         ClearAsync("pendingBillOverrides");
 
@@ -548,6 +561,12 @@ public class PendingTransactionOverride
 {
     public int Id { get; set; } // = Transaction Id
     public Transaction Transaction { get; set; } = new();
+}
+
+public class PendingSettingOverride
+{
+    public string Id { get; set; } = string.Empty; // = Setting Key
+    public AppSetting Setting { get; set; } = new();
 }
 
 public class PendingTransactionDelete

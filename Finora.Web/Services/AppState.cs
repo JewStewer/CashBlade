@@ -199,6 +199,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedSavingsGoalDeletesAsync();
         await ApplyPersistedTripDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
+        await ApplyPersistedSettingOverridesAsync();
     }
 
     // ── Lent money tracking ──────────────────────────────────────────────────
@@ -338,6 +339,25 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (transaction.Id > 0) _pendingDeletedTransactionIds.Add(transaction.Id);
             _pendingDeletedTransactions.RemoveAll(d => SameTransactionDelete(d, ov.Deleted));
             _pendingDeletedTransactions.Add(ov.Deleted);
+        }
+    }
+
+    private async Task ApplyPersistedSettingOverridesAsync()
+    {
+        var overrides = await db.GetPendingSettingOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var setting = ov.Setting;
+            await db.SaveSettingAsync(setting.Key, setting.Value);
+            var existing = AppSettings.FirstOrDefault(s => s.Key == setting.Key);
+            if (existing is null) AppSettings.Add(setting);
+            else existing.Value = setting.Value;
+
+            // Re-queue for push — a setting changed locally but never confirmed
+            // pushed (e.g. iOS killed the app mid-sync) must survive an app
+            // restart and a stale pull, same as transaction overrides.
+            _pendingUpdatedSettings.RemoveAll(s => s.Key == setting.Key);
+            _pendingUpdatedSettings.Add(setting);
         }
     }
 
@@ -2009,6 +2029,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             _pendingUpdatedSettings.RemoveAll(s => s.Key == key);
             _pendingUpdatedSettings.Add(setting);
+            // Persisted separately from the in-memory queue so a setting change
+            // (e.g. payday) survives an app restart that cuts off the debounced
+            // push, instead of silently being lost and reverted by the next pull.
+            await db.SetSettingOverrideAsync(setting);
         }
         Compute();
         OnChange?.Invoke();
@@ -2325,6 +2349,10 @@ public class AppState(IndexedDbService db, SyncService sync)
                 if (pushed)
                 {
                     sentPush = push;
+                    foreach (var t in push.UpdatedTransactions)
+                        await db.ClearTransactionOverrideAsync(t.Id);
+                    foreach (var d in push.DeletedTransactions)
+                        await db.ClearTransactionDeleteAsync(PendingTransactionDelete.GetStableId(d));
                     foreach (var s in push.UpdatedBillStatuses)
                         await db.ClearBillOverrideAsync(s.BillId);
                     foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
@@ -2333,6 +2361,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                         await db.ClearSavingsGoalDeleteAsync(id);
                     foreach (var id in push.DeletedTripIds.Where(id => id > 0))
                         await db.ClearTripDeleteAsync(id);
+                    foreach (var s in push.UpdatedSettings)
+                        await db.ClearSettingOverrideAsync(s.Key);
                     // Remove only what was actually sent (by count, not Clear) —
                     // an edit made while this push was in flight appends to
                     // these lists and must survive for the next sync.
@@ -2455,6 +2485,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearDebtDeletesAsync();
         await db.ClearSavingsGoalDeletesAsync();
         await db.ClearTripDeletesAsync();
+        await db.ClearSettingOverridesAsync();
         LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
         await LoadAsync();
     }

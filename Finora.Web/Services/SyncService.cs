@@ -298,6 +298,18 @@ public class SyncService(HttpClient http, IndexedDbService db)
             if (!payload.AppSettings.Any(s => s.Key == local.Key))
                 payload.AppSettings.Add(local);
         }
+
+        // A setting changed locally (e.g. payday) but not yet confirmed pushed
+        // must win over the incoming snapshot even when both sides know the key
+        // (NextPayDate, SummaryPeriod, etc.) — otherwise a stale snapshot silently
+        // reverts it the moment this pull replaces appSettings wholesale.
+        var settingOverrides = await db.GetPendingSettingOverridesAsync();
+        foreach (var ov in settingOverrides)
+        {
+            var existing = payload.AppSettings.FirstOrDefault(s => s.Key == ov.Setting.Key);
+            if (existing is not null) existing.Value = ov.Setting.Value;
+            else payload.AppSettings.Add(ov.Setting);
+        }
     }
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)

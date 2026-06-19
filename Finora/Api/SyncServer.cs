@@ -94,6 +94,15 @@ public static class SyncServer
                 // New transactions (negative IDs from phone, get real IDs)
                 foreach (var t in push.NewTransactions)
                 {
+                    // Up Bank transactions carry a stable UpTransactionId — skip if this
+                    // exact transaction already exists (e.g. WPF's own Up Bank sync beat
+                    // the phone to it, or this push is being reprocessed after a retry).
+                    if (!string.IsNullOrWhiteSpace(t.UpTransactionId) &&
+                        await db.Transactions.AnyAsync(x => x.UpTransactionId == t.UpTransactionId))
+                    {
+                        continue;
+                    }
+
                     var entity = new Transaction
                     {
                         // Normalise date: phone serialises DateTime.Today with a local-timezone
@@ -106,7 +115,8 @@ public static class SyncServer
                         AccountId = t.AccountId,
                         CategoryId = t.CategoryId,
                         TransferId = t.TransferId,
-                        IsUnnecessary = t.IsUnnecessary
+                        IsUnnecessary = t.IsUnnecessary,
+                        UpTransactionId = t.UpTransactionId
                     };
                     db.Transactions.Add(entity);
                 }

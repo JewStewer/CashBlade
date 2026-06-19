@@ -77,6 +77,11 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             var balanceAdjustments = 0;
             var matchedBills = 0;
             var addedBalanceAdjustmentIds = new List<int>();
+            // Phone-created records this pass — pushed to phone_push below so WPF
+            // reconciles them into real SQLite IDs instead of them only living in
+            // this device's local snapshot (see PushCurrentSnapshotToCloudAsync).
+            var newTransactionsForPush = new List<Transaction>();
+            var matchedBillStatusesForPush = new List<BillOccurrenceStatus>();
 
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
@@ -143,9 +148,17 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                     await db.PutAsync("transactions", transaction);
                     existingUpIds.Add(upTransaction.Id);
                     imported++;
+                    newTransactionsForPush.Add(transaction);
 
-                    if (amountCents < 0 && TryMarkMatchingBillPaid(bills, billStatuses, account.Id, purchaseDate, Math.Abs(amountCents), transaction.Id))
-                        matchedBills++;
+                    if (amountCents < 0)
+                    {
+                        var matchedStatus = TryMarkMatchingBillPaid(bills, billStatuses, account.Id, purchaseDate, Math.Abs(amountCents), transaction.Id);
+                        if (matchedStatus is not null)
+                        {
+                            matchedBills++;
+                            matchedBillStatusesForPush.Add(matchedStatus);
+                        }
+                    }
                 }
 
                 url = page.Links.Next;
@@ -181,6 +194,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                 transactions.Add(adjustment);
                 await db.PutAsync("transactions", adjustment);
                 addedBalanceAdjustmentIds.Add(adjustment.Id);
+                newTransactionsForPush.Add(adjustment);
             }
 
             foreach (var account in accounts) await db.PutAsync("accounts", account);
@@ -192,6 +206,23 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             balanceAdjustments = transactions.Count(t => addedBalanceAdjustmentIds.Contains(t.Id));
 
             await SaveSettingValueAsync(appSettings, LastSyncSettingKey, newestSeenUtc.ToUniversalTime().ToString("O"));
+
+            // Without this, these new records only ever land in this device's local
+            // snapshot and the direct finance_sync merge below — WPF never learns
+            // about them via phone_push, so its next periodic push (every 5 min, or
+            // on any local change) overwrites finance_sync with its own DB and wipes
+            // them out of the cloud entirely.
+            if (newTransactionsForPush.Count > 0 || matchedBillStatusesForPush.Count > 0)
+            {
+                var push = new PushPayload
+                {
+                    NewTransactions = newTransactionsForPush,
+                    UpdatedBillStatuses = matchedBillStatusesForPush
+                };
+                if (sync.HasLocalSync) await sync.PushToPcAsync(push);
+                if (sync.HasCloudSync) await sync.PushToSupabaseAsync(push);
+            }
+
             var pushedSnapshot = await PushCurrentSnapshotToCloudAsync();
 
             return new UpBankWebSyncResult(imported, balanceAdjustments, matchedBills, pushedSnapshot);
@@ -451,7 +482,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         (weeklyBudgets?.Count ?? 0) > 0 ||
         (trips?.Count ?? 0) > 0;
 
-    private bool TryMarkMatchingBillPaid(List<Bill> bills, List<BillOccurrenceStatus> statuses, int accountId, DateTime paidOn, int amountCents, int transactionId)
+    private BillOccurrenceStatus? TryMarkMatchingBillPaid(List<Bill> bills, List<BillOccurrenceStatus> statuses, int accountId, DateTime paidOn, int amountCents, int transactionId)
     {
         var candidates = bills
             .Select(b => new { Bill = b, DueDate = GetClosestBillDueDate(b, paidOn) })
@@ -462,7 +493,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             .OrderBy(x => Math.Abs((x.DueDate.Date - paidOn.Date).TotalDays))
             .ToList();
 
-        if (candidates.Count != 1) return false;
+        if (candidates.Count != 1) return null;
 
         var match = candidates[0];
         var status = statuses.FirstOrDefault(s => s.BillId == match.Bill.Id && s.DueDate.Date == match.DueDate.Date);
@@ -482,7 +513,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         status.MatchedTransactionId = transactionId;
         status.MatchNote = "Matched from Up Bank sync on iPhone";
         match.Bill.IsPaid = true;
-        return true;
+        return status;
     }
 
     private static bool IsBillOccurrencePaid(List<BillOccurrenceStatus> statuses, int billId, DateTime dueDate) =>
