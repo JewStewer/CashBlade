@@ -161,11 +161,12 @@ else
 
     private IEnumerable<Bill> GetFiltered()
     {
-        var today  = DateTime.Today;
-        var payEnd = State.NextPayDate.Date >= today ? State.NextPayDate.Date : today.AddDays(14);
+        var today      = DateTime.Today;
+        var payEnd     = State.NextPayDate.Date >= today ? State.NextPayDate.Date : today.AddDays(14);
+        var fourWeeksEnd = today.AddDays(28);
         IEnumerable<Bill> q = filter switch
         {
-            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd).OrderBy(b => b.EffectiveDueDate),
+            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= fourWeeksEnd).OrderBy(b => b.EffectiveDueDate),
             "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.EffectiveDueDate),
             _        => State.Bills.OrderBy(b => b.EffectiveDueDate)
         };

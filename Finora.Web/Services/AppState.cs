@@ -760,16 +760,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         //    Check prevDue before defaulting to unpaid.  Don't use bill.IsPaid
         //    — it's never auto-reset between cycles and would falsely show the
         //    NEW cycle as paid.
+        //    Bounded to a brief grace window around prevDue — without this,
+        //    a bill paid once kept inheriting "paid" for its entire next cycle
+        //    (weeks/months), showing future occurrences as already paid.
         if (effectiveDue.Date > DateTime.Today)
         {
             var prevDue = ReverseDueDate(effectiveDue, bill.Frequency);
-            var prevStatus = BillStatuses
-                .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == prevDue.Date);
-            if (prevStatus is not null) return prevStatus.IsPaid;
-            if (latest is not null)
+            if (Math.Abs((DateTime.Today - prevDue.Date).TotalDays) <= 3)
             {
-                var daysToPrev = Math.Abs((latest.DueDate.Date - prevDue.Date).TotalDays);
-                if (daysToPrev <= 3) return latest.IsPaid;
+                var prevStatus = BillStatuses
+                    .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == prevDue.Date);
+                if (prevStatus is not null) return prevStatus.IsPaid;
+                if (latest is not null)
+                {
+                    var daysToPrev = Math.Abs((latest.DueDate.Date - prevDue.Date).TotalDays);
+                    if (daysToPrev <= 3) return latest.IsPaid;
+                }
             }
         }
         return false;
