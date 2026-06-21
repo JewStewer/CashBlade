@@ -44,8 +44,10 @@ else
         {
             var budgetTotal = PlannedTotal(trip);
             var paid = PaidTotal(trip);
-            var progress = budgetTotal > 0 ? Math.Clamp(paid / budgetTotal, 0, 1) : 0;
-            var remaining = Math.Max(budgetTotal - paid, 0);
+            var saved = SavingsBalance(trip);
+            var funded = Math.Min(paid + saved, budgetTotal);
+            var progress = budgetTotal > 0 ? Math.Clamp(funded / budgetTotal, 0, 1) : 0;
+            var remaining = Math.Max(budgetTotal - funded, 0);
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick='() => Nav.NavigateTo($"trips/{trip.Id}")'>
                 <div style="display:flex;align-items:center;gap:10px">
                     <div style="flex:1">
@@ -79,7 +81,7 @@ else
                         <div class="progress-fill" style="width:@((int)(progress * 100))%;background:var(--teal)"></div>
                     </div>
                     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
-                        <span>@paid.ToString("C") paid</span>
+                        <span>@funded.ToString("C") funded</span>
                         <span>@progress.ToString("P0")</span>
                     </div>
                 }
@@ -102,6 +104,11 @@ else
 
     private static decimal PlannedTotal(Trip trip) => trip.BudgetItems.Sum(b => b.PlannedDollars);
     private static decimal PaidTotal(Trip trip) => trip.BudgetItems.Where(b => b.Paid).Sum(b => b.ActualDollars > 0 ? b.ActualDollars : b.PlannedDollars);
+    private decimal SavingsBalance(Trip trip)
+    {
+        if (trip.SavingsAccountId is null || !State.Accounts.Any(a => a.Id == trip.SavingsAccountId.Value)) return 0;
+        return Math.Max(State.GetAccountBalance(trip.SavingsAccountId.Value), 0);
+    }
 
     private static int DaysUntil(Trip trip)
     {
