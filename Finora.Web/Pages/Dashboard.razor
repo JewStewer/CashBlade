@@ -54,6 +54,24 @@ else
         </div>
     </div>
 
+    <div class="quick-actions">
+        <button class="quick-action" @onclick="() => showAddTxn = true">
+            <span>+</span>
+            <strong>Add Spend</strong>
+            <small>Record a transaction</small>
+        </button>
+        <button class="quick-action" @onclick="QuickSyncAsync" disabled="@_quickSyncing">
+            <span>S</span>
+            <strong>@(_quickSyncing ? "Syncing" : "Sync Now")</strong>
+            <small>@(string.IsNullOrWhiteSpace(_quickSyncStatus) ? "Push and pull" : _quickSyncStatus)</small>
+        </button>
+        <button class="quick-action" @onclick='() => Nav.NavigateTo("budget")'>
+            <span>$</span>
+            <strong>Budget</strong>
+            <small>Check safe spend</small>
+        </button>
+    </div>
+
     @if (ActionPrompts.Any())
     {
         <div class="action-stack">
@@ -171,6 +189,8 @@ else
 
 @code {
     private bool showAddTxn;
+    private bool _quickSyncing;
+    private string _quickSyncStatus = string.Empty;
 
     private (decimal Now, decimal AfterBills, decimal AfterPay) Forecast => State.GetForecastTotals();
 
@@ -282,6 +302,27 @@ else
     }
 
     private record ActionPrompt(string Title, string Message, string Route, string Action, string Tone);
+
+    private async Task QuickSyncAsync()
+    {
+        if (_quickSyncing) return;
+        _quickSyncing = true;
+        _quickSyncStatus = "Working...";
+        try
+        {
+            await State.SyncAndReloadAsync();
+            _quickSyncStatus = State.HasPendingChanges ? "Still pending" : "Synced";
+        }
+        catch
+        {
+            _quickSyncStatus = "Try Settings";
+        }
+        finally
+        {
+            _quickSyncing = false;
+            StateHasChanged();
+        }
+    }
 
     private Task OnTxnSaved()
     {

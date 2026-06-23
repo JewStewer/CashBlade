@@ -92,9 +92,10 @@
                         app.style.webkitTransform = '';
                         app.style.transform = '';
                     }
-                    window.scrollTo(0, 1);
+                    const page = document.querySelector('.page-content');
+                    const pageScrollTop = page ? page.scrollTop : 0;
                     requestAnimationFrame(() => {
-                        window.scrollTo(0, 0);
+                        if (page) page.scrollTop = pageScrollTop;
                         document.dispatchEvent(new Event('financeblade:paint-nudge'));
                     });
                 };

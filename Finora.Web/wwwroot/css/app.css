@@ -25,11 +25,13 @@ html {
     height: 100%;
     /* iOS PWA full-height fix */
     height: -webkit-fill-available;
+    overflow: hidden;
 }
 
 body {
     height: 100%;
     height: -webkit-fill-available;
+    overflow: hidden;
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
@@ -49,6 +51,7 @@ button, a, input, select, textarea, [role="button"] {
 #app {
     height: 100%;
     height: -webkit-fill-available;
+    overflow: hidden;
 }
 
 /* ── Layout ── */
@@ -57,6 +60,8 @@ button, a, input, select, textarea, [role="button"] {
     flex-direction: column;
     height: 100%;
     height: -webkit-fill-available;
+    min-height: 0;
+    width: 100%;
     max-width: 480px;
     margin: 0 auto;
     /* Prevent the shell from sitting behind the iOS status bar */
@@ -110,9 +115,13 @@ button, a, input, select, textarea, [role="button"] {
 
 .page-content {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     overflow-anchor: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
     /* Enough bottom padding to clear the fixed nav + home indicator */
     padding: 0 0 calc(var(--nav-height) + var(--safe-bottom) + 8px) 0;
 }
@@ -471,6 +480,8 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     padding-bottom: calc(16px + var(--safe-bottom));
 }
 
@@ -494,6 +505,8 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     gap: 6px;
     padding: 10px 16px;
     overflow-x: auto;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
 }
 
@@ -793,6 +806,8 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     grid-auto-columns: minmax(118px, 42%);
     gap: 8px;
     overflow-x: auto;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 2px;
     scrollbar-width: none;
 }
