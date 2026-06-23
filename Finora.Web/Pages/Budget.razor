@@ -1355,8 +1355,8 @@ else if (_tab == "Forecast")
                 var billsTotal = billsToday.Sum(o => o.Bill.AmountDollars);
                 balance -= billsTotal;
 
-                var isPayday = date >= State.NextPayDate.Date && (date - State.NextPayDate.Date).Days % 7 == 0;
-                var pay = isPayday ? State.EstimatedPayAmount : 0m;
+                var isPayday = IsForecastPayday(date);
+                var pay = isPayday ? ForecastWeeklyPayAmount : 0m;
                 if (pay > 0) balance += pay;
 
                 string? note = billsToday.Count switch
@@ -1398,6 +1398,20 @@ else if (_tab == "Forecast")
         if (exact is not null) return exact.IsPaid;
         var effective = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
         return dueDate.Date == effective.Date && State.IsBillPaid(bill);
+    }
+
+    private decimal ForecastWeeklyPayAmount =>
+        State.WeeklyIncome > 0 ? State.WeeklyIncome : State.EstimatedPayAmount;
+
+    private bool IsForecastPayday(DateTime date)
+    {
+        if (ForecastWeeklyPayAmount <= 0) return false;
+
+        var payday = State.NextPayDate.Date;
+        while (payday < DateTime.Today)
+            payday = payday.AddDays(7);
+
+        return date.Date >= payday && (date.Date - payday).Days % 7 == 0;
     }
 
     private static DateTime AdvanceDueDate(DateTime d, BillFrequency f) => f switch
