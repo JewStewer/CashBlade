@@ -225,9 +225,9 @@
       "url": "js\/push.js"
     },
     {
-      "hash": "sha256-iLqPLUjK0U0I2SGg5DJUQkJtj+RUR8d5OCJOhqonzZ4=",
+      "hash": "sha256-JxEmPa1mLkcgc4yaigtYqL5XMBtEEu52+xcGcq34R2c=",
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "2sRwgK6J"
+  "version": "fzPJiPHN"
 };
