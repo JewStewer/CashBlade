@@ -43,39 +43,6 @@ else
         </div>
     </div>
 
-    <!-- Stat grid -->
-    <div class="stat-grid" style="margin-top:12px">
-        <div class="stat-tile">
-            <div class="stat-label">Today's Spending</div>
-            <div class="stat-value">@State.GetTodaySpending().ToString("C")</div>
-        </div>
-        <div class="stat-tile">
-            <div class="stat-label">Safe to Spend</div>
-            <div class="stat-value @(State.SafeToSpendAmount>0?"green":"red")">
-                @State.SafeToSpendAmount.ToString("C")
-            </div>
-            <div class="stat-sub">After bills, savings and essentials</div>
-        </div>
-        <div class="stat-tile">
-            <div class="stat-label">This Week</div>
-            <div class="stat-value @(ThisWeek > LastWeek ? "red" : "green")">@ThisWeek.ToString("C")</div>
-            @if (LastWeek > 0)
-            {
-                var diff = ThisWeek - LastWeek;
-                <div class="stat-sub" style="color:@(diff>0?"var(--red)":"var(--green)")">
-                    @(diff >= 0 ? "▲" : "▼") @Math.Abs(diff).ToString("C") vs last wk
-                </div>
-            }
-        </div>
-        <div class="stat-tile">
-            <div class="stat-label">Next Payday</div>
-            <div class="stat-value" style="font-size:15px">
-                @DaysUntilPayday() @(DaysUntilPayday()==0?"":"day"+(DaysUntilPayday()==1?"":"s"))
-            </div>
-            <div class="stat-sub">@State.NextPayDate.ToString("dd MMM")</div>
-        </div>
-    </div>
-
     <div style="padding:12px 16px 0">
         <div class="hero-summary @MobileStatusTone">
             <div class="hero-copy">
@@ -85,23 +52,6 @@ else
             </div>
             <button class="btn btn-sm btn-secondary" @onclick="() => Nav.NavigateTo(MobileStatusRoute)">@MobileStatusAction</button>
         </div>
-    </div>
-
-    <div class="payday-runway">
-        <div class="runway-head">
-            <div>
-                <span>Payday runway</span>
-                <strong>@DaysUntilPayday() days left</strong>
-            </div>
-            <div>
-                <span>Daily guide</span>
-                <strong>@DailySpendGuide.ToString("C")</strong>
-            </div>
-        </div>
-        <div class="runway-track">
-            <div class="runway-fill" style="width:@PaydayProgressPercent%"></div>
-        </div>
-        <div class="runway-note">Safe to spend spread across the days until @State.NextPayDate.ToString("dd MMM").</div>
     </div>
 
     @if (ActionPrompts.Any())
@@ -120,110 +70,6 @@ else
             }
         </div>
     }
-
-    <div class="section-header" style="margin-top:8px">
-        <span class="section-title">Watchlist</span>
-        <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("budget")' style="padding:4px 10px;font-size:12px">Open Budget</button>
-    </div>
-    <div style="padding:0 16px">
-        <div class="card" style="padding:14px">
-            <div>
-                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Cash Runway</div>
-                <div style="font-size:15px;font-weight:700;margin-top:4px">@CashRunwaySummary</div>
-                <div style="font-size:12px;color:var(--text3);margin-top:5px">How long your Safe to Spend balance lasts at your recent daily spend rate.</div>
-            </div>
-            <div style="height:1px;background:var(--border);margin:12px 0"></div>
-            <div>
-                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Upcoming Squeeze</div>
-                <div style="font-size:15px;font-weight:700;margin-top:4px;color:@(UpcomingSqueezeBalance < 0 ? "var(--red)" : "var(--text)")">@UpcomingSqueezeSummary</div>
-                <div style="font-size:12px;color:var(--text3);margin-top:5px">The lowest forecast balance before payday and the bill causing it.</div>
-            </div>
-        </div>
-    </div>
-
-    @if (DebtProgressCards.Any())
-    {
-        <div class="section-header" style="margin-top:8px">
-            <span class="section-title">Debt Progress</span>
-            <span style="font-size:11px;color:var(--text3)">@DebtProgressCards.Sum(c => c.PaidThisMonth).ToString("C") paid this month</span>
-        </div>
-        <div style="padding:0 16px;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity">
-            @foreach (var debt in DebtProgressCards)
-            {
-                <div class="card" style="min-width:240px;scroll-snap-align:start;padding:14px">
-                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-                        <div style="min-width:0">
-                            <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@debt.Name</div>
-                            <div style="font-size:12px;color:var(--text3);margin-top:2px">@debt.PayoffEstimate</div>
-                        </div>
-                        <div style="font-size:13px;font-weight:700;color:var(--red);white-space:nowrap">@debt.Balance.ToString("C")</div>
-                    </div>
-                    <div style="height:6px;background:var(--surface2);border-radius:999px;overflow:hidden;margin:12px 0 10px">
-                        <div style="height:100%;width:@debt.ProgressPercent%;background:var(--teal)"></div>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;font-size:12px">
-                        <span style="color:var(--text3)">Paid this month</span>
-                        <strong style="color:var(--green)">@debt.PaidThisMonth.ToString("C")</strong>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px">
-                        <span style="color:var(--text3)">Recent match</span>
-                        <strong style="text-align:right;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@debt.RecentPayment</strong>
-                    </div>
-                </div>
-            }
-        </div>
-    }
-
-    <div class="quick-actions">
-        <button class="quick-action" @onclick='() => Nav.NavigateTo("transactions")'>
-            <span>+</span>
-            <strong>Transactions</strong>
-            <small>add or review</small>
-        </button>
-        <button class="quick-action" @onclick='() => Nav.NavigateTo("bills")'>
-            <span>$</span>
-            <strong>Bills</strong>
-            <small>@State.TotalBillsDue.ToString("C") due</small>
-        </button>
-        <button class="quick-action" @onclick='() => Nav.NavigateTo("accounts")'>
-            <span>%</span>
-            <strong>Accounts</strong>
-            <small>@State.Accounts.Count buckets</small>
-        </button>
-    </div>
-
-    <!-- Balance Forecast -->
-    <div class="section-header" style="margin-top:8px">
-        <span class="section-title">Balance Forecast</span>
-        <span style="font-size:11px;color:var(--text3)">pay @State.NextPayDate.ToString("dd MMM")</span>
-    </div>
-    <div style="padding:0 16px">
-        <div class="card" style="padding:12px">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Shows today's balance, then what remains after unpaid bills before payday, then estimated pay if available.</div>
-            <div style="display:flex;align-items:stretch;gap:2px">
-                <div style="flex:1;text-align:center;padding:4px 0">
-                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Now</div>
-                    <div style="font-size:17px;font-weight:700;margin-top:2px;color:@(Forecast.Now>=0?"var(--text)":"var(--red)")">@Forecast.Now.ToString("C")</div>
-                    <div style="font-size:11px;min-height:15px"></div>
-                </div>
-                <div style="display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:16px;padding:0 4px">›</div>
-                <div style="flex:1;text-align:center;padding:4px 0">
-                    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">Before Pay</div>
-                    <div style="font-size:17px;font-weight:700;margin-top:2px;color:@(Forecast.AfterBills>=0?"var(--text)":"var(--red)")">@Forecast.AfterBills.ToString("C")</div>
-                    <div style="font-size:11px;min-height:15px;color:var(--red)">@(Forecast.AfterBills - Forecast.Now < 0 ? (Forecast.AfterBills - Forecast.Now).ToString("C") + " bills" : "")</div>
-                </div>
-                @if (State.HasPayEstimate)
-                {
-                    <div style="display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:16px;padding:0 4px">›</div>
-                    <div style="flex:1;text-align:center;padding:4px 0">
-                        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3)">After Pay</div>
-                        <div style="font-size:17px;font-weight:700;margin-top:2px;color:var(--green)">@Forecast.AfterPay.ToString("C")</div>
-                        <div style="font-size:11px;min-height:15px;color:var(--green)">@(State.EstimatedPayAmount > 0 ? "+" + State.EstimatedPayAmount.ToString("C") : "")</div>
-                    </div>
-                }
-            </div>
-        </div>
-    </div>
 
     <!-- Bills due -->
     @if (State.BillsDueBeforePayday.Count > 0)
@@ -253,35 +99,6 @@ else
             <div style="padding:10px 16px;border-top:1px solid var(--border)">
                 <button class="btn btn-sm btn-secondary btn-full" @onclick='() => Nav.NavigateTo("bills")'>Open Bills</button>
             </div>
-        </div>
-    }
-
-    <!-- Upcoming 14-day timeline -->
-    @if (UpcomingTimeline.Any())
-    {
-        <div class="section-header" style="margin-top:8px">
-            <span class="section-title">Upcoming</span>
-            <span style="font-size:11px;color:var(--text3)">next 14 days</span>
-        </div>
-        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
-            @foreach (var item in UpcomingTimeline)
-            {
-                <div class="list-row">
-                    <div style="text-align:center;width:38px;flex-shrink:0">
-                        <div style="font-size:10px;color:@(item.IsToday?"var(--teal)":"var(--text3)")">@item.Date.ToString("ddd").ToUpper()</div>
-                        <div style="font-size:16px;font-weight:700;color:@(item.IsToday?"var(--teal)":"var(--text)")">@item.Date.Day</div>
-                        <div style="font-size:10px;color:var(--text3)">@item.Date.ToString("MMM")</div>
-                    </div>
-                    <div class="row-icon" style="background:@(item.IsIncome?"rgba(52,211,153,0.15)":"rgba(248,113,113,0.12)")">
-                        @(item.IsIncome ? "💰" : "📋")
-                    </div>
-                    <div class="row-main">
-                        <div class="row-title">@item.Name</div>
-                        @if (!string.IsNullOrEmpty(item.Sub)) { <div class="row-sub">@item.Sub</div> }
-                    </div>
-                    <span class="row-amount @(item.IsIncome?"pos":"neg")">@item.Amount.ToString("C")</span>
-                </div>
-            }
         </div>
     }
 
@@ -318,37 +135,6 @@ else
         }
     </div>
 
-    <!-- Monthly trend -->
-    @if (Trend.Any(m => m.Income > 0 || m.Spending > 0))
-    {
-        <div class="section-header" style="margin-top:8px"><span class="section-title">6-Month Trend</span></div>
-        <div style="padding:0 16px 16px">
-            <div class="card" style="padding:12px 8px">
-                <div style="display:flex;align-items:flex-end;gap:6px;height:80px;padding:0 4px">
-                    @foreach (var m in Trend)
-                    {
-                        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
-                            <div style="display:flex;gap:2px;align-items:flex-end;height:60px">
-                                <div style="width:8px;background:var(--green);border-radius:2px 2px 0 0;height:@(Math.Max((int)(m.Income/TrendMax*60),2))px"></div>
-                                <div style="width:8px;background:var(--red);border-radius:2px 2px 0 0;height:@(Math.Max((int)(m.Spending/TrendMax*60),2))px"></div>
-                            </div>
-                            <div style="font-size:9px;color:var(--text3)">@m.Month</div>
-                        </div>
-                    }
-                </div>
-                <div style="display:flex;gap:12px;margin-top:8px;justify-content:center">
-                    <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3)">
-                        <div style="width:8px;height:8px;background:var(--green);border-radius:2px"></div> Income
-                    </div>
-                    <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3)">
-                        <div style="width:8px;height:8px;background:var(--red);border-radius:2px"></div> Spending
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
-
-    <!-- Add transaction FAB -->
     <div style="height:16px"></div>
 }
 
@@ -367,23 +153,9 @@ else
     private bool showAddTxn;
 
     private (decimal Now, decimal AfterBills, decimal AfterPay) Forecast => State.GetForecastTotals();
-    private List<(string Month, decimal Income, decimal Spending)> Trend => State.GetMonthlyTrend();
-    private decimal TrendMax => Trend.Any() ? Math.Max(Trend.Max(m => Math.Max(m.Income, m.Spending)), 1m) : 1m;
 
-    private int DaysUntilPayday() => Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0);
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
-    private decimal AvgDailySpend => State.GetAvgDailySpending();
-    private decimal DailySpendGuide => DaysUntilPayday() <= 0 ? State.SafeToSpendAmount : State.SafeToSpendAmount / Math.Max(DaysUntilPayday(), 1);
-    private int PaydayProgressPercent => Math.Clamp(100 - (DaysUntilPayday() * 100 / 14), 8, 100);
-    private string CashRunwaySummary => AvgDailySpend <= 0
-        ? "No daily spend trend yet."
-        : $"{Math.Floor(State.SafeToSpendAmount / AvgDailySpend):0} days at {AvgDailySpend:C}/day.";
-    private (decimal Balance, string Description, DateTime Date) UpcomingSqueeze => GetUpcomingSqueeze();
-    private decimal UpcomingSqueezeBalance => UpcomingSqueeze.Balance;
-    private string UpcomingSqueezeSummary => State.BillsDueBeforePayday.Count == 0
-        ? "No unpaid bills before payday."
-        : $"{UpcomingSqueeze.Date:dd MMM}: {UpcomingSqueeze.Balance:C} after {UpcomingSqueeze.Description}.";
 
     private string MobileStatusTitle
     {
@@ -404,7 +176,8 @@ else
             if (urgent is not null) return $"{urgent.Name} is due {DueLabel(urgent.EffectiveDueDate)}. Check it off or move money before it lands.";
             if (Forecast.AfterBills < 0) return $"You are forecast to be {Math.Abs(Forecast.AfterBills):C} short before payday.";
             if (State.SafeToSpendAmount <= 0) return "Your safe-to-spend buffer is gone for this pay cycle.";
-            return $"{DailySpendGuide:C} per day keeps you steady until payday.";
+            var days = Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 1);
+            return $"{(State.SafeToSpendAmount / days):C} per day keeps you steady until payday.";
         }
     }
 
@@ -468,118 +241,12 @@ else
     }
 
     private record ActionPrompt(string Title, string Message, string Route, string Action, string Tone);
-    private record UpcomingItem(DateTime Date, string Name, string Sub, decimal Amount, bool IsIncome, bool IsToday);
-    private record DebtProgressCard(string Name, decimal Balance, decimal PaidThisMonth, int ProgressPercent, string PayoffEstimate, string RecentPayment);
-
-    private List<DebtProgressCard> DebtProgressCards => State.Debts
-        .Where(d => d.BalanceCents > 0)
-        .OrderByDescending(d => d.BalanceCents)
-        .Take(6)
-        .Select(BuildDebtProgressCard)
-        .ToList();
-
-    private DebtProgressCard BuildDebtProgressCard(Finora.Web.Models.Debt debt)
-    {
-        var payments = State.DebtPayments
-            .Where(p => p.DebtId == debt.Id)
-            .OrderByDescending(p => p.PaidOn)
-            .ToList();
-        var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-        var paidThisMonth = payments
-            .Where(p => p.PaidOn.Date >= monthStart)
-            .Sum(p => p.AmountDollars);
-        var original = debt.OriginalBalanceDollars > 0
-            ? debt.OriginalBalanceDollars
-            : debt.BalanceDollars + payments.Sum(p => p.AmountDollars);
-        var progress = original <= 0 ? 0 : (int)Math.Clamp(Math.Round((original - debt.BalanceDollars) / original * 100m), 0m, 100m);
-        var monthlyPayment = ToMonthlyPayment(debt.MinimumPaymentDollars, debt.PaymentPeriod);
-        var payoff = EstimatePayoff(debt.BalanceDollars, monthlyPayment, debt.InterestRate);
-        var recent = payments.FirstOrDefault();
-        var recentText = recent is null
-            ? "No matched payments"
-            : $"{recent.AmountDollars:C} on {recent.PaidOn:dd MMM}";
-
-        return new DebtProgressCard(debt.Name, debt.BalanceDollars, paidThisMonth, progress, payoff, recentText);
-    }
-
-    private static decimal ToMonthlyPayment(decimal payment, string? period) => period switch
-    {
-        "Weekly" => payment * 52m / 12m,
-        "Fortnightly" => payment * 26m / 12m,
-        _ => payment
-    };
-
-    private static string EstimatePayoff(decimal balance, decimal monthlyPayment, decimal? annualInterestRate)
-    {
-        if (balance <= 0) return "Paid off";
-        if (monthlyPayment <= 0) return "No payment set";
-
-        var monthlyRate = Math.Max(annualInterestRate ?? 0m, 0m) / 12m;
-        var remaining = balance;
-        var months = 0;
-        while (remaining > 0.01m && months < 600)
-        {
-            remaining += remaining * monthlyRate;
-            if (monthlyPayment <= remaining * monthlyRate && monthlyRate > 0) return "Payment below interest";
-            remaining -= monthlyPayment;
-            months++;
-        }
-
-        if (months >= 600) return "50+ years";
-        var date = DateTime.Today.AddMonths(Math.Max(months, 1));
-        return $"{months} mo, around {date:MMM yyyy}";
-    }
-
-    private List<UpcomingItem> UpcomingTimeline
-    {
-        get
-        {
-            var today = DateTime.Today;
-            var items = new List<UpcomingItem>();
-            // Unpaid bills in next 14 days
-            foreach (var b in State.Bills.Where(b => !State.IsBillPaid(b)
-                && b.EffectiveDueDate.Date >= today && b.EffectiveDueDate.Date <= today.AddDays(14)))
-            {
-                items.Add(new(b.EffectiveDueDate.Date, b.Name, b.AccountName, b.AmountDollars,
-                    false, b.EffectiveDueDate.Date == today));
-            }
-            // Payday in next 14 days
-            if (State.NextPayDate.Date >= today && State.NextPayDate.Date <= today.AddDays(14))
-            {
-                items.Add(new(State.NextPayDate.Date, "Payday",
-                    State.HasPayEstimate ? $"~{State.EstimatedPayAmount:C}" : "",
-                    State.EstimatedPayAmount, true, State.NextPayDate.Date == today));
-            }
-            return items.OrderBy(i => i.Date).ToList();
-        }
-    }
 
     private Task OnTxnSaved()
     {
         showAddTxn = false;
         StateHasChanged();
         return Task.CompletedTask;
-    }
-
-    private (decimal Balance, string Description, DateTime Date) GetUpcomingSqueeze()
-    {
-        var balance = State.TotalBalance;
-        var lowest = balance;
-        var description = "today";
-        var date = DateTime.Today;
-
-        foreach (var bill in State.BillsDueBeforePayday.OrderBy(b => b.EffectiveDueDate))
-        {
-            balance -= bill.AmountDollars;
-            if (balance < lowest)
-            {
-                lowest = balance;
-                description = bill.Name;
-                date = bill.EffectiveDueDate;
-            }
-        }
-
-        return (lowest, description, date);
     }
 
     private static string GetCategoryEmoji(string cat) => cat switch

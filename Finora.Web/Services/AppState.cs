@@ -550,8 +550,23 @@ public class AppState(IndexedDbService db, SyncService sync)
             BudgetSavings = budget.SavingsDollars;
             BudgetUnplanned = budget.UnplannedDollars;
         }
+
+        // Phone-side overrides take precedence over the desktop-synced WeeklyBudget
+        // record, so targets can be tweaked from the phone without WPF running.
+        WeeklyIncome = GetBudgetOverride("Income", WeeklyIncome);
+        BudgetBills = GetBudgetOverride("Bills", BudgetBills);
+        BudgetEssentials = GetBudgetOverride("Essentials", BudgetEssentials);
+        BudgetSavings = GetBudgetOverride("Savings", BudgetSavings);
+        BudgetUnplanned = GetBudgetOverride("Unplanned", BudgetUnplanned);
+
         PlannedSavingsTransfers = CalculatePlannedSavingsTransfers();
         BudgetSavings = Math.Max(BudgetSavings, PlannedSavingsTransfers);
+    }
+
+    private decimal GetBudgetOverride(string field, decimal fallback)
+    {
+        var raw = GetSetting($"WeeklyBudgetOverride:{field}");
+        return decimal.TryParse(raw, out var value) ? value : fallback;
     }
 
     private decimal CalculatePlannedSavingsTransfers()
@@ -2056,6 +2071,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
+    }
+
+    // Phone-editable weekly budget targets — field is one of Income/Bills/Essentials/
+    // Savings/Unplanned. Saved as a setting override so it survives the next sync
+    // pull instead of being reverted by the desktop's WeeklyBudget record.
+    public async Task SetBudgetOverrideAsync(string field, string? raw)
+    {
+        if (!decimal.TryParse(raw, out var dollars) || dollars < 0) dollars = 0;
+        await SaveSettingAsync($"WeeklyBudgetOverride:{field}", dollars.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     // ── Merge phone-side pending changes into the cloud's finance_sync ────────

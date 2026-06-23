@@ -295,8 +295,20 @@ else
         OnSaved="() => _accountGoalDraft = null" />
 }
 
+<!-- FAB -->
+<button class="btn btn-primary" @onclick="() => showAddTxn = true"
+    style="position:fixed;bottom:calc(var(--nav-height)+var(--safe-bottom)+16px);right:16px;width:52px;height:52px;border-radius:50%;padding:0;font-size:22px;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:10">
+    +
+</button>
+
+@if (showAddTxn)
+{
+    <AddTransactionModal OnClose="() => showAddTxn = false" OnSaved="() => showAddTxn = false" />
+}
+
 @code {
     private Debt? _debtDraft;
     private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
+    private bool showAddTxn;
 }
