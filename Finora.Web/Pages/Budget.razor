@@ -741,7 +741,10 @@ else if (_tab == "Categories")
                         <div style="font-size:14px;font-weight:600">@sub.WeeklyAmount.ToString("C")<span style="font-size:10px;color:var(--text3);font-weight:400">/wk</span></div>
                         @if (!sub.IsAlreadyBill)
                         {
-                            <button @onclick="() => State.IgnoreSubscriptionAsync(sub.Name)" style="margin-top:4px;background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Ignore</button>
+                            <div style="display:flex;gap:8px;margin-top:4px;justify-content:flex-end">
+                                <button @onclick="() => StartAddSubscriptionAsBill(sub)" style="background:none;border:none;color:var(--teal);font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Add as Bill</button>
+                                <button @onclick="() => State.IgnoreSubscriptionAsync(sub.Name)" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline">Ignore</button>
+                            </div>
                         }
                     </div>
                 </div>
@@ -1184,6 +1187,19 @@ else if (_tab == "Forecast")
     private async Task SetSavingsGoalAsync(int accountId, decimal targetDollars, DateTime targetDate)
     {
         await State.SetAccountGoalAsync(accountId, targetDollars, targetDate);
+    }
+
+    private void StartAddSubscriptionAsBill(RecurringPayment sub)
+    {
+        _billDraft = new Bill
+        {
+            Name = sub.Name,
+            AmountDollars = sub.AverageAmount,
+            DueDate = sub.NextExpected,
+            NextPayDate = sub.NextExpected,
+            Frequency = Enum.Parse<BillFrequency>(sub.Frequency),
+            AccountId = State.Accounts.FirstOrDefault(a => a.Name == sub.AccountName)?.Id ?? 0
+        };
     }
 
     private void StartAddInstallmentBill(decimal perInstallment, int freqWeeks)

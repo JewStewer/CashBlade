@@ -9,51 +9,12 @@
 //   VAPID_PRIVATE_KEY — from: npx web-push generate-vapid-keys
 //   VAPID_EMAIL       — e.g. mailto:you@example.com
 
-const {
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY,
-    VAPID_EMAIL
-} = process.env;
-
-const vapidEmail = VAPID_EMAIL || 'mailto:admin@cashblade.app';
-
-const requiredSecrets = {
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY
-};
-
-const missingSecrets = Object.entries(requiredSecrets)
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
-
-if (missingSecrets.length > 0) {
-    const message = `Missing required GitHub Actions secrets: ${missingSecrets.join(', ')}`;
-    console.error(`::error title=Bill reminders not configured::${message}`);
-    console.error('Add these secrets in GitHub: Settings > Secrets and variables > Actions > Repository secrets.');
-    process.exit(1);
-}
-
 const webpush = require('web-push');
+const { loadEnv, makeSupabaseClient, sendToAllSubscriptions, isBillUnpaid } = require('./push-helpers');
 
-webpush.setVapidDetails(vapidEmail, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-
-const headers = {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    'Content-Type': 'application/json'
-};
-
-const baseUrl = SUPABASE_URL.replace(/\/+$/, '');
-
-async function supabaseGet(path) {
-    const res = await fetch(`${baseUrl}/rest/v1/${path}`, { headers });
-    if (!res.ok) throw new Error(`Supabase ${path}: ${res.status} ${await res.text()}`);
-    return res.json();
-}
+const env = loadEnv(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'], 'Bill reminders not configured');
+webpush.setVapidDetails(env.VAPID_EMAIL || 'mailto:admin@cashblade.app', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+const supabase = makeSupabaseClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
 
 function daysBetween(dateStr) {
     const today = new Date();
@@ -65,7 +26,7 @@ function daysBetween(dateStr) {
 
 async function main() {
     // 1. Get the latest sync payload (bills live inside finance_sync)
-    const syncRows = await supabaseGet('finance_sync?id=eq.main&select=payload');
+    const syncRows = await supabase.get('finance_sync?id=eq.main&select=payload');
     if (!syncRows.length) {
         console.log('No sync data found — skipping.');
         return;
@@ -77,22 +38,12 @@ async function main() {
 
     const bills = payload.bills ?? [];
     const statuses = payload.billOccurrenceStatuses ?? [];
-    const today = new Date(); today.setHours(0, 0, 0, 0);
 
     // 2. Find unpaid bills due within 3 days
     const upcomingBills = bills.filter(b => {
-        if (b.isPaid) return false;
-        const dueDate = new Date(b.dueDate); dueDate.setHours(0, 0, 0, 0);
         const days = daysBetween(b.dueDate);
         if (days < 0 || days > 3) return false;
-
-        // Check BillOccurrenceStatuses — if the latest status for this bill marks it paid, skip
-        const latestStatus = statuses
-            .filter(s => s.billId === b.id)
-            .sort((a, z) => new Date(z.dueDate) - new Date(a.dueDate))[0];
-        if (latestStatus?.isPaid) return false;
-
-        return true;
+        return isBillUnpaid(b, statuses);
     });
 
     if (!upcomingBills.length) {
@@ -114,41 +65,8 @@ async function main() {
         body: `Upcoming: ${billList}`
     });
 
-    // 4. Get push subscriptions
-    const subscriptions = await supabaseGet('push_subscriptions?select=id,subscription');
-    if (!subscriptions.length) {
-        console.log('No push subscriptions found — nothing to send.');
-        return;
-    }
-
-    console.log(`Sending to ${subscriptions.length} subscription(s)…`);
-
-    // 5. Send push to each subscriber
-    const results = await Promise.allSettled(
-        subscriptions.map(async row => {
-            let sub;
-            try { sub = JSON.parse(row.subscription); }
-            catch { console.warn(`Invalid subscription JSON for id=${row.id}`); return; }
-
-            try {
-                await webpush.sendNotification(sub, notification);
-                console.log(`✓ Sent to ${row.id}`);
-            } catch (err) {
-                if (err.statusCode === 410 || err.statusCode === 404) {
-                    // Subscription expired — delete it
-                    console.log(`Removing expired subscription ${row.id}`);
-                    await fetch(`${baseUrl}/rest/v1/push_subscriptions?id=eq.${row.id}`, {
-                        method: 'DELETE', headers
-                    });
-                } else {
-                    console.error(`Failed for ${row.id}:`, err.message);
-                }
-            }
-        })
-    );
-
-    const sent = results.filter(r => r.status === 'fulfilled').length;
-    console.log(`Done. ${sent}/${subscriptions.length} notifications sent.`);
+    // 4. Send to all subscribed devices
+    await sendToAllSubscriptions(webpush, supabase, notification);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

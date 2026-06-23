@@ -1068,6 +1068,36 @@ public class AppState(IndexedDbService db, SyncService sync)
         return cleaned;
     }
 
+    // ── Category suggestion (live lookup over history — learns from corrections automatically) ──
+    public int? SuggestCategoryId(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return null;
+
+        var normalized = NormalizeRecurringDescription(description);
+        var exactMatch = Transactions
+            .Where(t => t.CategoryId != 0 && NormalizeRecurringDescription(t.Description) == normalized)
+            .GroupBy(t => t.CategoryId)
+            .OrderByDescending(g => g.Count())
+            .ThenByDescending(g => g.Max(t => t.Date))
+            .FirstOrDefault();
+        if (exactMatch is not null) return exactMatch.Key;
+
+        // No exact repeat — fall back to a first-word match (e.g. "Woolworths Marrickville"
+        // vs "Woolworths Bondi"), requiring 2+ matches so a one-off coincidence can't suggest
+        // the wrong category.
+        var firstWord = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (firstWord is null || firstWord.Length < 4) return null;
+
+        var wordMatch = Transactions
+            .Where(t => t.CategoryId != 0 && t.Description.StartsWith(firstWord, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(t => t.CategoryId)
+            .OrderByDescending(g => g.Count())
+            .ThenByDescending(g => g.Max(t => t.Date))
+            .FirstOrDefault();
+
+        return wordMatch is not null && wordMatch.Count() >= 2 ? wordMatch.Key : null;
+    }
+
     // ── Data export ────────────────────────────────────────────────────────────
     public string BuildTransactionsCsv()
     {
