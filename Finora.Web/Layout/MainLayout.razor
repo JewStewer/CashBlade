@@ -133,6 +133,7 @@
     private PeriodicTimer? _syncTimer;
     private CancellationTokenSource? _syncCts;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
+    private bool _nudgedAfterLoad;
 
     protected override void OnInitialized()
     {
@@ -166,6 +167,17 @@
                 _dotNetRef = DotNetObjectReference.Create(this);
                 await JS.InvokeVoidAsync("financeBlade.registerOnVisible", _dotNetRef);
             }
+            catch { }
+        }
+
+        // The render that switches the dashboard from its loading spinner to
+        // real content happens with no user gesture in the call stack, which
+        // WKWebView on iOS can fail to paint until the user taps the screen.
+        // Nudge a reflow ourselves so a cold launch doesn't look stuck.
+        if (State.IsLoaded && !_nudgedAfterLoad)
+        {
+            _nudgedAfterLoad = true;
+            try { await JS.InvokeVoidAsync("financeBlade.nudgeRepaint"); }
             catch { }
         }
     }
