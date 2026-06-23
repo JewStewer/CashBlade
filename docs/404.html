@@ -67,13 +67,28 @@
             },
             // Forces WKWebView to repaint. iOS's WKWebView frequently fails to
             // flush the screen after DOM updates driven purely by async/await
-            // (IndexedDB, fetch) with no user gesture in the call stack, leaving
-            // the last-painted frame (e.g. the loading spinner) stuck on screen
-            // until a touch event forces a reflow. Toggling display forces one.
+            // (IndexedDB, fetch, background sync) with no user gesture in the
+            // call stack, leaving the last-painted frame (e.g. the loading
+            // spinner, or a badge that's already gone in the DOM) stuck on
+            // screen until a touch event forces a reflow. A single
+            // display-toggle isn't reliably enough on every iOS/WKWebView
+            // build, so this stacks a few different reflow/composite triggers
+            // and retries briefly in case the first attempt races WKWebView's
+            // own repaint scheduling.
             nudgeRepaint: () => {
-                document.body.style.display = 'none';
-                void document.body.offsetHeight;
-                document.body.style.display = '';
+                const nudgeOnce = () => {
+                    const root = document.documentElement;
+                    document.body.style.display = 'none';
+                    void document.body.offsetHeight;
+                    document.body.style.display = '';
+                    root.style.transform = 'translateZ(0)';
+                    void root.offsetHeight;
+                    root.style.transform = '';
+                    window.scrollTo(0, 1);
+                    requestAnimationFrame(() => window.scrollTo(0, 0));
+                };
+                nudgeOnce();
+                [50, 150, 400].forEach(ms => setTimeout(nudgeOnce, ms));
             }
         };
     </script>

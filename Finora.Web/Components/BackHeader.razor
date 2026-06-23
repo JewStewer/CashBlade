@@ -1,0 +1,13 @@
+@inject NavigationManager Nav
+
+<div class="back-row" @onclick="() => Nav.NavigateTo(To)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    <span>@Label</span>
+</div>
+
+@code {
+    [Parameter] public string To { get; set; } = "more";
+    [Parameter] public string Label { get; set; } = "Back";
+}

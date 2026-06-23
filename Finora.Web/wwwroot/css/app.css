@@ -92,6 +92,21 @@ button, a, input, select, textarea, [role="button"] {
     flex: 1;
 }
 
+.back-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 16px 0;
+    color: var(--text3);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    width: fit-content;
+}
+
+.back-row svg { width: 17px; height: 17px; flex-shrink: 0; }
+
 .page-content {
     flex: 1;
     overflow-y: auto;

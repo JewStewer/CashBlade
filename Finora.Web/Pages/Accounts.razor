@@ -185,21 +185,17 @@ else
 }
 
 <!-- Savings goals -->
-@{
-    var accountGoals = State.Accounts.Where(a => a.TargetCents is not null).ToList();
-    var hasSavingsGoals = State.SavingsGoals.Any() || accountGoals.Any();
-}
 <div class="section-header" style="margin-top:8px">
     <span class="section-title">Savings Goals</span>
     <div style="display:flex;align-items:center;gap:10px">
-        @if (hasSavingsGoals)
+        @if (State.SavingsGoals.Any())
         {
-            <span style="font-size:13px;color:var(--purple)">@((State.SavingsGoals.Sum(g => g.CurrentDollars) + accountGoals.Sum(a => State.GetAccountBalance(a.Id))).ToString("C"))</span>
+            <span style="font-size:13px;color:var(--purple)">@(State.SavingsGoals.Sum(g => g.CurrentDollars).ToString("C"))</span>
         }
         <button class="btn btn-secondary btn-sm" @onclick='() => _goalDraft = new SavingsGoal()'>+ Add</button>
     </div>
 </div>
-@if (hasSavingsGoals)
+@if (State.SavingsGoals.Any())
 {
     <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
         @foreach (var goal in State.SavingsGoals)
@@ -231,6 +227,26 @@ else
                 </div>
             </div>
         }
+    </div>
+}
+else
+{
+    <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        No savings goals yet — tap "+ Add" to create one.
+    </div>
+}
+
+<!-- Account targets (a balance goal attached to an existing account, distinct from a dedicated savings goal) -->
+@{
+    var accountGoals = State.Accounts.Where(a => a.TargetCents is not null).ToList();
+}
+@if (accountGoals.Any())
+{
+    <div class="section-header" style="margin-top:8px">
+        <span class="section-title">Targets</span>
+        <span style="font-size:13px;color:var(--text2)">@(accountGoals.Sum(a => State.GetAccountBalance(a.Id)).ToString("C"))</span>
+    </div>
+    <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
         @foreach (var acct in accountGoals)
         {
             var current = State.GetAccountBalance(acct.Id);
@@ -263,12 +279,6 @@ else
                 </div>
             </div>
         }
-    </div>
-}
-else
-{
-    <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
-        No savings goals yet — tap "+ Add" to create one.
     </div>
 }
 

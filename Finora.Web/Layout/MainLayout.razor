@@ -120,11 +120,23 @@
     private CancellationTokenSource? _syncCts;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
     private bool _nudgedAfterLoad;
+    private bool _pendingNudge;
 
     protected override void OnInitialized()
     {
-        State.OnChange += StateHasChanged;
+        State.OnChange += OnStateChanged;
         Nav.LocationChanged += OnLocationChanged;
+    }
+
+    // State.OnChange fires from background work (sync, debounced pushes, the
+    // periodic timer) with no user gesture in the call stack — exactly the
+    // case WKWebView can fail to repaint for. Flag it so the next
+    // OnAfterRenderAsync nudges a reflow once the DOM has actually updated
+    // (e.g. the bottom-right "unsync'd" badge clearing after a background sync).
+    private void OnStateChanged()
+    {
+        _pendingNudge = true;
+        StateHasChanged();
     }
 
     protected override async Task OnInitializedAsync()
@@ -163,6 +175,13 @@
         if (State.IsLoaded && !_nudgedAfterLoad)
         {
             _nudgedAfterLoad = true;
+            _pendingNudge = false;
+            try { await JS.InvokeVoidAsync("financeBlade.nudgeRepaint"); }
+            catch { }
+        }
+        else if (_pendingNudge)
+        {
+            _pendingNudge = false;
             try { await JS.InvokeVoidAsync("financeBlade.nudgeRepaint"); }
             catch { }
         }
@@ -257,7 +276,7 @@
 
     public void Dispose()
     {
-        State.OnChange -= StateHasChanged;
+        State.OnChange -= OnStateChanged;
         Nav.LocationChanged -= OnLocationChanged;
         _syncCts?.Cancel();
         _syncCts?.Dispose();
