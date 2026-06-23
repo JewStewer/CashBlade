@@ -217,7 +217,7 @@
       "url": "index.html"
     },
     {
-      "hash": "sha256-3cqZUxwT+U2AMjaWMrn0D3TFkS7hgXpIrIDjKK+aiB8=",
+      "hash": "sha256-73hApcCdRkexr3JA1DEIMqFZYxYZo7cOndXy4eHjWUA=",
       "url": "js\/db.js"
     },
     {
@@ -229,5 +229,5 @@
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "sl9JagRC"
+  "version": "2sRwgK6J"
 };

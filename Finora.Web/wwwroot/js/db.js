@@ -47,18 +47,28 @@ async function ensureStore(store) {
     const nextVersion = db.version + 1;
     db.close();
     _db = null;
+    const storesToEnsure = ALL_STORES.includes(store)
+        ? ALL_STORES
+        : [...ALL_STORES, store];
 
     return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, nextVersion);
         req.onupgradeneeded = e => {
             const upgraded = e.target.result;
-            for (const name of ALL_STORES) {
+            for (const name of storesToEnsure) {
                 if (!upgraded.objectStoreNames.contains(name)) {
                     upgraded.createObjectStore(name, { keyPath: 'id' });
                 }
             }
         };
-        req.onsuccess = e => { _db = bindVersionChange(e.target.result); resolve(_db); };
+        req.onsuccess = e => {
+            _db = bindVersionChange(e.target.result);
+            if (!_db.objectStoreNames.contains(store)) {
+                reject(new Error(`IndexedDB store "${store}" is missing after schema upgrade.`));
+                return;
+            }
+            resolve(_db);
+        };
         req.onerror = e => reject(e.target.error);
         req.onblocked = () => reject(new Error('Database upgrade blocked. Close other Evergrove tabs and reopen the app.'));
     });
