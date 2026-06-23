@@ -95,6 +95,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private CancellationTokenSource? _syncDebounceCts;
     private bool _syncInProgress;
     private DateTime _syncStartedAt;
+    public bool IsSyncing => _syncInProgress || sync.IsSyncing;
 
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
@@ -2316,6 +2317,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         _syncInProgress = true;
         _syncStartedAt  = DateTime.UtcNow;
+        OnChange?.Invoke();
         try
         {
             // Push any phone-side changes — Wi-Fi first, Supabase as fallback
@@ -2451,6 +2453,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         finally
         {
             _syncInProgress = false;
+            OnChange?.Invoke();
         }
     }
 

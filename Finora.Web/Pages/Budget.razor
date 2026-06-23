@@ -929,22 +929,57 @@ else if (_tab == "Forecast")
 {
     <div>
     @{
-        var forecast = Forecast30;
+        var forecast = ForecastDays;
         var lowest = forecast.OrderBy(f => f.Balance).First();
         var eventDays = forecast.Where(f => f.Note is not null).ToList();
+        var totalBills = forecast.Sum(f => f.Bills);
+        var totalPay = forecast.Sum(f => f.Pay);
+        var totalSpend = forecast.Sum(f => f.Spending);
+        var balanceMin = forecast.Min(f => f.Balance);
+        var balanceMax = forecast.Max(f => f.Balance);
+        var linePoints = BuildForecastLinePoints(forecast, balanceMin, balanceMax);
+        var barBuckets = BuildForecastBarBuckets(forecast, 12);
+        var maxBar = Math.Max(barBuckets.SelectMany(b => new[] { b.Bills, b.Pay, b.Spending }).DefaultIfEmpty(1m).Max(), 1m);
     }
     <div class="card">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:2px">30-Day Balance Forecast</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">Projects unpaid bills, future paydays and your average daily spend</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:2px">60-Day Balance Forecast</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">Projects all recurring bills, future paydays and your average daily spend</div>
         <div style="display:flex;justify-content:space-between;align-items:baseline">
             <div>
                 <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">Today</div>
                 <div style="font-size:18px;font-weight:700">@State.TotalBalance.ToString("C")</div>
             </div>
             <div style="text-align:right">
-                <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">In 30 days</div>
+                <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">In 60 days</div>
                 <div style="font-size:18px;font-weight:700;color:@(forecast.Last().Balance>=0?"var(--text)":"var(--red)")">@forecast.Last().Balance.ToString("C")</div>
             </div>
+        </div>
+        <div class="forecast-chart" aria-hidden="true">
+            <div class="forecast-line">
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <line x1="0" y1="@ForecastZeroY(balanceMin, balanceMax).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)" x2="100" y2="@ForecastZeroY(balanceMin, balanceMax).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)" stroke="rgba(248,113,113,0.45)" stroke-width="1" vector-effect="non-scaling-stroke" />
+                    <polyline points="@linePoints" fill="none" stroke="var(--teal-light)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+                </svg>
+            </div>
+            <div class="forecast-bars">
+                @foreach (var bucket in barBuckets)
+                {
+                    var billHeight = Math.Max((double)(bucket.Bills / maxBar) * 100.0, bucket.Bills > 0 ? 12.0 : 0.0);
+                    var payHeight = Math.Max((double)(bucket.Pay / maxBar) * 100.0, bucket.Pay > 0 ? 12.0 : 0.0);
+                    var spendHeight = Math.Max((double)(bucket.Spending / maxBar) * 100.0, bucket.Spending > 0 ? 12.0 : 0.0);
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);align-items:end;gap:1px;height:100%">
+                        <div class="forecast-bar bill" style="height:@($"{billHeight:F0}")%"></div>
+                        <div class="forecast-bar pay" style="height:@($"{payHeight:F0}")%"></div>
+                        <div class="forecast-bar spend" style="height:@($"{spendHeight:F0}")%"></div>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="forecast-legend">
+            <span style="--legend-color:var(--teal-light)">Balance</span>
+            <span style="--legend-color:var(--red)">Bills @totalBills.ToString("C0")</span>
+            <span style="--legend-color:var(--green)">Pay @totalPay.ToString("C0")</span>
+            <span style="--legend-color:var(--teal-light)">Spend @totalSpend.ToString("C0")</span>
         </div>
         <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--text3)">Lowest projected point</span>
@@ -956,7 +991,7 @@ else if (_tab == "Forecast")
     @if (!eventDays.Any())
     {
         <div class="empty-state" style="padding:20px">
-            <span>No unpaid bills or paydays projected in the next 30 days.</span>
+            <span>No unpaid bills or paydays projected in the next 60 days.</span>
         </div>
     }
     else
@@ -975,7 +1010,11 @@ else if (_tab == "Forecast")
                     </div>
                     <div class="row-main">
                         <div class="row-title">@day.Note</div>
-                        <div class="row-sub">Balance after: @day.Balance.ToString("C")</div>
+                        <div class="row-sub">
+                            Balance after: @day.Balance.ToString("C")
+                            @if (day.Bills > 0) { <span> Â· Bills @day.Bills.ToString("C")</span> }
+                            @if (day.Pay > 0) { <span> Â· Pay @day.Pay.ToString("C")</span> }
+                        </div>
                     </div>
                 </div>
             }
@@ -1278,42 +1317,130 @@ else if (_tab == "Forecast")
     private IEnumerable<(string Label, decimal Amount, string Color)> OverBudgetRows() =>
         BudgetRows().OrderByDescending(r => r.Amount);
 
-    // Day-by-day ~30-day balance projection: starting balance minus average daily
-    // discretionary spend, minus unpaid bills on their due date, plus estimated
-    // pay on projected future paydays (Note is set only on "event" days).
-    private List<(DateTime Date, decimal Balance, string? Note, bool IsPayday)> Forecast30
+    private sealed record ForecastDay(
+        DateTime Date,
+        decimal Balance,
+        string? Note,
+        bool IsPayday,
+        decimal Bills,
+        decimal Pay,
+        decimal Spending);
+
+    private sealed record ForecastBillOccurrence(Bill Bill, DateTime DueDate);
+    private sealed record ForecastBarBucket(decimal Bills, decimal Pay, decimal Spending);
+
+    // Day-by-day 60-day balance projection: starting balance minus average daily
+    // discretionary spend, minus all unpaid recurring bill occurrences, plus
+    // estimated pay on projected future paydays.
+    private List<ForecastDay> ForecastDays
     {
         get
         {
-            const int days = 30;
+            const int days = 60;
             var avgDaily = Math.Max(
                 State.GetDiscretionarySpendingForPeriod(DateTime.Today.AddDays(-30), DateTime.Today.AddDays(-1)) / 30m, 0m);
-            var unpaidBills = State.Bills.Where(b => !State.IsBillPaid(b)).ToList();
+            var billOccurrences = GetForecastBillOccurrences(DateTime.Today, DateTime.Today.AddDays(days))
+                .GroupBy(o => o.DueDate.Date)
+                .ToDictionary(g => g.Key, g => g.ToList());
             var balance = State.TotalBalance;
-            var result = new List<(DateTime, decimal, string?, bool)>();
+            var result = new List<ForecastDay>();
 
             for (var i = 0; i <= days; i++)
             {
                 var date = DateTime.Today.AddDays(i);
-                if (i > 0) balance -= avgDaily;
+                var spending = i > 0 ? avgDaily : 0m;
+                if (spending > 0) balance -= spending;
 
-                var billsToday = unpaidBills.Where(b => b.EffectiveDueDate.Date == date).ToList();
-                foreach (var bill in billsToday) balance -= bill.AmountDollars;
+                var billsToday = billOccurrences.GetValueOrDefault(date) ?? new List<ForecastBillOccurrence>();
+                var billsTotal = billsToday.Sum(o => o.Bill.AmountDollars);
+                balance -= billsTotal;
 
                 var isPayday = date >= State.NextPayDate.Date && (date - State.NextPayDate.Date).Days % 7 == 0;
-                if (isPayday) balance += State.EstimatedPayAmount;
+                var pay = isPayday ? State.EstimatedPayAmount : 0m;
+                if (pay > 0) balance += pay;
 
                 string? note = billsToday.Count switch
                 {
                     0 => null,
-                    1 => billsToday[0].Name,
+                    1 => billsToday[0].Bill.Name,
                     _ => $"{billsToday.Count} bills"
                 };
                 if (isPayday) note = note is null ? "Payday" : $"{note} + Payday";
 
-                result.Add((date, balance, note, isPayday));
+                result.Add(new ForecastDay(date, balance, note, isPayday, billsTotal, pay, spending));
             }
             return result;
         }
+    }
+
+    private List<ForecastBillOccurrence> GetForecastBillOccurrences(DateTime from, DateTime to)
+    {
+        var result = new List<ForecastBillOccurrence>();
+        foreach (var bill in State.Bills)
+        {
+            var due = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
+            while (due < from.Date)
+                due = AdvanceDueDate(due, bill.Frequency);
+
+            while (due <= to.Date)
+            {
+                if (!IsBillOccurrencePaid(bill, due))
+                    result.Add(new ForecastBillOccurrence(bill, due));
+                due = AdvanceDueDate(due, bill.Frequency);
+            }
+        }
+        return result.OrderBy(o => o.DueDate).ThenBy(o => o.Bill.Name).ToList();
+    }
+
+    private bool IsBillOccurrencePaid(Bill bill, DateTime dueDate)
+    {
+        var exact = State.BillStatuses.FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == dueDate.Date);
+        if (exact is not null) return exact.IsPaid;
+        var effective = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
+        return dueDate.Date == effective.Date && State.IsBillPaid(bill);
+    }
+
+    private static DateTime AdvanceDueDate(DateTime d, BillFrequency f) => f switch
+    {
+        BillFrequency.Weekly => d.AddDays(7),
+        BillFrequency.Fortnightly => d.AddDays(14),
+        BillFrequency.Monthly => d.AddMonths(1),
+        BillFrequency.Quarterly => d.AddMonths(3),
+        BillFrequency.Yearly => d.AddYears(1),
+        _ => d.AddMonths(1)
+    };
+
+    private static string BuildForecastLinePoints(List<ForecastDay> forecast, decimal min, decimal max)
+    {
+        var range = Math.Max(max - min, 1m);
+        return string.Join(" ", forecast.Select((f, i) =>
+        {
+            var x = forecast.Count <= 1 ? 0m : i * 100m / (forecast.Count - 1);
+            var y = 100m - ((f.Balance - min) / range * 100m);
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{x:0.###},{Math.Clamp(y, 0m, 100m):0.###}");
+        }));
+    }
+
+    private static decimal ForecastZeroY(decimal min, decimal max)
+    {
+        if (min >= 0) return 100m;
+        if (max <= 0) return 0m;
+        var range = Math.Max(max - min, 1m);
+        return 100m - ((0m - min) / range * 100m);
+    }
+
+    private static List<ForecastBarBucket> BuildForecastBarBuckets(List<ForecastDay> forecast, int buckets)
+    {
+        var result = new List<ForecastBarBucket>();
+        var bucketSize = (double)forecast.Count / buckets;
+        for (var i = 0; i < buckets; i++)
+        {
+            var start = (int)Math.Floor(i * bucketSize);
+            var end = (int)Math.Floor((i + 1) * bucketSize);
+            if (i == buckets - 1) end = forecast.Count;
+            var slice = forecast.Skip(start).Take(Math.Max(end - start, 1)).ToList();
+            result.Add(new ForecastBarBucket(slice.Sum(f => f.Bills), slice.Sum(f => f.Pay), slice.Sum(f => f.Spending)));
+        }
+        return result;
     }
 }

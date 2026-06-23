@@ -15,9 +15,12 @@
             </svg>
         </div>
         <span class="title">Evergrove</span>
-        @if (State.HasPendingChanges)
+        @{
+            var syncBadge = GetSyncBadge();
+        }
+        @if (syncBadge is not null)
         {
-            <span class="badge badge-amber" style="font-size:10px">unsync'd</span>
+            <span class="badge @syncBadge.Value.Css badge-sync" style="font-size:10px">@syncBadge.Value.Text</span>
         }
     </header>
 
@@ -125,6 +128,7 @@
     protected override void OnInitialized()
     {
         State.OnChange += OnStateChanged;
+        Sync.OnSyncStateChanged += OnSyncStateChanged;
         Nav.LocationChanged += OnLocationChanged;
     }
 
@@ -139,11 +143,18 @@
         StateHasChanged();
     }
 
+    private void OnSyncStateChanged()
+    {
+        _pendingNudge = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
             await State.LoadAsync();
+            await InvokeAsync(StateHasChanged);
             await NotifyUpcomingBillsAsync();
             StartBackgroundSync();
         }
@@ -203,6 +214,7 @@
         try
         {
             await State.LoadAsync();
+            await InvokeAsync(StateHasChanged);
             await NotifyUpcomingBillsAsync();
             StartBackgroundSync();
         }
@@ -238,8 +250,17 @@
         {
             await State.SyncAndReloadAsync();
             await NotifyUpcomingBillsAsync();
+            await InvokeAsync(StateHasChanged);
         }
         catch { /* SyncService records LastError for the Settings page; nothing to do here */ }
+    }
+
+    private (string Text, string Css)? GetSyncBadge()
+    {
+        if (State.IsSyncing) return ("syncing", "badge-teal");
+        if (State.HasPendingChanges) return ("unsync'd", "badge-amber");
+        if (Sync.LastSyncedAt is not null) return ("synced", "badge-green");
+        return null;
     }
 
     private async Task NotifyUpcomingBillsAsync()
@@ -277,6 +298,7 @@
     public void Dispose()
     {
         State.OnChange -= OnStateChanged;
+        Sync.OnSyncStateChanged -= OnSyncStateChanged;
         Nav.LocationChanged -= OnLocationChanged;
         _syncCts?.Cancel();
         _syncCts?.Dispose();

@@ -78,17 +78,29 @@
             nudgeRepaint: () => {
                 const nudgeOnce = () => {
                     const root = document.documentElement;
+                    const app = document.getElementById('app');
                     document.body.style.display = 'none';
                     void document.body.offsetHeight;
                     document.body.style.display = '';
                     root.style.transform = 'translateZ(0)';
                     void root.offsetHeight;
                     root.style.transform = '';
+                    if (app) {
+                        app.style.webkitTransform = 'translate3d(0,0,0)';
+                        app.style.transform = 'translate3d(0,0,0)';
+                        void app.offsetHeight;
+                        app.style.webkitTransform = '';
+                        app.style.transform = '';
+                    }
                     window.scrollTo(0, 1);
-                    requestAnimationFrame(() => window.scrollTo(0, 0));
+                    requestAnimationFrame(() => {
+                        window.scrollTo(0, 0);
+                        document.dispatchEvent(new Event('financeblade:paint-nudge'));
+                    });
                 };
                 nudgeOnce();
-                [50, 150, 400].forEach(ms => setTimeout(nudgeOnce, ms));
+                requestAnimationFrame(() => requestAnimationFrame(nudgeOnce));
+                [50, 150, 400, 900].forEach(ms => setTimeout(nudgeOnce, ms));
             }
         };
     </script>
