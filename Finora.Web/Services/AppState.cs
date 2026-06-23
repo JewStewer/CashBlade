@@ -370,7 +370,14 @@ public class AppState(IndexedDbService db, SyncService sync)
             // pushed (e.g. iOS killed the app mid-sync) must survive an app
             // restart and a stale pull, same as transaction overrides.
             _pendingUpdatedSettings.RemoveAll(s => s.Key == setting.Key);
-            _pendingUpdatedSettings.Add(setting);
+            if (ShouldSyncSetting(setting.Key))
+            {
+                _pendingUpdatedSettings.Add(setting);
+            }
+            else
+            {
+                await db.ClearSettingOverrideAsync(setting.Key);
+            }
         }
     }
 
@@ -1068,22 +1075,6 @@ public class AppState(IndexedDbService db, SyncService sync)
                 Title = "Possible subscription found",
                 Message = $"{sub.Name} looks recurring at about {sub.AverageAmount:C}/{FrequencyShort(sub.Frequency)}.",
                 ActionUrl = "subscriptions"
-            });
-        }
-
-        var upcomingBills = GetUpcomingBills(3);
-        if (upcomingBills.Count > 0)
-        {
-            insights.Add(new ProactiveInsight
-            {
-                Key = $"bills-due:{DateTime.Today:yyyyMMdd}",
-                Severity = ProactiveInsightSeverity.Warning,
-                Title = "Bills due soon",
-                Message = string.Join(", ", upcomingBills.Take(3).Select(b =>
-                    b.EffectiveDueDate.Date == DateTime.Today ? $"{b.Name} today" :
-                    b.EffectiveDueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} tomorrow" :
-                    $"{b.Name} in {(b.EffectiveDueDate.Date - DateTime.Today).Days} days")),
-                ActionUrl = "bills"
             });
         }
 
@@ -2208,7 +2199,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.SaveSettingAsync(key, value);
         AppSettings = await db.GetAppSettingsAsync();
         var setting = AppSettings.FirstOrDefault(s => s.Key == key);
-        if (setting is not null)
+        if (setting is not null && ShouldSyncSetting(key))
         {
             _pendingUpdatedSettings.RemoveAll(s => s.Key == key);
             _pendingUpdatedSettings.Add(setting);
@@ -2217,10 +2208,24 @@ public class AppState(IndexedDbService db, SyncService sync)
             // push, instead of silently being lost and reverted by the next pull.
             await db.SetSettingOverrideAsync(setting);
         }
+        else
+        {
+            _pendingUpdatedSettings.RemoveAll(s => s.Key == key);
+            await db.ClearSettingOverrideAsync(key);
+        }
         Compute();
         OnChange?.Invoke();
-        ScheduleSyncSoon();
+        if (ShouldSyncSetting(key)) ScheduleSyncSoon();
     }
+
+    private static bool ShouldSyncSetting(string key) =>
+        key is not ("AffordabilityMode"
+            or "AffordabilityInstallmentAmount"
+            or "AffordabilityInstallments"
+            or "AffordabilityInstallmentWeeks"
+            or "VapidPublicKey"
+            or AppLockPinHashKey) &&
+        !key.StartsWith("CategoryLimit:", StringComparison.Ordinal);
 
     // Phone-editable weekly budget targets — field is one of Income/Bills/Essentials/
     // Savings/Unplanned. Saved as a setting override so it survives the next sync

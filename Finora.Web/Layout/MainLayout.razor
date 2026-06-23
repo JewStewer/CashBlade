@@ -45,22 +45,6 @@
         </div>
     }
 
-    @{
-        var smartInsight = State.ProactiveInsights.FirstOrDefault(i => !_dismissedInsightKeys.Contains(i.Key));
-    }
-    @if (smartInsight is not null)
-    {
-        <div class="smart-alert-banner smart-alert-@smartInsight.Severity.ToString().ToLowerInvariant()">
-            <button class="smart-alert-main" @onclick="() => OpenInsight(smartInsight)">
-                <span class="smart-alert-dot"></span>
-                <span>
-                    <strong>@smartInsight.Title:</strong> @smartInsight.Message
-                </span>
-            </button>
-            <button class="bill-alert-close" @onclick="() => DismissInsight(smartInsight.Key)">x</button>
-        </div>
-    }
-
     <main class="page-content">
         @if (State.AppLockEnabled && !State.IsUnlocked)
         {
@@ -135,7 +119,6 @@
 @code {
     private string? _initError;
     private bool _dismissedBillAlert;
-    private readonly HashSet<string> _dismissedInsightKeys = new();
     private PeriodicTimer? _syncTimer;
     private CancellationTokenSource? _syncCts;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
@@ -330,19 +313,6 @@
             }
         }
         catch { }
-    }
-
-    private void OpenInsight(ProactiveInsight insight)
-    {
-        if (!string.IsNullOrWhiteSpace(insight.ActionUrl))
-        {
-            Nav.NavigateTo(insight.ActionUrl);
-        }
-    }
-
-    private void DismissInsight(string key)
-    {
-        _dismissedInsightKeys.Add(key);
     }
 
     private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)

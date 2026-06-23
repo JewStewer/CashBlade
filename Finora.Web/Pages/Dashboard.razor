@@ -71,6 +71,26 @@ else
         </div>
     }
 
+    @if (SmartSignals.Any())
+    {
+        <div class="section-header" style="margin-top:8px">
+            <span class="section-title">Smart Signals</span>
+        </div>
+        <div class="action-stack" style="margin-top:0">
+            @foreach (var signal in SmartSignals)
+            {
+                <button class="action-card @InsightTone(signal)" @onclick="() => OpenInsight(signal)">
+                    <span class="status-dot"></span>
+                    <span>
+                        <strong>@signal.Title</strong>
+                        <small>@signal.Message</small>
+                    </span>
+                    <b>Open</b>
+                </button>
+            }
+        </div>
+    }
+
     <!-- Bills due -->
     @if (State.BillsDueBeforePayday.Count > 0)
     {
@@ -230,6 +250,27 @@ else
             return prompts.Take(3).ToList();
         }
     }
+
+    private List<ProactiveInsight> SmartSignals =>
+        State.ProactiveInsights
+            .Where(i => !i.Key.StartsWith("bills-due:", StringComparison.Ordinal))
+            .Take(3)
+            .ToList();
+
+    private void OpenInsight(ProactiveInsight insight)
+    {
+        if (!string.IsNullOrWhiteSpace(insight.ActionUrl))
+        {
+            Nav.NavigateTo(insight.ActionUrl);
+        }
+    }
+
+    private static string InsightTone(ProactiveInsight insight) => insight.Severity switch
+    {
+        ProactiveInsightSeverity.Critical => "tone-red",
+        ProactiveInsightSeverity.Warning => "tone-amber",
+        _ => "tone-blue"
+    };
 
     private static string DueLabel(DateTime date)
     {
