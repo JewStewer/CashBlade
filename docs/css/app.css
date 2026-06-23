@@ -614,6 +614,54 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 
 .bill-alert-close:active { opacity: 1; }
 
+.smart-alert-banner {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+    color: #e5e7eb;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.smart-alert-critical {
+    background: linear-gradient(90deg, #7f1d1d, #991b1b);
+}
+
+.smart-alert-warning {
+    background: linear-gradient(90deg, #713f12, #854d0e);
+}
+
+.smart-alert-info {
+    background: linear-gradient(90deg, #164e63, #115e59);
+}
+
+.smart-alert-main {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 14px;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.smart-alert-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+}
+
 /* Mobile command surfaces */
 .hero-summary {
     border: 1px solid var(--border);

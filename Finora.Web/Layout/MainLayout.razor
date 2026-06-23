@@ -45,6 +45,22 @@
         </div>
     }
 
+    @{
+        var smartInsight = State.ProactiveInsights.FirstOrDefault(i => !_dismissedInsightKeys.Contains(i.Key));
+    }
+    @if (smartInsight is not null)
+    {
+        <div class="smart-alert-banner smart-alert-@smartInsight.Severity.ToString().ToLowerInvariant()">
+            <button class="smart-alert-main" @onclick="() => OpenInsight(smartInsight)">
+                <span class="smart-alert-dot"></span>
+                <span>
+                    <strong>@smartInsight.Title:</strong> @smartInsight.Message
+                </span>
+            </button>
+            <button class="bill-alert-close" @onclick="() => DismissInsight(smartInsight.Key)">x</button>
+        </div>
+    }
+
     <main class="page-content">
         @if (State.AppLockEnabled && !State.IsUnlocked)
         {
@@ -119,11 +135,13 @@
 @code {
     private string? _initError;
     private bool _dismissedBillAlert;
+    private readonly HashSet<string> _dismissedInsightKeys = new();
     private PeriodicTimer? _syncTimer;
     private CancellationTokenSource? _syncCts;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
     private bool _nudgedAfterLoad;
     private bool _pendingNudge;
+    private bool _pushSubscriptionChecked;
 
     protected override void OnInitialized()
     {
@@ -155,7 +173,8 @@
         {
             await State.LoadAsync();
             await InvokeAsync(StateHasChanged);
-            await NotifyUpcomingBillsAsync();
+            await NotifySmartInsightsAsync();
+            await EnsurePushSubscriptionAsync();
             StartBackgroundSync();
         }
         catch (Exception ex)
@@ -205,6 +224,8 @@
         // Reset it so the resume sync isn't silently blocked by the guard.
         State.ForceResetSyncGuard();
         await SafeSyncAsync();
+        await NotifySmartInsightsAsync();
+        await EnsurePushSubscriptionAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -215,7 +236,8 @@
         {
             await State.LoadAsync();
             await InvokeAsync(StateHasChanged);
-            await NotifyUpcomingBillsAsync();
+            await NotifySmartInsightsAsync();
+            await EnsurePushSubscriptionAsync();
             StartBackgroundSync();
         }
         catch (Exception ex) { _initError = ex.Message; }
@@ -249,7 +271,8 @@
         try
         {
             await State.SyncAndReloadAsync();
-            await NotifyUpcomingBillsAsync();
+            await NotifySmartInsightsAsync();
+            await EnsurePushSubscriptionAsync();
             await InvokeAsync(StateHasChanged);
         }
         catch { /* SyncService records LastError for the Settings page; nothing to do here */ }
@@ -263,7 +286,7 @@
         return null;
     }
 
-    private async Task NotifyUpcomingBillsAsync()
+    private async Task NotifySmartInsightsAsync()
     {
         if (!State.IsLoaded) return;
 
@@ -272,21 +295,54 @@
             var permission = await JS.InvokeAsync<string>("pushNotifications.getPermission");
             if (permission != "granted") return;
 
-            var upcoming = State.GetUpcomingBills(3);
-            if (!upcoming.Any()) return;
+            var insight = State.ProactiveInsights.FirstOrDefault();
+            if (insight is null) return;
 
-            var key = "bills-" + DateTime.Today.ToString("yyyyMMdd");
+            var key = "smart-" + insight.Key;
             var alreadyShown = await JS.InvokeAsync<bool>("pushNotifications.wasLocalNotificationShown", key);
             if (alreadyShown) return;
 
-            var body = string.Join(", ", upcoming.Take(3).Select(b =>
-                b.EffectiveDueDate.Date == DateTime.Today ? $"{b.Name} today" :
-                b.EffectiveDueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} tomorrow" :
-                $"{b.Name} in {(b.EffectiveDueDate.Date - DateTime.Today).Days} days"));
-            await JS.InvokeAsync<bool>("pushNotifications.showLocal", "Bills due soon", body, key);
+            await JS.InvokeAsync<bool>("pushNotifications.showLocal", insight.Title, insight.Message, key);
             await JS.InvokeVoidAsync("pushNotifications.markLocalNotificationShown", key);
         }
         catch { }
+    }
+
+    private async Task EnsurePushSubscriptionAsync()
+    {
+        if (_pushSubscriptionChecked || !Sync.HasCloudSync) return;
+        _pushSubscriptionChecked = true;
+
+        try
+        {
+            var permission = await JS.InvokeAsync<string>("pushNotifications.getPermission");
+            if (permission != "granted") return;
+
+            var subJson = await JS.InvokeAsync<string?>("pushNotifications.getSubscription");
+            if (string.IsNullOrEmpty(subJson))
+            {
+                subJson = await JS.InvokeAsync<string?>("pushNotifications.subscribe", State.VapidPublicKey);
+            }
+
+            if (!string.IsNullOrEmpty(subJson))
+            {
+                await Sync.SavePushSubscriptionAsync(subJson);
+            }
+        }
+        catch { }
+    }
+
+    private void OpenInsight(ProactiveInsight insight)
+    {
+        if (!string.IsNullOrWhiteSpace(insight.ActionUrl))
+        {
+            Nav.NavigateTo(insight.ActionUrl);
+        }
+    }
+
+    private void DismissInsight(string key)
+    {
+        _dismissedInsightKeys.Add(key);
     }
 
     private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)

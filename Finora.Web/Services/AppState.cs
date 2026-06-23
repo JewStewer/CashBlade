@@ -145,6 +145,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     // ── Transactions for display (most recent 100) ────────────────────────────
     public List<Transaction> RecentTransactions { get; private set; } = new();
+    public List<ProactiveInsight> ProactiveInsights { get; private set; } = new();
 
     public bool IsLoaded { get; private set; }
     public bool HasAnyFinanceData =>
@@ -497,6 +498,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         ComputeSummaries();
         DetectPayAccount();
         ComputeBillsDue();
+        ComputeProactiveInsights();
         RecentTransactions = Transactions
             .OrderByDescending(t => t.Date)
             .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
@@ -991,6 +993,122 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal SubscriptionWeeklyTotal => GetRecurringPayments().Sum(r => r.WeeklyAmount);
 
     public int SubscriptionsNotInBillsCount => GetRecurringPayments().Count(r => !r.IsAlreadyBill);
+
+    private void ComputeProactiveInsights()
+    {
+        var insights = new List<ProactiveInsight>();
+        var forecast = GetForecastTotals();
+
+        if (forecast.Now < 0)
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"balance-overdrawn:{DateTime.Today:yyyyMMdd}",
+                Severity = ProactiveInsightSeverity.Critical,
+                Title = "Balance is overdrawn",
+                Message = $"You are at {forecast.Now:C}. Hold new spending until money lands.",
+                ActionUrl = "accounts"
+            });
+        }
+        else if (forecast.AfterBills < 0)
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"balance-risk:{DateTime.Today:yyyyMMdd}",
+                Severity = ProactiveInsightSeverity.Critical,
+                Title = "Bills may take you negative",
+                Message = $"After unpaid bills before payday, the forecast is {forecast.AfterBills:C}.",
+                ActionUrl = "bills"
+            });
+        }
+
+        var todaySpend = GetTodaySpending();
+        var avgDaily = GetAvgDailySpending();
+        if (avgDaily > 0 && todaySpend >= Math.Max(avgDaily * 1.75m, avgDaily + 25m))
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"daily-spend:{DateTime.Today:yyyyMMdd}",
+                Severity = ProactiveInsightSeverity.Warning,
+                Title = "Spending is running hot today",
+                Message = $"{todaySpend:C} today vs a usual daily pace of about {avgDaily:C}.",
+                ActionUrl = "transactions"
+            });
+        }
+
+        var thisWeek = GetWeekSpending(0);
+        var priorWeeks = Enumerable.Range(1, 4).Select(GetWeekSpending).Where(v => v > 0).ToList();
+        if (DateTime.Today.DayOfWeek != DayOfWeek.Monday && priorWeeks.Count >= 2)
+        {
+            var avgWeek = priorWeeks.Average();
+            if (avgWeek > 0 && thisWeek >= Math.Max(avgWeek * 1.5m, avgWeek + 75m))
+            {
+                insights.Add(new ProactiveInsight
+                {
+                    Key = $"weekly-pace:{StartOfWeek(DateTime.Today):yyyyMMdd}",
+                    Severity = ProactiveInsightSeverity.Warning,
+                    Title = "This week is above normal",
+                    Message = $"{thisWeek:C0} spent this week vs about {avgWeek:C0} usually.",
+                    ActionUrl = "transactions"
+                });
+            }
+        }
+
+        var newSubscriptions = GetRecurringPayments()
+            .Where(r => !r.IsAlreadyBill && r.NextExpected.Date <= DateTime.Today.AddDays(10))
+            .OrderBy(r => r.NextExpected)
+            .Take(2)
+            .ToList();
+        foreach (var sub in newSubscriptions)
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"subscription:{sub.Name.ToLowerInvariant()}",
+                Severity = ProactiveInsightSeverity.Info,
+                Title = "Possible subscription found",
+                Message = $"{sub.Name} looks recurring at about {sub.AverageAmount:C}/{FrequencyShort(sub.Frequency)}.",
+                ActionUrl = "subscriptions"
+            });
+        }
+
+        var upcomingBills = GetUpcomingBills(3);
+        if (upcomingBills.Count > 0)
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"bills-due:{DateTime.Today:yyyyMMdd}",
+                Severity = ProactiveInsightSeverity.Warning,
+                Title = "Bills due soon",
+                Message = string.Join(", ", upcomingBills.Take(3).Select(b =>
+                    b.EffectiveDueDate.Date == DateTime.Today ? $"{b.Name} today" :
+                    b.EffectiveDueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} tomorrow" :
+                    $"{b.Name} in {(b.EffectiveDueDate.Date - DateTime.Today).Days} days")),
+                ActionUrl = "bills"
+            });
+        }
+
+        ProactiveInsights = insights
+            .OrderByDescending(i => i.Severity)
+            .ThenBy(i => i.Title)
+            .Take(4)
+            .ToList();
+    }
+
+    private static DateTime StartOfWeek(DateTime date)
+    {
+        var dow = (int)date.DayOfWeek;
+        return date.Date.AddDays(-(dow == 0 ? 6 : dow - 1));
+    }
+
+    private static string FrequencyShort(string frequency) => frequency switch
+    {
+        "Weekly" => "wk",
+        "Fortnightly" => "fortnight",
+        "Monthly" => "mo",
+        "Quarterly" => "quarter",
+        "Yearly" => "yr",
+        _ => frequency.ToLowerInvariant()
+    };
 
     public async Task IgnoreSubscriptionAsync(string name)
     {
