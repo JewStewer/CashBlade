@@ -203,8 +203,19 @@ public class AppState(IndexedDbService db, SyncService sync)
     }
 
     // ── Lent money tracking ──────────────────────────────────────────────────
-    public bool IsLent(int txnId) => LentTransactions.Any(l => l.Id == txnId);
-    public bool IsUnrepaid(int txnId) => _unrepaidLentIds.Contains(txnId);
+    // Internal cover/envelope transfers can never be "lent out" — guard against
+    // a stale LentTransaction record (e.g. left over from a transaction Id that
+    // got reused by a later sync) silently re-attaching to one of these.
+    public bool IsLent(int txnId) =>
+        LentTransactions.Any(l => l.Id == txnId) && !IsInternalMovementById(txnId);
+    public bool IsUnrepaid(int txnId) =>
+        _unrepaidLentIds.Contains(txnId) && !IsInternalMovementById(txnId);
+
+    private bool IsInternalMovementById(int txnId)
+    {
+        var t = Transactions.FirstOrDefault(x => x.Id == txnId);
+        return t is not null && IsInternalMovement(t);
+    }
     public decimal GetLentRepaidDollars(int txnId) =>
         LentTransactions.FirstOrDefault(l => l.Id == txnId)?.RepaidDollars ?? 0m;
 

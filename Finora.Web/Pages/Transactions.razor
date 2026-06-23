@@ -323,10 +323,12 @@
 
         q = filter switch
         {
-            "Income" => q.Where(t => t.AmountCents > 0),
+            "Income" => q.Where(t => t.AmountCents > 0 && !State.IsInternalMovement(t)),
             "Expenses" => q.Where(t => t.AmountCents < 0 && !State.IsInternalMovement(t)),
             "Transfers" => q.Where(t => State.IsInternalMovement(t)),
-            _ => q
+            // "All" hides internal cover/envelope transfers by default — they're
+            // bookkeeping noise, not spending. Switch to the Transfers tab to see them.
+            _ => q.Where(t => !State.IsInternalMovement(t))
         };
 
         return q.ToList();
