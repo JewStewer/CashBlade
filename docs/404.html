@@ -64,6 +64,16 @@
             _visibleCallback: null,
             registerOnVisible: (dotnetRef) => {
                 window.financeBlade._visibleCallback = dotnetRef;
+            },
+            // Forces WKWebView to repaint. iOS's WKWebView frequently fails to
+            // flush the screen after DOM updates driven purely by async/await
+            // (IndexedDB, fetch) with no user gesture in the call stack, leaving
+            // the last-painted frame (e.g. the loading spinner) stuck on screen
+            // until a touch event forces a reflow. Toggling display forces one.
+            nudgeRepaint: () => {
+                document.body.style.display = 'none';
+                void document.body.offsetHeight;
+                document.body.style.display = '';
             }
         };
     </script>
@@ -105,9 +115,7 @@
             // up immediately without waiting for the 1-minute periodic timer.
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState !== 'visible') return;
-                document.body.style.display = 'none';
-                void document.body.offsetHeight;
-                document.body.style.display = '';
+                window.financeBlade.nudgeRepaint();
                 if (!window.__financeBladeStarted) {
                     setTimeout(() => {
                         if (!window.__financeBladeStarted) safeReload();

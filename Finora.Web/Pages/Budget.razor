@@ -15,6 +15,7 @@
 
 @if (_tab == "Overview")
 {
+    <div>
     <!-- WHERE'S MY MONEY? summary (always shown when budget is set) -->
     @if (State.WeeklyIncome > 0)
     {
@@ -127,7 +128,7 @@
                     <span style="flex:1;font-size:14px;font-weight:600">Weekly Income</span>
                     <input class="form-input" style="width:110px;text-align:right;padding:6px 10px;font-size:14px"
                            type="number" min="0" step="1" value="@State.WeeklyIncome"
-                           @onchange="e => SetBudgetFieldAsync("Income", e)" />
+                           @onchange='e => SetBudgetFieldAsync("Income", e)' />
                 </div>
                 @foreach (var (label, field, amount, color) in EditableBudgetRows())
                 {
@@ -561,9 +562,11 @@
             </div>
         }
     </div>
+    </div>
 }
 else if (_tab == "Categories")
 {
+    <div>
     <!-- Unified spending breakdown: all categories with bills/everyday grouping -->
     @{
         var allCats    = State.GetTopCategoriesForPeriod(PayCycle.From, PayCycle.To, 12, excludeBills: false);
@@ -745,9 +748,11 @@ else if (_tab == "Categories")
             }
         </div>
     }
+    </div>
 }
 else if (_tab == "History")
 {
+    <div>
     <!-- Period spending vs budget -->
     @if (State.WeeklyIncome > 0)
     {
@@ -918,9 +923,11 @@ else if (_tab == "History")
             </div>
         </div>
     }
+    </div>
 }
 else if (_tab == "Forecast")
 {
+    <div>
     @{
         var forecast = Forecast30;
         var lowest = forecast.OrderBy(f => f.Balance).First();
@@ -974,6 +981,7 @@ else if (_tab == "Forecast")
             }
         </div>
     }
+    </div>
 }
 
 </div>
