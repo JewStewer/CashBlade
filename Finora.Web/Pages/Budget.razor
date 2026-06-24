@@ -636,11 +636,11 @@ else if (_tab == "Categories")
                 @for (var i = 0; i < billCats.Count; i++)
                 {
                     var (cat, amt) = billCats[i];
-                    var barW  = breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0;
                     var ofInc = PeriodIncome > 0 ? amt / PeriodIncome : 0m;
                     var limitDollars = GetLimitDisplay(cat);
                     var hasLimit = limitDollars > 0;
                     var limitPct = hasLimit ? amt / limitDollars : 0m;
+                    var barW  = hasLimit ? (double)Math.Clamp(limitPct, 0m, 1m) * 100.0 : (breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0);
                     var barColor = hasLimit && limitPct >= 1m ? "var(--red)" : hasLimit && limitPct >= 0.8m ? "var(--amber)" : "#2563EB";
                     <div style="margin-bottom:9px">
                         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
@@ -683,11 +683,11 @@ else if (_tab == "Categories")
                 @for (var i = 0; i < discCats.Count; i++)
                 {
                     var (cat, amt) = discCats[i];
-                    var barW  = breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0;
                     var ofInc = PeriodIncome > 0 ? amt / PeriodIncome : 0m;
                     var limitDollars = GetLimitDisplay(cat);
                     var hasLimit = limitDollars > 0;
                     var limitPct = hasLimit ? amt / limitDollars : 0m;
+                    var barW  = hasLimit ? (double)Math.Clamp(limitPct, 0m, 1m) * 100.0 : (breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0);
                     var barColor = hasLimit && limitPct >= 1m ? "var(--red)" : hasLimit && limitPct >= 0.8m ? "var(--amber)" : palette[i % palette.Length];
                     <div style="margin-bottom:9px">
                         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
@@ -1058,6 +1058,12 @@ else if (_tab == "Forecast")
                     </div>
                 }
             </div>
+        </div>
+        <div class="forecast-chart-dates" style="grid-template-columns:repeat(@bars.Count,1fr)">
+            @foreach (var bar in bars)
+            {
+                <span>@bar.Date.ToString("d/M")</span>
+            }
         </div>
         <div class="forecast-legend">
             <span style="--legend-color:var(--teal-light)">Balance</span>
@@ -1493,7 +1499,7 @@ else if (_tab == "Holiday")
 
     private sealed record ForecastBillOccurrence(Bill Bill, DateTime DueDate);
     private sealed record ForecastCalendarDay(DateTime Date, ForecastDay? Forecast, bool IsOutsideMonth, bool IsPayday);
-    private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay);
+    private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay, DateTime Date);
 
     // Day-by-day 60-day balance projection: starting balance minus average daily
     // discretionary spend, minus all unpaid recurring bill occurrences, plus
@@ -1645,7 +1651,7 @@ else if (_tab == "Holiday")
             var top = Math.Min(zeroY, y);
             var height = Math.Max(Math.Abs(zeroY - y), 1.5m);
 
-            result.Add(new ForecastBalanceBar(top, height, y, y > zeroY, slice.Any(f => f.Bills > 0), slice.Any(f => f.IsPayday)));
+            result.Add(new ForecastBalanceBar(top, height, y, y > zeroY, slice.Any(f => f.Bills > 0), slice.Any(f => f.IsPayday), slice[^1].Date));
         }
 
         return result;

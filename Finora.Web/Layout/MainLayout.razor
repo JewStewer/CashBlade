@@ -188,6 +188,7 @@
             await State.LoadAsync();
             await InvokeAsync(StateHasChanged);
             await NotifySmartInsightsAsync();
+            await NotifyUpcomingBillsAsync();
             await EnsurePushSubscriptionAsync();
             StartBackgroundSync();
         }
@@ -251,6 +252,7 @@
             await State.LoadAsync();
             await InvokeAsync(StateHasChanged);
             await NotifySmartInsightsAsync();
+            await NotifyUpcomingBillsAsync();
             await EnsurePushSubscriptionAsync();
             StartBackgroundSync();
         }
@@ -292,6 +294,7 @@
                 await State.LoadAsync();
             }
             await NotifySmartInsightsAsync();
+            await NotifyUpcomingBillsAsync();
             await EnsurePushSubscriptionAsync();
             await InvokeAsync(StateHasChanged);
         }
@@ -344,6 +347,49 @@
 
             await JS.InvokeAsync<bool>("pushNotifications.showLocal", insight.Title, insight.Message, key);
             await JS.InvokeVoidAsync("pushNotifications.markLocalNotificationShown", key);
+        }
+        catch { }
+    }
+
+    // Local-permission counterpart to the GitHub Actions bill-reminder cron (which only
+    // reaches devices that completed the heavier VAPID cloud-push subscribe flow). Each bill
+    // occurrence notifies once via its own dedup key, then bundles into a single notification
+    // so several bills entering the window at once don't fire separately.
+    private async Task NotifyUpcomingBillsAsync()
+    {
+        if (!State.IsLoaded) return;
+
+        try
+        {
+            var permission = await JS.InvokeAsync<string>("pushNotifications.getPermission");
+            if (permission != "granted") return;
+
+            var upcoming = State.GetUpcomingBills(3);
+            if (!upcoming.Any()) return;
+
+            var unnotified = new List<Bill>();
+            foreach (var bill in upcoming)
+            {
+                var key = $"bill-due-{bill.Id}-{bill.EffectiveDueDate:yyyyMMdd}";
+                var alreadyShown = await JS.InvokeAsync<bool>("pushNotifications.wasLocalNotificationShown", key);
+                if (!alreadyShown) unnotified.Add(bill);
+            }
+            if (!unnotified.Any()) return;
+
+            var billList = string.Join(", ", unnotified.Select(b =>
+            {
+                var days = (b.EffectiveDueDate.Date - DateTime.Today).Days;
+                var when = days <= 0 ? "today" : days == 1 ? "tomorrow" : $"in {days} days";
+                return $"{b.Name} ({when})";
+            }));
+
+            await JS.InvokeAsync<bool>("pushNotifications.showLocal", "Bills due soon", billList, "bill-reminder");
+
+            foreach (var bill in unnotified)
+            {
+                var key = $"bill-due-{bill.Id}-{bill.EffectiveDueDate:yyyyMMdd}";
+                await JS.InvokeVoidAsync("pushNotifications.markLocalNotificationShown", key);
+            }
         }
         catch { }
     }

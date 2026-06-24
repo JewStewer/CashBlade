@@ -403,6 +403,21 @@ button, a, input, select, textarea, [role="button"] {
 
 .forecast-bar-fill.negative { background: var(--red); }
 
+.forecast-chart-dates {
+    display: grid;
+    gap: 3px;
+    padding: 4px 10px 0;
+}
+
+.forecast-chart-dates span {
+    font-size: 9px;
+    color: var(--text3);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .forecast-bar-event {
     position: absolute;
     left: 50%;

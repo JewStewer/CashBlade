@@ -212,7 +212,7 @@
     <!-- Push notifications -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:4px">🔔 Push Notifications</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Bill reminders sent to your phone even when the app is closed.</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Bill and insight reminders while the app is open. Subscribe below too if you want them even when the app is closed.</div>
 
         @if (!_pushSupported)
         {
@@ -235,6 +235,7 @@
                 <div style="margin-bottom:10px;font-size:13px;color:@_localNotificationStatusColor">@_localNotificationStatus</div>
             }
 
+            <div style="font-size:12px;color:var(--text3);margin-bottom:8px">For reminders even when the app is closed, subscribe to cloud push too:</div>
             <div>
                 <label class="form-label">VAPID Public Key</label>
                 <input class="form-input" @bind="vapidPublicKey" placeholder="BHxk… (from npx web-push generate-vapid-keys)" style="font-family:monospace;font-size:12px" />
@@ -309,7 +310,7 @@
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.24.16";
+    private const string AppVersion = "v2026.06.24.17";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
