@@ -1,6 +1,7 @@
 @page "/"
 @inject AppState State
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Dashboard — Evergrove</PageTitle>
 
@@ -69,6 +70,26 @@ else
             <span>$</span>
             <strong>Budget</strong>
             <small>Check safe spend</small>
+        </button>
+        <button class="quick-action" @onclick="() => showAddBill = true">
+            <span>B</span>
+            <strong>Add Bill</strong>
+            <small>Track a payment</small>
+        </button>
+        <button class="quick-action" @onclick='() => Nav.NavigateTo("daily")'>
+            <span>D</span>
+            <strong>Daily</strong>
+            <small>Spending heatmap</small>
+        </button>
+        <button class="quick-action" @onclick="ExportTransactionsCsv">
+            <span>E</span>
+            <strong>Export</strong>
+            <small>Download CSV</small>
+        </button>
+        <button class="quick-action" @onclick='() => Nav.NavigateTo("settings")'>
+            <span>?</span>
+            <strong>Settings</strong>
+            <small>Sync and alerts</small>
         </button>
     </div>
 
@@ -187,8 +208,14 @@ else
     <AddTransactionModal OnClose="() => showAddTxn = false" OnSaved="OnTxnSaved" />
 }
 
+@if (showAddBill)
+{
+    <AddEditBillModal Bill="@((Bill?)null)" OnClose="() => showAddBill = false" OnSaved="OnBillSaved" />
+}
+
 @code {
     private bool showAddTxn;
+    private bool showAddBill;
     private bool _quickSyncing;
     private string _quickSyncStatus = string.Empty;
 
@@ -324,9 +351,22 @@ else
         }
     }
 
+    private async Task ExportTransactionsCsv()
+    {
+        var csv = State.BuildTransactionsCsv();
+        await JS.InvokeVoidAsync("financeBlade.downloadFile", $"transactions-{DateTime.Today:yyyy-MM-dd}.csv", csv, "text/csv");
+    }
+
     private Task OnTxnSaved()
     {
         showAddTxn = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnBillSaved()
+    {
+        showAddBill = false;
         StateHasChanged();
         return Task.CompletedTask;
     }
