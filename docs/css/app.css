@@ -383,11 +383,13 @@ button, a, input, select, textarea, [role="button"] {
     position: absolute;
     inset: 16px 10px;
     display: grid;
+    grid-auto-rows: 1fr;
     gap: 3px;
 }
 
 .forecast-bar-col {
     position: relative;
+    height: 100%;
 }
 
 .forecast-bar-fill {

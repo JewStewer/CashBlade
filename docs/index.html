@@ -126,7 +126,6 @@
             let startedAt = 0;
             let handledBackSwipe = false;
             const interactiveFor = target => target?.closest?.('button, a, input, select, textarea, [role="button"], .pill-tabs, .mini-timeline');
-            const scrollableFor = target => target?.closest?.('.page-content, .modal-sheet, .mini-timeline, .pill-tabs');
             document.addEventListener('touchstart', event => {
                 const touch = event.touches?.[0];
                 startX = touch?.clientX || 0;
@@ -134,15 +133,6 @@
                 startedAt = Date.now();
                 handledBackSwipe = false;
             }, { passive: true });
-            // Block the whole-app rubber-band/bounce when a drag starts outside
-            // any scrollable surface (e.g. on the header or bottom nav) — without
-            // this, iOS can pan the entire WKWebView instead of just the inner
-            // page content. Only this listener is non-passive (needs
-            // preventDefault); everything else stays passive so real scrolling
-            // inside .page-content/.modal-sheet is never delayed.
-            document.addEventListener('touchmove', event => {
-                if (!scrollableFor(event.target)) event.preventDefault();
-            }, { passive: false });
             document.addEventListener('touchmove', event => {
                 if (handledBackSwipe || interactiveFor(event.target)) return;
                 const touch = event.touches?.[0];
