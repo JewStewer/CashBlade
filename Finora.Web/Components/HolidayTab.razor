@@ -40,7 +40,7 @@
             </div>
         </div>
 
-        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="list-card">
             @foreach (var t in State.Trips.OrderBy(t => t.StartDate ?? DateTime.MaxValue))
             {
                 var budgetTotal = PlannedTotal(t);
@@ -303,7 +303,7 @@ else
     }
     @if (trip.BudgetItems.Any())
     {
-        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="list-card">
             @foreach (var row in trip.BudgetItems.Select((item, index) => new { item, index }))
             {
                 var displayPaid = row.item.ActualDollars > 0 ? row.item.ActualDollars : (row.item.Paid ? row.item.PlannedDollars : 0);
@@ -359,7 +359,7 @@ else
     }
     else
     {
-        <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="list-card" style="padding:20px;text-align:center;color:var(--text3);font-size:13px">
             No budget items yet. Add flights, accommodation, spending money, insurance, transfers, and activities.
         </div>
     }
@@ -450,7 +450,7 @@ else
     }
     @if (trip.Itinerary.Any())
     {
-        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="list-card">
             @foreach (var row in GetOrderedItinerary(trip))
             {
                 @if (_editingItineraryIndex == row.Index)
@@ -501,7 +501,7 @@ else
     }
     else
     {
-        <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="list-card" style="padding:20px;text-align:center;color:var(--text3);font-size:13px">
             No schedule items yet. Add flights, check-in times, activities, bookings, and reminders.
         </div>
     }
@@ -540,7 +540,7 @@ else
     }
     @if (trip.Checklist.Any())
     {
-        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="list-card">
             <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;font-size:12px;color:var(--text3)">
                 <span>@checklistProgress.ToString("P0") complete</span>
                 <span>@DueSoonCount(trip) due soon</span>
@@ -582,7 +582,7 @@ else
     }
     else
     {
-        <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="list-card" style="padding:20px;text-align:center;color:var(--text3);font-size:13px">
             No checklist items yet. Add passports, leave, packing, tickets, insurance, and pet care.
         </div>
     }

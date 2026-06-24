@@ -256,6 +256,7 @@
                     <div style="font-size:16px;font-weight:700">@dailyPace.ToString("C")</div>
                 </div>
             </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px;opacity:0.7">Projects your total spend for this @PeriodNounLower if you keep today's average daily pace — "Daily room" is what's left to spend per remaining day and stay on budget.</div>
             <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">
                 <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
                     <div class="stat-label">Left</div>
@@ -1024,8 +1025,7 @@ else if (_tab == "Forecast")
         var totalPay = forecast.Sum(f => f.Pay);
         var balanceMin = forecast.Min(f => f.Balance);
         var balanceMax = forecast.Max(f => f.Balance);
-        var linePoints = BuildForecastLinePoints(forecast, balanceMin, balanceMax);
-        var markers = BuildForecastMarkers(forecast, balanceMin, balanceMax);
+        var bars = BuildForecastBalanceBars(forecast, balanceMin, balanceMax, 12);
     }
     <div class="card">
         <div style="font-size:12px;color:var(--text3);margin-bottom:2px">60-Day Balance Forecast</div>
@@ -1041,16 +1041,21 @@ else if (_tab == "Forecast")
             </div>
         </div>
         <div class="forecast-chart" aria-hidden="true">
-            <div class="forecast-line">
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-                    <line x1="0" y1="@ForecastZeroY(balanceMin, balanceMax).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)" x2="100" y2="@ForecastZeroY(balanceMin, balanceMax).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)" stroke="rgba(248,113,113,0.45)" stroke-width="1" vector-effect="non-scaling-stroke" />
-                    <polyline points="@linePoints" fill="none" stroke="var(--teal-light)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-                </svg>
-            </div>
-            <div class="forecast-markers">
-                @foreach (var m in markers)
+            <div class="forecast-zero-line" style="top:@(ForecastZeroY(balanceMin, balanceMax).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+            <div class="forecast-bars-grid" style="grid-template-columns:repeat(@bars.Count,1fr)">
+                @foreach (var bar in bars)
                 {
-                    <div class="forecast-marker @m.Css" style="left:@(m.X.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;top:@(m.Y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                    <div class="forecast-bar-col">
+                        <div class="forecast-bar-fill @(bar.Negative ? "negative" : "")" style="top:@(bar.Top.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;height:@(bar.Height.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                        @if (bar.HasBill)
+                        {
+                            <div class="forecast-bar-event bill" style="top:@(bar.Y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;@(bar.HasPay ? "left:35%" : "")"></div>
+                        }
+                        @if (bar.HasPay)
+                        {
+                            <div class="forecast-bar-event pay" style="top:@(bar.Y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;@(bar.HasBill ? "left:65%" : "")"></div>
+                        }
+                    </div>
                 }
             </div>
         </div>
@@ -1488,7 +1493,7 @@ else if (_tab == "Holiday")
 
     private sealed record ForecastBillOccurrence(Bill Bill, DateTime DueDate);
     private sealed record ForecastCalendarDay(DateTime Date, ForecastDay? Forecast, bool IsOutsideMonth, bool IsPayday);
-    private sealed record ForecastMarker(decimal X, decimal Y, string Css);
+    private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay);
 
     // Day-by-day 60-day balance projection: starting balance minus average daily
     // discretionary spend, minus all unpaid recurring bill occurrences, plus
@@ -1610,17 +1615,6 @@ else if (_tab == "Holiday")
         _ => d.AddMonths(1)
     };
 
-    private static string BuildForecastLinePoints(List<ForecastDay> forecast, decimal min, decimal max)
-    {
-        var range = Math.Max(max - min, 1m);
-        return string.Join(" ", forecast.Select((f, i) =>
-        {
-            var x = forecast.Count <= 1 ? 0m : i * 100m / (forecast.Count - 1);
-            var y = 100m - ((f.Balance - min) / range * 100m);
-            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{x:0.###},{Math.Clamp(y, 0m, 100m):0.###}");
-        }));
-    }
-
     private static decimal ForecastZeroY(decimal min, decimal max)
     {
         if (min >= 0) return 100m;
@@ -1629,33 +1623,29 @@ else if (_tab == "Holiday")
         return 100m - ((0m - min) / range * 100m);
     }
 
-    // Bill/payday markers plotted directly on the balance line (replaces a
-    // separate bucketed bar strip that was unreadable at the chart's height —
-    // every non-zero bucket hit the same height floor, so all 12 buckets
-    // looked identical regardless of actual amount).
-    private static List<ForecastMarker> BuildForecastMarkers(List<ForecastDay> forecast, decimal min, decimal max)
+    // Buckets the 60-day forecast into N bars, each showing the ending balance
+    // for that bucket as a bar growing from the zero-line (red below zero,
+    // teal above), with small bill/payday dots above whichever bucket they
+    // fall in.
+    private static List<ForecastBalanceBar> BuildForecastBalanceBars(List<ForecastDay> forecast, decimal min, decimal max, int buckets)
     {
         var range = Math.Max(max - min, 1m);
-        var count = forecast.Count;
-        var result = new List<ForecastMarker>();
+        var zeroY = ForecastZeroY(min, max);
+        var bucketSize = (double)forecast.Count / buckets;
+        var result = new List<ForecastBalanceBar>();
 
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < buckets; i++)
         {
-            var f = forecast[i];
-            if (f.Bills <= 0 && !f.IsPayday) continue;
+            var start = (int)Math.Floor(i * bucketSize);
+            var end = (int)Math.Floor((i + 1) * bucketSize);
+            if (i == buckets - 1) end = forecast.Count;
+            var slice = forecast.Skip(start).Take(Math.Max(end - start, 1)).ToList();
 
-            var x = count <= 1 ? 0m : i * 100m / (count - 1);
-            var y = Math.Clamp(100m - ((f.Balance - min) / range * 100m), 0m, 100m);
+            var y = Math.Clamp(100m - ((slice[^1].Balance - min) / range * 100m), 0m, 100m);
+            var top = Math.Min(zeroY, y);
+            var height = Math.Max(Math.Abs(zeroY - y), 1.5m);
 
-            if (f.Bills > 0 && f.IsPayday)
-            {
-                result.Add(new ForecastMarker(Math.Max(x - 1.2m, 0m), y, "bill"));
-                result.Add(new ForecastMarker(Math.Min(x + 1.2m, 100m), y, "pay"));
-            }
-            else
-            {
-                result.Add(new ForecastMarker(x, y, f.Bills > 0 ? "bill" : "pay"));
-            }
+            result.Add(new ForecastBalanceBar(top, height, y, y > zeroY, slice.Any(f => f.Bills > 0), slice.Any(f => f.IsPayday)));
         }
 
         return result;

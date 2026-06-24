@@ -160,11 +160,6 @@ else
 
 <div style="height:16px"></div>
 
-<!-- FAB -->
-<button class="btn btn-primary fab" @onclick="() => editingBill = new Bill()">
-    +
-</button>
-
 @if (editingBill is not null)
 {
     <AddEditBillModal Bill="@(editingBill.Id == 0 ? null : editingBill)"

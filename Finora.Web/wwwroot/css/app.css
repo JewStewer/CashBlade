@@ -128,7 +128,7 @@ button, a, input, select, textarea, [role="button"] {
     overflow-x: hidden;
     overflow-anchor: none;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: auto;
+    overscroll-behavior-y: contain;
     touch-action: pan-x pan-y;
     position: relative;
     transform: translateZ(0);
@@ -301,6 +301,15 @@ button, a, input, select, textarea, [role="button"] {
     overflow-wrap: anywhere;
 }
 
+/* ── Rounded list section (card-style alternative to a flush edge-to-edge list) ── */
+.list-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 12px 16px 0;
+}
+
 /* ── List rows ── */
 .list-row {
     display: flex;
@@ -362,33 +371,48 @@ button, a, input, select, textarea, [role="button"] {
     overflow: hidden;
 }
 
-.forecast-line {
+.forecast-zero-line {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    height: 1px;
+    background: rgba(248,113,113,0.45);
+}
+
+.forecast-bars-grid {
     position: absolute;
     inset: 16px 10px;
+    display: grid;
+    gap: 3px;
 }
 
-.forecast-line svg {
-    width: 100%;
-    height: 100%;
-    overflow: visible;
+.forecast-bar-col {
+    position: relative;
 }
 
-.forecast-markers {
+.forecast-bar-fill {
     position: absolute;
-    inset: 16px 10px;
+    left: 1px;
+    right: 1px;
+    min-height: 2px;
+    border-radius: 2px;
+    background: var(--teal-light);
 }
 
-.forecast-marker {
+.forecast-bar-fill.negative { background: var(--red); }
+
+.forecast-bar-event {
     position: absolute;
-    width: 8px;
-    height: 8px;
+    left: 50%;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     border: 1.5px solid var(--surface2);
     transform: translate(-50%, -50%);
 }
 
-.forecast-marker.bill { background: var(--red); }
-.forecast-marker.pay { background: var(--green); }
+.forecast-bar-event.bill { background: var(--red); }
+.forecast-bar-event.pay { background: var(--green); }
 
 .forecast-legend {
     display: flex;
