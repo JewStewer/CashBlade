@@ -11,6 +11,16 @@
     }
 </div>
 
+<div style="padding:0 16px 8px;display:flex;align-items:center;gap:8px">
+    <span style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase">Budget period</span>
+    <div style="display:flex;gap:6px;flex:1;justify-content:flex-end">
+        @foreach (var p in new[]{"Weekly","Monthly"})
+        {
+            <button class="pill @(State.SummaryPeriod==p?"pill-active":"pill-inactive")" @onclick="() => SetPeriodAsync(p)">@p</button>
+        }
+    </div>
+</div>
+
 <div style="padding:16px">
 
 @if (_tab == "Overview")
@@ -589,7 +599,7 @@ else if (_tab == "Categories")
                     var (cat, amt) = billCats[i];
                     var barW  = breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0;
                     var ofInc = PeriodIncome > 0 ? amt / PeriodIncome : 0m;
-                    var limitDollars = State.GetCategoryLimitDollars(cat);
+                    var limitDollars = GetLimitDisplay(cat);
                     var hasLimit = limitDollars > 0;
                     var limitPct = hasLimit ? amt / limitDollars : 0m;
                     var barColor = hasLimit && limitPct >= 1m ? "var(--red)" : hasLimit && limitPct >= 0.8m ? "var(--amber)" : "#2563EB";
@@ -636,7 +646,7 @@ else if (_tab == "Categories")
                     var (cat, amt) = discCats[i];
                     var barW  = breakdownMax > 0 ? (double)(amt / breakdownMax) * 100.0 : 0;
                     var ofInc = PeriodIncome > 0 ? amt / PeriodIncome : 0m;
-                    var limitDollars = State.GetCategoryLimitDollars(cat);
+                    var limitDollars = GetLimitDisplay(cat);
                     var hasLimit = limitDollars > 0;
                     var limitPct = hasLimit ? amt / limitDollars : 0m;
                     var barColor = hasLimit && limitPct >= 1m ? "var(--red)" : hasLimit && limitPct >= 0.8m ? "var(--amber)" : palette[i % palette.Length];
@@ -688,7 +698,7 @@ else if (_tab == "Categories")
     {
         <div class="card" style="margin-top:12px">
             <div style="font-size:14px;font-weight:600;margin-bottom:4px">Category Limits</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Monthly spending limits per category. Shown as "near"/"over" badges above.</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">@State.SummaryPeriod spending limits per category. Shown as "near"/"over" badges above.</div>
             <div style="display:flex;flex-direction:column;gap:8px">
                 @foreach (var cat in State.Categories.Where(c => c.Type == CategoryType.Expense).OrderBy(c => c.Name))
                 {
@@ -699,7 +709,7 @@ else if (_tab == "Categories")
                                value="@GetLimitDisplay(cat.Name)"
                                @onchange="e => SetLimitAsync(cat.Name, e.Value?.ToString())"
                                placeholder="0" />
-                        <span style="font-size:12px;color:var(--text3);flex-shrink:0">/mo</span>
+                        <span style="font-size:12px;color:var(--text3);flex-shrink:0">/@(State.SummaryPeriod == "Weekly" ? "wk" : "mo")</span>
                     </div>
                 }
             </div>
@@ -760,7 +770,7 @@ else if (_tab == "History")
     @if (State.WeeklyIncome > 0)
     {
         <div class="card">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Everyday Spending This Pay Cycle</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Everyday Spending This @PeriodNoun</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px;opacity:0.9">@PayCycleDateRange</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget = unallocated spending (@PeriodBudget.ToString("C"))</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
@@ -849,8 +859,8 @@ else if (_tab == "History")
     @if (cycleTrend.Any(c => c.Income > 0 || c.Spending > 0))
     {
         <div class="card" style="margin-top:12px">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Pay Cycle History</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">Last 6 pay cycles · income vs spending vs net</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">@PeriodNoun History</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">Last 6 @PeriodNounLower periods · income vs spending vs net</div>
             @foreach (var c in cycleTrend)
             {
                 var spendW = cycleTrendMax > 0 ? (double)(c.Spending / cycleTrendMax) * 100.0 : 0;
@@ -1108,13 +1118,27 @@ else if (_tab == "Forecast")
         yield return ("Unplanned", "Unplanned", State.BudgetUnplanned, "#D97706");
     }
 
-    private decimal GetLimitDisplay(string categoryName) => State.GetCategoryLimitDollars(categoryName);
+    private decimal GetLimitDisplay(string categoryName)
+    {
+        var monthlyLimit = State.GetCategoryLimitDollars(categoryName);
+        return State.SummaryPeriod == "Weekly"
+            ? Math.Round(monthlyLimit * 12m / 52m, 2)
+            : monthlyLimit;
+    }
 
     private async Task SetLimitAsync(string categoryName, string? raw)
     {
         if (!decimal.TryParse(raw, out var dollars)) dollars = 0;
-        var cents = (int)Math.Round(dollars * 100m);
+        var monthlyDollars = State.SummaryPeriod == "Weekly"
+            ? dollars * 52m / 12m
+            : dollars;
+        var cents = (int)Math.Round(monthlyDollars * 100m);
         await State.SaveSettingAsync($"CategoryLimit:{categoryName}", cents.ToString());
+    }
+
+    private async Task SetPeriodAsync(string period)
+    {
+        await State.SaveSettingAsync("SummaryPeriod", period);
     }
 
     private async Task SetAffordModeAsync(string mode)
@@ -1239,7 +1263,7 @@ else if (_tab == "Forecast")
     }
 
     // Discretionary spend/budget: excludes bill categories (Debt, Rent, Phone, Insurance, etc.)
-    private (DateTime From, DateTime To) PayCycle => State.GetCurrentPayCycle();
+    private (DateTime From, DateTime To) PayCycle => State.GetCurrentPeriod();
     private int PayCycleDays => (PayCycle.To.Date - PayCycle.From.Date).Days + 1;
     private decimal PayCycleWeeks => PayCycleDays / 7m;
     private string PayCycleDateRange => $"{PayCycle.From:dd MMM} - {PayCycle.To:dd MMM}";
@@ -1251,7 +1275,7 @@ else if (_tab == "Forecast")
     private decimal PeriodBudget   => Math.Max(State.BudgetLeftover * PayCycleWeeks, 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private List<(string Category, decimal Amount)> TopCats => State.GetTopCategoriesForPeriod(PayCycle.From, PayCycle.To, 5, excludeBills: true);
-    private string PeriodNoun => "Pay Cycle";
+    private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
     private string PeriodNounLower => PeriodNoun.ToLowerInvariant();
 
     // Discretionary spending for the immediately-preceding pay cycle (for the "vs last cycle" delta)
@@ -1287,7 +1311,7 @@ else if (_tab == "Forecast")
     {
         get
         {
-            var (from, to) = State.GetCurrentPayCycle();
+            var (from, to) = State.GetCurrentPeriod();
             return State.Transactions
                 .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0)
                 .Where(t => !State.IsInternalMovement(t) &&

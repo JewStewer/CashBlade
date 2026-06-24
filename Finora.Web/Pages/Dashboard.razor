@@ -91,7 +91,46 @@ else
             <strong>Settings</strong>
             <small>Sync and alerts</small>
         </button>
+        <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
+            <span>T</span>
+            <strong>Tools</strong>
+            <small>What-if and cleanup</small>
+        </button>
     </div>
+
+    @if (State.WeeklyIncome > 0)
+    {
+        var weeklyBudget = Math.Max(State.BudgetLeftover, 0);
+        var weeklyRemaining = weeklyBudget - ThisWeek;
+        <div style="padding:12px 16px 0">
+            <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <div>
+                        <div class="row-title">Weekly budget</div>
+                        <div class="row-sub">Everyday spending, bills excluded</div>
+                    </div>
+                    <span class="badge @(weeklyRemaining >= 0 ? "badge-green" : "badge-red")">
+                        @(weeklyRemaining >= 0 ? $"{weeklyRemaining:C} left" : $"{Math.Abs(weeklyRemaining):C} over")
+                    </span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+                    <div style="text-align:center">
+                        <div class="stat-label">Budget</div>
+                        <div style="font-size:15px;font-weight:700">@weeklyBudget.ToString("C")</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div class="stat-label">Spent</div>
+                        <div style="font-size:15px;font-weight:700;color:@(ThisWeek > weeklyBudget ? "var(--red)" : "var(--text)")">@ThisWeek.ToString("C")</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div class="stat-label">Last week</div>
+                        <div style="font-size:15px;font-weight:700;color:var(--text2)">@LastWeek.ToString("C")</div>
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("budget")'>Open Budget</button>
+            </div>
+        </div>
+    }
 
     @if (ActionPrompts.Any())
     {
@@ -280,7 +319,9 @@ else
             var tomorrowBills = State.BillsDueBeforePayday.Where(b => b.EffectiveDueDate.Date <= DateTime.Today.AddDays(1)).ToList();
             if (tomorrowBills.Any())
             {
-                prompts.Add(new("Due now", $"{tomorrowBills.Count} bill{(tomorrowBills.Count == 1 ? "" : "s")} need a decision.", "bills", "Review", "tone-amber"));
+                var names = string.Join(", ", tomorrowBills.Take(2).Select(b => b.Name));
+                var more = tomorrowBills.Count > 2 ? $" +{tomorrowBills.Count - 2} more" : "";
+                prompts.Add(new("Bills due now", $"{names}{more}: mark paid, confirm autopay, or move money.", "bills", "Decide", "tone-amber"));
             }
             if (Forecast.AfterBills < 0)
             {

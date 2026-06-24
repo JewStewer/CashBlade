@@ -60,7 +60,19 @@ else
                 var (acctAfterBills, acctAfterPay) = State.GetAccountForecast(acct.Id);
                 var billsDue = balance - acctAfterBills;
                 var isPayAcct = acct.Id == State.PayAccountId;
-                <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+                var isExpanded = _expandedAccountId == acct.Id;
+                var accountBills = State.Bills
+                    .Where(b => b.AccountId == acct.Id && !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today.AddDays(30))
+                    .OrderBy(b => b.EffectiveDueDate)
+                    .Take(4)
+                    .ToList();
+                var recentAccountTxns = State.Transactions
+                    .Where(t => t.AccountId == acct.Id)
+                    .OrderByDescending(t => t.Date)
+                    .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
+                    .Take(3)
+                    .ToList();
+                <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => ToggleAccount(acct.Id)">
                     <div style="display:flex;align-items:center;gap:10px">
                         <div class="dot" style="background:@acct.ColorHex;width:12px;height:12px"></div>
                         <div style="flex:1">
@@ -68,6 +80,7 @@ else
                         </div>
                         <div style="text-align:right">
                             <div style="font-size:17px;font-weight:600;color:@(balance>=0?"var(--text)":"var(--red)")">@balance.ToString("C")</div>
+                            <div style="font-size:11px;color:var(--text3)">@(isExpanded ? "Tap to close" : "Tap for details")</div>
                         </div>
                     </div>
                     @if (billsDue > 0 || (isPayAcct && State.HasPayEstimate))
@@ -93,6 +106,55 @@ else
                                     <div style="font-size:13px;font-weight:600;color:var(--green)">@acctAfterPay.ToString("C")</div>
                                 </div>
                             }
+                        </div>
+                    }
+                    @if (isExpanded)
+                    {
+                        <div style="margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:10px" @onclick:stopPropagation="true">
+                            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+                                <div style="text-align:center">
+                                    <div class="stat-label">30d bills</div>
+                                    <div style="font-size:14px;font-weight:700;color:@(accountBills.Sum(b => b.AmountDollars) > 0 ? "var(--red)" : "var(--text3)")">@accountBills.Sum(b => b.AmountDollars).ToString("C")</div>
+                                </div>
+                                <div style="text-align:center">
+                                    <div class="stat-label">After bills</div>
+                                    <div style="font-size:14px;font-weight:700;color:@(acctAfterBills >= 0 ? "var(--green)" : "var(--red)")">@acctAfterBills.ToString("C")</div>
+                                </div>
+                                <div style="text-align:center">
+                                    <div class="stat-label">After pay</div>
+                                    <div style="font-size:14px;font-weight:700;color:@(acctAfterPay >= 0 ? "var(--green)" : "var(--red)")">@acctAfterPay.ToString("C")</div>
+                                </div>
+                            </div>
+                            @if (accountBills.Any())
+                            {
+                                <div>
+                                    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:6px">Upcoming from this account</div>
+                                    @foreach (var bill in accountBills)
+                                    {
+                                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                                            <span style="color:var(--text2)">@bill.Name · @bill.EffectiveDueDate.ToString("dd MMM")</span>
+                                            <span style="font-weight:700;color:var(--red)">@bill.AmountDollars.ToString("C")</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (recentAccountTxns.Any())
+                            {
+                                <div>
+                                    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:6px">Recent activity</div>
+                                    @foreach (var txn in recentAccountTxns)
+                                    {
+                                        <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px">
+                                            <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@txn.Description</span>
+                                            <span style="font-weight:700;color:@(txn.AmountCents >= 0 ? "var(--green)" : "var(--red)")">@txn.AmountDollars.ToString("C")</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+                                <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("transactions")'>Transactions</button>
+                                <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("bills")'>Bills</button>
+                            </div>
                         </div>
                     }
                     @if (isPayAcct || acctAfterBills < 0 || acct.TargetCents is not null)
@@ -282,7 +344,7 @@ else
     </div>
 }
 
-<div style="height:16px"></div>
+<div style="height:calc(var(--nav-height) + var(--safe-bottom) + 96px)"></div>
 
 @if (_debtDraft is not null)
 {
@@ -321,4 +383,8 @@ else
     private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
     private bool showAddTxn;
+    private int _expandedAccountId;
+
+    private void ToggleAccount(int accountId) =>
+        _expandedAccountId = _expandedAccountId == accountId ? 0 : accountId;
 }

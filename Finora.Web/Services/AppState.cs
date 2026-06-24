@@ -38,7 +38,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     // ── Settings ──────────────────────────────────────────────────────────────
     public DateTime NextPayDate { get; private set; } = DateTime.Today;
-    public string SummaryPeriod { get; private set; } = "Monthly";
+    public string SummaryPeriod { get; private set; } = "Weekly";
 
     // ── Affordability savings goal (shared setting keys with WPF) ─────────────
     public decimal AffordabilityGoalAmount { get; private set; }
@@ -545,7 +545,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         else
             NextPayDate = DateTime.Today;
 
-        SummaryPeriod = GetSetting("SummaryPeriod") ?? "Monthly";
+        SummaryPeriod = GetSetting("SummaryPeriod") ?? "Weekly";
 
         AffordabilityGoalAmount = decimal.TryParse(GetSetting("AffordabilityAmount"), out var goalAmount) && goalAmount > 0
             ? goalAmount
