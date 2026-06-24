@@ -316,9 +316,17 @@ else
                                             <span>@activity.Time</span>
                                         }
                                         <strong>@activity.Title</strong>
+                                        @if (activity.Amount > 0)
+                                        {
+                                            <em>@activity.Amount.ToString("C")</em>
+                                        }
                                     </div>
                                 }
                             </div>
+                            @if (day.TotalAmount > 0)
+                            {
+                                <div class="holiday-day-total">@day.TotalAmount.ToString("C") total</div>
+                            }
                         }
                         else
                         {
@@ -348,6 +356,7 @@ else
                 <input class="form-input" style="flex:1" type="time" value="@_newItineraryTime" @oninput="(ChangeEventArgs e) => _newItineraryTime = e.Value?.ToString()" />
             </div>
             <input class="form-input" @bind="_newItineraryTitle" placeholder="e.g. Flight to Tokyo" />
+            <input class="form-input" type="number" step="0.01" min="0" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
             <input class="form-input" @bind="_newItineraryNotes" placeholder="Notes (optional)" />
             <div style="display:flex;gap:8px">
                 <button class="btn btn-secondary" style="flex:1" @onclick="ToggleItineraryForm">Cancel</button>
@@ -368,6 +377,7 @@ else
                             <input class="form-input" style="flex:1" type="time" value="@_newItineraryTime" @oninput="(ChangeEventArgs e) => _newItineraryTime = e.Value?.ToString()" />
                         </div>
                         <input class="form-input" @bind="_newItineraryTitle" placeholder="Title" />
+                        <input class="form-input" type="number" step="0.01" min="0" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
                         <input class="form-input" @bind="_newItineraryNotes" placeholder="Notes" />
                         <div style="display:flex;gap:8px">
                             <button class="btn btn-secondary" style="flex:1" @onclick="CancelItineraryEdit">Cancel</button>
@@ -387,6 +397,10 @@ else
                         </div>
                         <div style="flex:1">
                             <div style="font-size:14px;font-weight:600">@row.Item.Title</div>
+                            @if (row.Item.AmountDollars > 0)
+                            {
+                                <div style="font-size:11px;color:var(--green);font-weight:700;margin-top:2px">@row.Item.AmountDollars.ToString("C")</div>
+                            }
                             @if (!string.IsNullOrWhiteSpace(row.Item.Notes))
                             {
                                 <div style="font-size:12px;color:var(--text3);margin-top:2px">@row.Item.Notes</div>
@@ -500,6 +514,7 @@ else
     private string? _newItineraryTime;
     private string _newItineraryTitle = string.Empty;
     private string _newItineraryNotes = string.Empty;
+    private decimal? _newItineraryAmount;
     private int? _editingItineraryIndex;
 
     private bool _showChecklistForm;
@@ -566,10 +581,10 @@ else
                 var activities = _trip?.Itinerary
                     .Where(x => x.Date.Date == date.Date)
                     .OrderBy(x => x.Time ?? string.Empty)
-                    .Select(x => new TripCalendarActivity(x.Time, x.Title, GetActivityTimeClass(x.Time)))
+                    .Select(x => new TripCalendarActivity(x.Time, x.Title, x.AmountDollars, GetActivityTimeClass(x.Time)))
                     .ToList() ?? new List<TripCalendarActivity>();
 
-                result.Add(new TripCalendarDay(date, activities));
+                result.Add(new TripCalendarDay(date, activities, activities.Sum(x => x.Amount)));
             }
 
             return result;
@@ -584,8 +599,8 @@ else
         return "time-evening";
     }
 
-    private sealed record TripCalendarDay(DateTime Date, List<TripCalendarActivity> Activities);
-    private sealed record TripCalendarActivity(string? Time, string Title, string TimeClass);
+    private sealed record TripCalendarDay(DateTime Date, List<TripCalendarActivity> Activities, decimal TotalAmount);
+    private sealed record TripCalendarActivity(string? Time, string Title, decimal Amount, string TimeClass);
 
     protected override void OnParametersSet()
     {
@@ -696,6 +711,7 @@ else
         _newItineraryTime = null;
         _newItineraryTitle = string.Empty;
         _newItineraryNotes = string.Empty;
+        _newItineraryAmount = null;
     }
 
     private async Task AddItineraryItem()
@@ -707,6 +723,7 @@ else
             Date = _newItineraryDate ?? DateTime.Today,
             Time = string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
             Title = _newItineraryTitle.Trim(),
+            AmountDollars = _newItineraryAmount ?? 0,
             Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim()
         });
         await State.UpdateTripAsync(_trip);
@@ -723,6 +740,7 @@ else
         _newItineraryTime = item.Time;
         _newItineraryTitle = item.Title;
         _newItineraryNotes = item.Notes ?? string.Empty;
+        _newItineraryAmount = item.AmountDollars;
     }
 
     private async Task SaveItineraryEdit()
@@ -736,6 +754,7 @@ else
             Date = _newItineraryDate ?? DateTime.Today,
             Time = string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
             Title = _newItineraryTitle.Trim(),
+            AmountDollars = _newItineraryAmount ?? 0,
             Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim()
         };
         await State.UpdateTripAsync(_trip);
@@ -749,6 +768,7 @@ else
         _newItineraryTime = null;
         _newItineraryTitle = string.Empty;
         _newItineraryNotes = string.Empty;
+        _newItineraryAmount = null;
     }
 
     private async Task RemoveItineraryItem(int index)

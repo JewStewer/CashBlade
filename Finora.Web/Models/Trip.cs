@@ -26,6 +26,12 @@ public class TripItineraryItem
     public string? Time { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Notes { get; set; }
+    public int AmountCents { get; set; }
+    public decimal AmountDollars
+    {
+        get => AmountCents / 100m;
+        set => AmountCents = (int)Math.Round(value * 100m);
+    }
 }
 
 public class TripChecklistItem

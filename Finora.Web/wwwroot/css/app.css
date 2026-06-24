@@ -532,6 +532,22 @@ button, a, input, select, textarea, [role="button"] {
     overflow-wrap: anywhere;
 }
 
+.holiday-activity-chip em {
+    display: block;
+    color: var(--green);
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 800;
+    margin-top: 3px;
+}
+
+.holiday-day-total {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 800;
+    margin-top: 7px;
+}
+
 .holiday-activity-chip.time-morning { --activity-color: var(--green); }
 .holiday-activity-chip.time-afternoon { --activity-color: var(--blue); }
 .holiday-activity-chip.time-evening { --activity-color: var(--purple); }
