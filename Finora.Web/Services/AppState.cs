@@ -980,10 +980,11 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     // ── Subscriptions / recurring payments ────────────────────────────────────
     private const string IgnoredSubscriptionsSettingKey = "IgnoredSubscriptions";
+    private const string IgnoredCleanupMerchantsSettingKey = "IgnoredCleanupMerchants";
 
-    private List<string> GetIgnoredSubscriptions()
+    private List<string> GetIgnoredStringList(string key)
     {
-        var json = GetSetting(IgnoredSubscriptionsSettingKey);
+        var json = GetSetting(key);
         if (string.IsNullOrWhiteSpace(json)) return new List<string>();
         try
         {
@@ -994,6 +995,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             return new List<string>();
         }
     }
+
+    private List<string> GetIgnoredSubscriptions() => GetIgnoredStringList(IgnoredSubscriptionsSettingKey);
+
+    private List<string> GetIgnoredCleanupMerchants() => GetIgnoredStringList(IgnoredCleanupMerchantsSettingKey);
 
     public List<RecurringPayment> GetRecurringPayments()
     {
@@ -1027,9 +1032,11 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public List<TransactionCleanupSuggestion> GetTransactionCleanupSuggestions()
     {
+        var ignored = GetIgnoredCleanupMerchants().ToHashSet(StringComparer.OrdinalIgnoreCase);
         return Transactions
             .Where(t => t.AmountCents < 0 && !IsInternalMovement(t) && !string.IsNullOrWhiteSpace(t.Description))
             .GroupBy(t => NormalizeRecurringDescription(t.Description))
+            .Where(g => !ignored.Contains(g.Key))
             .Select(g => BuildCleanupSuggestion(g.ToList()))
             .Where(s => s is not null)
             .Cast<TransactionCleanupSuggestion>()
@@ -1037,6 +1044,16 @@ public class AppState(IndexedDbService db, SyncService sync)
             .ThenByDescending(s => s.AffectedAmount)
             .Take(8)
             .ToList();
+    }
+
+    public async Task IgnoreTransactionCleanupSuggestionAsync(string merchant)
+    {
+        var ignored = GetIgnoredCleanupMerchants();
+        if (!ignored.Contains(merchant, StringComparer.OrdinalIgnoreCase))
+        {
+            ignored.Add(merchant);
+            await SaveSettingAsync(IgnoredCleanupMerchantsSettingKey, System.Text.Json.JsonSerializer.Serialize(ignored));
+        }
     }
 
     public List<MerchantSpendWatchItem> GetMerchantSpendWatchlist(int days = 30, int count = 8)

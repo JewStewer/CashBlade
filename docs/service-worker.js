@@ -103,4 +103,4 @@ self.addEventListener('fetch', event => {
         return (await cache.match(event.request)) ?? (await fetchWithTimeout(event.request, 10000));
     })());
 });
-/* Manifest version: mpbRc2tA */
+/* Manifest version: FI6H4trC */

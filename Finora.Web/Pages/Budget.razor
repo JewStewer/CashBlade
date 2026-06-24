@@ -21,6 +21,11 @@
     </div>
 </div>
 
+<div style="padding:0 16px 8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+    <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("daily")'>Daily spending</button>
+    <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("trips")'>Holiday budgets</button>
+</div>
+
 <div style="padding:16px">
 
 @if (_tab == "Overview")

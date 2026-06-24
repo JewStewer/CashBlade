@@ -76,61 +76,12 @@ else
             <strong>Add Bill</strong>
             <small>Track a payment</small>
         </button>
-        <button class="quick-action" @onclick='() => Nav.NavigateTo("daily")'>
-            <span>D</span>
-            <strong>Daily</strong>
-            <small>Spending heatmap</small>
-        </button>
-        <button class="quick-action" @onclick="ExportTransactionsCsv">
-            <span>E</span>
-            <strong>Export</strong>
-            <small>Download CSV</small>
-        </button>
-        <button class="quick-action" @onclick='() => Nav.NavigateTo("settings")'>
-            <span>?</span>
-            <strong>Settings</strong>
-            <small>Sync and alerts</small>
-        </button>
         <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
             <span>T</span>
             <strong>Tools</strong>
             <small>What-if and cleanup</small>
         </button>
     </div>
-
-    @if (State.WeeklyIncome > 0)
-    {
-        var weeklyBudget = Math.Max(State.BudgetLeftover, 0);
-        var weeklyRemaining = weeklyBudget - ThisWeek;
-        <div style="padding:12px 16px 0">
-            <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                    <div>
-                        <div class="row-title">Weekly budget</div>
-                        <div class="row-sub">Everyday spending, bills excluded</div>
-                    </div>
-                    <span class="badge @(weeklyRemaining >= 0 ? "badge-green" : "badge-red")">
-                        @(weeklyRemaining >= 0 ? $"{weeklyRemaining:C} left" : $"{Math.Abs(weeklyRemaining):C} over")
-                    </span>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
-                    <div style="text-align:center">
-                        <div class="stat-label">Budget</div>
-                        <div style="font-size:15px;font-weight:700">@weeklyBudget.ToString("C")</div>
-                    </div>
-                    <div style="text-align:center">
-                        <div class="stat-label">Spent</div>
-                        <div style="font-size:15px;font-weight:700;color:@(ThisWeek > weeklyBudget ? "var(--red)" : "var(--text)")">@ThisWeek.ToString("C")</div>
-                    </div>
-                    <div style="text-align:center">
-                        <div class="stat-label">Last week</div>
-                        <div style="font-size:15px;font-weight:700;color:var(--text2)">@LastWeek.ToString("C")</div>
-                    </div>
-                </div>
-                <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("budget")'>Open Budget</button>
-            </div>
-        </div>
-    }
 
     @if (ActionPrompts.Any())
     {

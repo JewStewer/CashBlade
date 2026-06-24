@@ -49,44 +49,6 @@
 
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div>
-            <div class="row-title">Cashflow what-if</div>
-            <div class="row-sub">Test a planned purchase against bills and payday before spending.</div>
-        </div>
-        <div style="display:flex;gap:8px">
-            <input class="form-input" style="flex:1;height:38px" placeholder="Planned spend" type="number" min="0" step="0.01" @bind="_plannedSpend" @bind:event="oninput" />
-            <input class="form-input" style="flex:1;height:38px" placeholder="Label" @bind="_plannedLabel" @bind:event="oninput" />
-        </div>
-        @{
-            var forecast = State.GetForecastTotals();
-            var afterPlannedBills = forecast.AfterBills - _plannedSpend;
-            var afterPlannedPay = forecast.AfterPay - _plannedSpend;
-            var daysToPay = Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 1);
-            var dailyAfterPlan = Math.Max((State.SafeToSpendAmount - _plannedSpend) / daysToPay, 0);
-        }
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
-            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
-                <div class="stat-label">After bills</div>
-                <div style="font-size:15px;font-weight:700;color:@(afterPlannedBills >= 0 ? "var(--green)" : "var(--red)")">@afterPlannedBills.ToString("C")</div>
-            </div>
-            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
-                <div class="stat-label">After payday</div>
-                <div style="font-size:15px;font-weight:700;color:@(afterPlannedPay >= 0 ? "var(--green)" : "var(--red)")">@afterPlannedPay.ToString("C")</div>
-            </div>
-            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center">
-                <div class="stat-label">Daily pace</div>
-                <div style="font-size:15px;font-weight:700;color:var(--text)">@dailyAfterPlan.ToString("C")</div>
-            </div>
-        </div>
-        @if (_plannedSpend > 0)
-        {
-            <div style="font-size:12px;color:@(afterPlannedBills < 0 ? "var(--red)" : "var(--text3)")">
-                @((_plannedLabel.Trim().Length > 0 ? _plannedLabel.Trim() : "That spend") + (afterPlannedBills < 0 ? " would put the pre-payday forecast negative." : " fits the current pre-payday forecast."))
-            </div>
-        }
-    </div>
-
-    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
-        <div>
             <div class="row-title">Smart transaction cleanup</div>
             <div class="row-sub">Find repeated merchants with mixed categories and fix them in one tap.</div>
         </div>
@@ -107,9 +69,14 @@
                         </div>
                         <span class="badge badge-gray">@suggestion.AffectedAmount.ToString("C")</span>
                     </div>
-                    <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => ApplyCleanupAsync(suggestion)">
-                        Apply category
-                    </button>
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+                        <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => ApplyCleanupAsync(suggestion)">
+                            Apply category
+                        </button>
+                        <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => IgnoreCleanupAsync(suggestion)">
+                            Ignore
+                        </button>
+                    </div>
                 </div>
             }
         }
@@ -157,6 +124,9 @@
         {
             <div style="font-size:12px;color:var(--green)">@_watchStatus</div>
         }
+        <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ExportWatchlistAsync">
+            Export watchlist CSV
+        </button>
     </div>
 
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
@@ -204,8 +174,6 @@
 
 @code {
     private bool _busy;
-    private decimal _plannedSpend;
-    private string _plannedLabel = string.Empty;
     private string _syncStatus = string.Empty;
     private string _syncStatusColor = "var(--text3)";
     private string _cleanupStatus = string.Empty;
@@ -254,6 +222,14 @@
         _cleanupStatus = $"Updated {count} transaction{(count == 1 ? "" : "s")}.";
     }
 
+    private async Task IgnoreCleanupAsync(TransactionCleanupSuggestion suggestion)
+    {
+        _busy = true;
+        await State.IgnoreTransactionCleanupSuggestionAsync(suggestion.Merchant);
+        _busy = false;
+        _cleanupStatus = $"{suggestion.Merchant} ignored for cleanup.";
+    }
+
     private async Task ApplyBillSuggestionAsync(BillIntelligenceSuggestion suggestion)
     {
         if (suggestion.RecurringPayment is null) return;
@@ -280,6 +256,24 @@
         var count = await State.MarkMerchantUnnecessaryAsync(item.Merchant);
         _busy = false;
         _watchStatus = $"Marked {count} transaction{(count == 1 ? "" : "s")} as unnecessary.";
+    }
+
+    private async Task ExportWatchlistAsync()
+    {
+        var rows = State.GetMerchantSpendWatchlist(30, 25);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Merchant,Amount,UnnecessaryAmount,Count,LastSeen");
+        foreach (var item in rows)
+        {
+            sb.AppendLine(string.Join(",",
+                Csv(item.Merchant),
+                item.Amount.ToString("0.00"),
+                item.UnnecessaryAmount.ToString("0.00"),
+                item.Count.ToString(),
+                item.LastSeen.ToString("yyyy-MM-dd")));
+        }
+        await JS.InvokeVoidAsync("financeBlade.downloadFile", $"spending-watchlist-{DateTime.Today:yyyy-MM-dd}.csv", sb.ToString(), "text/csv");
+        _watchStatus = "Watchlist exported.";
     }
 
     private async Task ExportBillsCalendarAsync()
@@ -312,4 +306,10 @@
 
     private static string EscapeIcs(string value) =>
         value.Replace("\\", "\\\\").Replace(";", "\\;").Replace(",", "\\,").Replace("\r", "").Replace("\n", "\\n");
+
+    private static string Csv(string value)
+    {
+        var safe = value.Replace("\"", "\"\"");
+        return $"\"{safe}\"";
+    }
 }
