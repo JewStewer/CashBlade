@@ -1039,6 +1039,60 @@ public class AppState(IndexedDbService db, SyncService sync)
             .ToList();
     }
 
+    public List<MerchantSpendWatchItem> GetMerchantSpendWatchlist(int days = 30, int count = 8)
+    {
+        var from = DateTime.Today.AddDays(-Math.Max(days, 1));
+        return Transactions
+            .Where(t => t.Date.Date >= from &&
+                        t.AmountCents < 0 &&
+                        !IsInternalMovement(t) &&
+                        !IsBudgetedBillTransaction(t) &&
+                        !string.IsNullOrWhiteSpace(t.Description))
+            .GroupBy(t => NormalizeRecurringDescription(t.Description))
+            .Select(g => new MerchantSpendWatchItem
+            {
+                Merchant = g.Key,
+                Amount = g.Sum(t => Math.Abs(t.AmountDollars)),
+                UnnecessaryAmount = g.Where(t => t.IsUnnecessary).Sum(t => Math.Abs(t.AmountDollars)),
+                Count = g.Count(),
+                LastSeen = g.Max(t => t.Date.Date)
+            })
+            .Where(item => item.Amount > 0)
+            .OrderByDescending(item => item.Amount)
+            .ThenByDescending(item => item.Count)
+            .Take(count)
+            .ToList();
+    }
+
+    public async Task<int> MarkMerchantUnnecessaryAsync(string merchant, int days = 30)
+    {
+        var from = DateTime.Today.AddDays(-Math.Max(days, 1));
+        var rows = Transactions
+            .Where(t => t.Date.Date >= from &&
+                        t.AmountCents < 0 &&
+                        !t.IsUnnecessary &&
+                        !IsInternalMovement(t) &&
+                        NormalizeRecurringDescription(t.Description) == merchant)
+            .ToList();
+
+        foreach (var transaction in rows)
+        {
+            transaction.IsUnnecessary = true;
+            await db.PutAsync("transactions", transaction);
+            QueueUpdatedTransaction(transaction);
+            await db.SetTransactionOverrideAsync(transaction);
+        }
+
+        if (rows.Count > 0)
+        {
+            Compute();
+            OnChange?.Invoke();
+            ScheduleSyncSoon();
+        }
+
+        return rows.Count;
+    }
+
     public async Task<int> ApplyTransactionCleanupSuggestionAsync(TransactionCleanupSuggestion suggestion)
     {
         var rows = Transactions
