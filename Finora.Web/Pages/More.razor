@@ -1,33 +1,149 @@
 @page "/more"
 @inject NavigationManager Nav
+@inject AppState State
+@inject IJSRuntime JS
 
-<PageTitle>More — Evergrove</PageTitle>
+<PageTitle>More - Evergrove</PageTitle>
+
+<div style="padding:10px 16px 0">
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
+                <div class="row-title">Mobile tools</div>
+                <div class="row-sub">Sync, export, and save a quick money snapshot.</div>
+            </div>
+            @if (_toolsBusy)
+            {
+                <span class="badge badge-gray">Working</span>
+            }
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <button class="btn btn-secondary btn-sm" disabled="@_toolsBusy" @onclick="SyncNowAsync">Sync now</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_toolsBusy" @onclick="ExportTransactionsAsync">Export CSV</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_toolsBusy" @onclick="DownloadSnapshotAsync">Snapshot</button>
+            <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("bills")'>Bills</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_toolsStatus))
+        {
+            <div style="font-size:12px;color:var(--text3)">@_toolsStatus</div>
+        }
+    </div>
+</div>
 
 <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-top:8px">
     <div class="list-row" style="cursor:pointer" @onclick='() => Nav.NavigateTo("trips")'>
-        <div class="row-icon" style="background:var(--surface2)">🏖️</div>
+        <div class="row-icon" style="background:var(--surface2)">Trip</div>
         <div class="row-main">
             <div class="row-title">Holiday</div>
             <div class="row-sub">Trip savings and budgets</div>
         </div>
-        <span style="color:var(--text3)">›</span>
+        <span style="color:var(--text3)">></span>
     </div>
     <div class="list-row" style="cursor:pointer" @onclick='() => Nav.NavigateTo("daily")'>
-        <div class="row-icon" style="background:var(--surface2)">📅</div>
+        <div class="row-icon" style="background:var(--surface2)">Day</div>
         <div class="row-main">
             <div class="row-title">Daily</div>
             <div class="row-sub">Day-by-day spending heatmap</div>
         </div>
-        <span style="color:var(--text3)">›</span>
+        <span style="color:var(--text3)">></span>
     </div>
     <div class="list-row" style="cursor:pointer" @onclick='() => Nav.NavigateTo("settings")'>
-        <div class="row-icon" style="background:var(--surface2)">⚙️</div>
+        <div class="row-icon" style="background:var(--surface2)">Set</div>
         <div class="row-main">
             <div class="row-title">Settings</div>
-            <div class="row-sub">Sync, app lock, categories &amp; more</div>
+            <div class="row-sub">Sync, app lock, categories and more</div>
         </div>
-        <span style="color:var(--text3)">›</span>
+        <span style="color:var(--text3)">></span>
     </div>
 </div>
 
 <div style="height:16px"></div>
+
+@code {
+    private bool _toolsBusy;
+    private string _toolsStatus = string.Empty;
+
+    private async Task SyncNowAsync()
+    {
+        _toolsBusy = true;
+        _toolsStatus = "Syncing...";
+        try
+        {
+            await State.SyncAndReloadAsync();
+            _toolsStatus = "Sync complete.";
+        }
+        catch (Exception ex)
+        {
+            _toolsStatus = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            _toolsBusy = false;
+        }
+    }
+
+    private async Task ExportTransactionsAsync()
+    {
+        _toolsBusy = true;
+        try
+        {
+            var csv = State.BuildTransactionsCsv();
+            await JS.InvokeVoidAsync("financeBlade.downloadFile", $"transactions-{DateTime.Today:yyyy-MM-dd}.csv", csv, "text/csv");
+            _toolsStatus = "Transactions exported.";
+        }
+        finally
+        {
+            _toolsBusy = false;
+        }
+    }
+
+    private async Task DownloadSnapshotAsync()
+    {
+        _toolsBusy = true;
+        try
+        {
+            var snapshot = BuildSnapshotText();
+            await JS.InvokeVoidAsync("financeBlade.downloadFile", $"finora-snapshot-{DateTime.Today:yyyy-MM-dd}.txt", snapshot, "text/plain");
+            _toolsStatus = "Snapshot downloaded.";
+        }
+        finally
+        {
+            _toolsBusy = false;
+        }
+    }
+
+    private string BuildSnapshotText()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Finora snapshot - {DateTime.Today:yyyy-MM-dd}");
+        sb.AppendLine();
+        sb.AppendLine($"Balance: {State.TotalBalance:C}");
+        sb.AppendLine($"Safe to spend: {State.SafeToSpendAmount:C}");
+        sb.AppendLine($"Next payday: {State.NextPayDate:dd MMM yyyy}");
+        sb.AppendLine($"Bills before payday: {State.TotalBillsDue:C}");
+        sb.AppendLine();
+
+        var upcoming = State.GetUpcomingBills(5).ToList();
+        sb.AppendLine("Upcoming bills");
+        if (upcoming.Any())
+        {
+            foreach (var bill in upcoming)
+                sb.AppendLine($"- {bill.EffectiveDueDate:dd MMM}: {bill.Name} {bill.AmountDollars:C}");
+        }
+        else
+        {
+            sb.AppendLine("- None due soon");
+        }
+
+        var signals = State.ProactiveInsights.Take(5).ToList();
+        if (signals.Any())
+        {
+            sb.AppendLine();
+            sb.AppendLine("Smart signals");
+            foreach (var signal in signals)
+                sb.AppendLine($"- {signal.Title}: {signal.Message}");
+        }
+
+        return sb.ToString();
+    }
+}

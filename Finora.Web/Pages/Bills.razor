@@ -39,6 +39,38 @@
     </div>
 </div>
 
+@{
+    var dueNowBills = State.Bills
+        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today)
+        .ToList();
+    var next7Bills = State.Bills
+        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today.AddDays(7))
+        .ToList();
+    var next30Bills = State.Bills
+        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today.AddDays(30))
+        .ToList();
+}
+
+<div style="padding:0 16px 10px;display:flex;gap:8px">
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Due now</div>
+        <div style="font-size:17px;font-weight:700;color:var(--red)">@dueNowBills.Sum(b => b.AmountDollars).ToString("C")</div>
+    </div>
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Next 7d</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">@next7Bills.Sum(b => b.AmountDollars).ToString("C")</div>
+    </div>
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Next 30d</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">@next30Bills.Sum(b => b.AmountDollars).ToString("C")</div>
+    </div>
+</div>
+<div style="padding:0 16px 12px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-secondary btn-sm" disabled="@(!dueNowBills.Any())" @onclick="MarkDuePaidAsync">Mark due paid</button>
+    <button class="btn btn-secondary btn-sm" @onclick='() => filter = "Unpaid"'>Show unpaid</button>
+    <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">Add Bill</button>
+</div>
+
 @if (DueSoonBills.Any())
 {
     <div class="mini-timeline-wrap">
@@ -187,6 +219,16 @@ else
     private async Task TogglePaid(Bill bill)
     {
         await State.MarkBillPaidAsync(bill.Id, !State.IsBillPaid(bill));
+    }
+
+    private async Task MarkDuePaidAsync()
+    {
+        var dueNow = State.Bills
+            .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today)
+            .ToList();
+
+        foreach (var bill in dueNow)
+            await State.MarkBillPaidAsync(bill.Id, true);
     }
 
     private static string DueLabel(DateTime date)

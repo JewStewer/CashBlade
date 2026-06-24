@@ -1,6 +1,7 @@
 @page "/transactions"
 @inject AppState State
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Transactions — Evergrove</PageTitle>
 
@@ -44,8 +45,34 @@
     </div>
 </div>
 
+@{
+    var filteredRows = GetFiltered();
+    var filteredSpent = filteredRows.Where(t => t.AmountCents < 0 && !State.IsInternalMovement(t)).Sum(t => Math.Abs(t.AmountDollars));
+    var filteredIncome = filteredRows.Where(t => t.AmountCents > 0 && !State.IsInternalMovement(t)).Sum(t => t.AmountDollars);
+    var filteredNet = filteredRows.Sum(t => t.AmountDollars);
+}
+
+<div style="padding:0 16px 10px;display:flex;gap:8px">
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Matching</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">@filteredRows.Count</div>
+    </div>
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Spent</div>
+        <div style="font-size:17px;font-weight:700;color:var(--red)">@filteredSpent.ToString("C")</div>
+    </div>
+    <div class="card-sm" style="flex:1;text-align:center">
+        <div class="stat-label">Net</div>
+        <div style="font-size:17px;font-weight:700;color:@(filteredNet >= 0 ? "var(--green)" : "var(--red)")">@filteredNet.ToString("C")</div>
+    </div>
+</div>
+<div style="padding:0 16px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn btn-secondary btn-sm" disabled="@(!HasActiveFilters)" @onclick="ClearFilters">Clear filters</button>
+    <button class="btn btn-secondary btn-sm" disabled="@(!filteredRows.Any())" @onclick="ExportFilteredAsync">Export filtered</button>
+</div>
+
 <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
-    @{var rows = GetFiltered();}
+    @{var rows = filteredRows;}
     @if (!rows.Any())
     {
         <div class="empty-state">
@@ -232,7 +259,24 @@
     private int _repayPickId;
     private decimal _repayAmount;
 
+    private bool HasActiveFilters =>
+        filter != "All" ||
+        !string.IsNullOrWhiteSpace(search) ||
+        dateRange != "all" ||
+        filterAccountId != 0 ||
+        filterCategoryId != 0;
+
     private void SelectTxn(int id) => selectedId = selectedId == id ? 0 : id;
+
+    private void ClearFilters()
+    {
+        filter = "All";
+        search = string.Empty;
+        dateRange = "all";
+        filterAccountId = 0;
+        filterCategoryId = 0;
+        selectedId = 0;
+    }
 
     private void StartEdit(Transaction t)
     {
@@ -298,6 +342,12 @@
         CancelRepayPick();
     }
 
+    private async Task ExportFilteredAsync()
+    {
+        var csv = BuildTransactionsCsv(GetFiltered().OrderBy(t => t.Date).ThenBy(t => t.Id));
+        await JS.InvokeVoidAsync("financeBlade.downloadFile", $"transactions-filtered-{DateTime.Today:yyyy-MM-dd}.csv", csv, "text/csv");
+    }
+
     private List<Transaction> GetFiltered()
     {
         var q = State.RecentTransactions.AsEnumerable();
@@ -332,6 +382,29 @@
         };
 
         return q.ToList();
+    }
+
+    private static string BuildTransactionsCsv(IEnumerable<Transaction> rows)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Date,Description,Account,Category,Amount,Unnecessary");
+        foreach (var t in rows)
+        {
+            sb.AppendLine(string.Join(",",
+                Csv(t.Date.ToString("yyyy-MM-dd")),
+                Csv(t.Description),
+                Csv(t.AccountName),
+                Csv(t.CategoryName),
+                t.AmountDollars.ToString("0.00"),
+                t.IsUnnecessary ? "Yes" : "No"));
+        }
+        return sb.ToString();
+    }
+
+    private static string Csv(string value)
+    {
+        var safe = value.Replace("\"", "\"\"");
+        return $"\"{safe}\"";
     }
 
     private static string GetEmoji(string cat) => cat switch
