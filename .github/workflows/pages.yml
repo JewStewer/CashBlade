@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - "docs/**"
+      - "Finora.Web/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
