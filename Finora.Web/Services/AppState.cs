@@ -630,14 +630,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         decimal TargetBalance,
         decimal ReservedBills,
         decimal SpareDollars,
-        DateTime ProtectedUntil);
+        DateTime ProtectedUntil,
+        bool HasTarget);
 
     public List<HolidayFundingOption> GetHolidayFundingOptions(Trip trip)
     {
         var protectedUntil = trip.StartDate?.Date ?? DateTime.Today.AddDays(30);
 
         return Accounts
-            .Where(a => a.TargetDollars is > 0)
+            .Where(a => a.Type != AccountType.Credit)
             .Where(a => trip.SavingsAccountId is null || a.Id != trip.SavingsAccountId.Value)
             .Select(account =>
             {
@@ -656,7 +657,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     target,
                     reservedBills,
                     Math.Round(spare, 2),
-                    protectedUntil);
+                    protectedUntil,
+                    account.TargetDollars is > 0);
             })
             .Where(o => o.SpareDollars > 0)
             .OrderByDescending(o => o.SpareDollars)

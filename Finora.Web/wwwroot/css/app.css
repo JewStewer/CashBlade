@@ -463,6 +463,10 @@ button, a, input, select, textarea, [role="button"] {
     outline-offset: -2px;
 }
 
+.budget-calendar-day.is-trip-day {
+    background: rgba(20,184,166,0.1);
+}
+
 .budget-calendar-date {
     display: flex;
     justify-content: space-between;
