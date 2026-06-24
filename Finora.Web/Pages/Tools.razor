@@ -48,6 +48,35 @@
     </div>
 
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div>
+                <div class="row-title">No-spend mode</div>
+                <div class="row-sub">Treat today as bills and essentials only.</div>
+            </div>
+            <span class="badge @(State.NoSpendMode ? "badge-amber" : "badge-gray")">
+                @(State.NoSpendMode ? "On" : "Off")
+            </span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px">
+                <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Today spent</div>
+                <div style="font-size:20px;font-weight:800;color:var(--text);margin-top:2px">@State.GetTodaySpending().ToString("C")</div>
+            </div>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px">
+                <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Non-bill spend</div>
+                <div style="font-size:20px;font-weight:800;color:var(--text);margin-top:2px">@State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today).ToString("C")</div>
+            </div>
+        </div>
+        <button class="btn @(State.NoSpendMode ? "btn-secondary" : "btn-primary") btn-sm" disabled="@_busy" @onclick="ToggleNoSpendModeAsync">
+            @(State.NoSpendMode ? "Turn off no-spend mode" : "Start no-spend mode")
+        </button>
+        @if (!string.IsNullOrEmpty(_modeStatus))
+        {
+            <div style="font-size:12px;color:var(--green)">@_modeStatus</div>
+        }
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div>
             <div class="row-title">Smart transaction cleanup</div>
             <div class="row-sub">Find repeated merchants with mixed categories and fix them in one tap.</div>
@@ -135,6 +164,26 @@
             <div class="row-sub">Turn detected recurring charges into bills and catch amount changes.</div>
         </div>
         @{
+            var recurring = State.GetRecurringPayments();
+        }
+        @if (recurring.Any())
+        {
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
+                    <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Recurring</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:2px">@recurring.Count</div>
+                </div>
+                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
+                    <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Weekly</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:2px">@State.SubscriptionWeeklyTotal.ToString("C")</div>
+                </div>
+                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
+                    <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Untracked</div>
+                    <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:2px">@State.SubscriptionsNotInBillsCount</div>
+                </div>
+            </div>
+        }
+        @{
             var billSuggestions = State.GetBillIntelligenceSuggestions();
         }
         @if (billSuggestions.Any())
@@ -169,6 +218,9 @@
         <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="ExportBillsCalendarAsync">
             Export 60-day bill calendar
         </button>
+        <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ExportRecurringAsync">
+            Export recurring audit CSV
+        </button>
     </div>
 </div>
 
@@ -179,6 +231,7 @@
     private string _cleanupStatus = string.Empty;
     private string _billStatus = string.Empty;
     private string _watchStatus = string.Empty;
+    private string _modeStatus = string.Empty;
 
     private async Task SyncNowAsync()
     {
@@ -212,6 +265,16 @@
         _busy = false;
         _syncStatus = "Pending queue cleared. Sync now to pull the latest cloud data.";
         _syncStatusColor = "var(--green)";
+    }
+
+    private async Task ToggleNoSpendModeAsync()
+    {
+        _busy = true;
+        await State.SetNoSpendModeAsync(!State.NoSpendMode);
+        _busy = false;
+        _modeStatus = State.NoSpendMode
+            ? "No-spend mode is on. Dashboard will prioritize it."
+            : "No-spend mode is off.";
     }
 
     private async Task ApplyCleanupAsync(TransactionCleanupSuggestion suggestion)
@@ -281,6 +344,27 @@
         var ics = BuildBillsIcs(State.GetUpcomingBills(60));
         await JS.InvokeVoidAsync("financeBlade.downloadFile", $"evergrove-bills-{DateTime.Today:yyyy-MM-dd}.ics", ics, "text/calendar");
         _billStatus = "Bill calendar exported.";
+    }
+
+    private async Task ExportRecurringAsync()
+    {
+        var rows = State.GetRecurringPayments();
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Name,Frequency,AverageAmount,WeeklyAmount,NextExpected,Account,Category,AlreadyBill");
+        foreach (var item in rows)
+        {
+            sb.AppendLine(string.Join(",",
+                Csv(item.Name),
+                Csv(item.Frequency),
+                item.AverageAmount.ToString("0.00"),
+                item.WeeklyAmount.ToString("0.00"),
+                item.NextExpected.ToString("yyyy-MM-dd"),
+                Csv(item.AccountName),
+                Csv(item.CategoryName),
+                Csv(item.IsAlreadyBill ? "Yes" : "No")));
+        }
+        await JS.InvokeVoidAsync("financeBlade.downloadFile", $"recurring-audit-{DateTime.Today:yyyy-MM-dd}.csv", sb.ToString(), "text/csv");
+        _billStatus = "Recurring audit exported.";
     }
 
     private static string BuildBillsIcs(IEnumerable<Bill> bills)

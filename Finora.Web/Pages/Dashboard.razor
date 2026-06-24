@@ -220,6 +220,7 @@ else
         {
             if (State.BillsDueBeforePayday.Any(b => b.EffectiveDueDate.Date <= DateTime.Today.AddDays(1))) return "Bill check needed";
             if (Forecast.AfterBills < 0) return "Forecast shortfall";
+            if (State.NoSpendMode) return "No-spend mode";
             if (State.SafeToSpendAmount <= 0) return "Budget is tight";
             return "You are set for today";
         }
@@ -232,6 +233,7 @@ else
             var urgent = State.BillsDueBeforePayday.FirstOrDefault(b => b.EffectiveDueDate.Date <= DateTime.Today.AddDays(1));
             if (urgent is not null) return $"{urgent.Name} is due {DueLabel(urgent.EffectiveDueDate)}. Check it off or move money before it lands.";
             if (Forecast.AfterBills < 0) return $"You are forecast to be {Math.Abs(Forecast.AfterBills):C} short before payday.";
+            if (State.NoSpendMode) return "Stick to bills and essentials today. Tools can turn this off when you are ready.";
             if (State.SafeToSpendAmount <= 0) return "Your safe-to-spend buffer is gone for this pay cycle.";
             var days = Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 1);
             return $"{(State.SafeToSpendAmount / days):C} per day keeps you steady until payday.";
@@ -242,6 +244,7 @@ else
     {
         "Bill check needed" => "bills",
         "Forecast shortfall" => "accounts",
+        "No-spend mode" => "tools",
         "Budget is tight" => "budget",
         _ => "transactions"
     };
@@ -250,6 +253,7 @@ else
     {
         "Bill check needed" => "Open Bills",
         "Forecast shortfall" => "Open Accounts",
+        "No-spend mode" => "Manage",
         "Budget is tight" => "Open Budget",
         _ => "Add Spend"
     };
@@ -258,6 +262,7 @@ else
     {
         "Bill check needed" => "tone-amber",
         "Forecast shortfall" => "tone-red",
+        "No-spend mode" => "tone-amber",
         "Budget is tight" => "tone-blue",
         _ => "tone-green"
     };

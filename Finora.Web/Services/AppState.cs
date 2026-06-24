@@ -39,6 +39,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     // ── Settings ──────────────────────────────────────────────────────────────
     public DateTime NextPayDate { get; private set; } = DateTime.Today;
     public string SummaryPeriod { get; private set; } = "Weekly";
+    public bool NoSpendMode { get; private set; }
 
     // ── Affordability savings goal (shared setting keys with WPF) ─────────────
     public decimal AffordabilityGoalAmount { get; private set; }
@@ -546,6 +547,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             NextPayDate = DateTime.Today;
 
         SummaryPeriod = GetSetting("SummaryPeriod") ?? "Weekly";
+        NoSpendMode = string.Equals(GetSetting("NoSpendMode"), "true", StringComparison.OrdinalIgnoreCase);
 
         AffordabilityGoalAmount = decimal.TryParse(GetSetting("AffordabilityAmount"), out var goalAmount) && goalAmount > 0
             ? goalAmount
@@ -2450,6 +2452,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
         if (ShouldSyncSetting(key)) ScheduleSyncSoon();
     }
+
+    public Task SetNoSpendModeAsync(bool enabled) =>
+        SaveSettingAsync("NoSpendMode", enabled ? "true" : "false");
 
     private static bool ShouldSyncSetting(string key) =>
         key is not ("AffordabilityMode"
