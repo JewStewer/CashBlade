@@ -33,11 +33,11 @@
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-yeGdw\/fPJQyqPKzHG4TStA5WcA5xDodrrAwZLY40A0k=",
+      "hash": "sha256-wXhX\/SpJ9GXEk3fKzh55ckNz2LnWDUYZ5b0YI6UdECE=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-uhznzomJAPoTm3lf7Xvc1bBq0rGxVL3mYVjEE\/l75n4=",
+      "hash": "sha256-ikkBi0ACCuVmvEJ18sBQ2zzgaNCHtGhOC6vk\/FzXfOE=",
       "url": "_framework\/Finora.Web.wasm"
     },
     {
@@ -157,7 +157,7 @@
       "url": "_framework\/System.ObjectModel.wasm"
     },
     {
-      "hash": "sha256-Aa\/BtwkiGi8pzOgs7APfAVVaM8+4fiJpCRdv8KrRdSc=",
+      "hash": "sha256-rix9gshV1MwnCHQNxU\/gCV\/9ADnhd2JUHArJD\/\/s2y8=",
       "url": "_framework\/System.Private.CoreLib.wasm"
     },
     {
@@ -201,7 +201,7 @@
       "url": "_redirects"
     },
     {
-      "hash": "sha256-hN6lA8oYbvwkNsIDJgzA5OrDhrtHj710my8foQIjNu8=",
+      "hash": "sha256-1xcdJGOSfKHq9B9PbYJ\/Cm2hGnlZNrqoqsyMXCSq6ic=",
       "url": "css\/app.css"
     },
     {
@@ -229,5 +229,5 @@
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "VXm6NHY9"
+  "version": "WH4Oy+lr"
 };
