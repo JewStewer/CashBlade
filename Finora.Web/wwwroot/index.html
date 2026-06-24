@@ -35,6 +35,20 @@
     <script src="js/push.js"></script>
     <script>
         window.financeBlade = {
+            repairScroll: () => {
+                const page = document.querySelector('.page-content');
+                if (!page) return;
+                page.style.overflowY = 'auto';
+                page.style.webkitOverflowScrolling = 'touch';
+                page.style.touchAction = 'pan-y';
+                // Force WebKit to re-evaluate the scrollable layer without
+                // changing the user's position.
+                const y = page.scrollTop;
+                page.style.transform = 'translateZ(0)';
+                void page.offsetHeight;
+                page.style.transform = '';
+                page.scrollTop = y;
+            },
             scrollPageToTop: () => {
                 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
                 const reset = () => {
@@ -46,6 +60,7 @@
                 };
                 reset();
                 requestAnimationFrame(() => {
+                    window.financeBlade.repairScroll();
                     reset();
                     requestAnimationFrame(reset);
                 });
@@ -94,6 +109,7 @@
                     }
                     const page = document.querySelector('.page-content');
                     const pageScrollTop = page ? page.scrollTop : 0;
+                    window.financeBlade.repairScroll();
                     requestAnimationFrame(() => {
                         if (page) page.scrollTop = pageScrollTop;
                         document.dispatchEvent(new Event('financeblade:paint-nudge'));
@@ -104,6 +120,8 @@
                 [50, 150, 400, 900].forEach(ms => setTimeout(nudgeOnce, ms));
             }
         };
+        document.addEventListener('touchstart', () => window.financeBlade.repairScroll(), { passive: true });
+        document.addEventListener('touchmove', () => window.financeBlade.repairScroll(), { passive: true });
     </script>
     <script>
         // ── Resume / black-screen recovery (iOS PWA) ────────────────────────

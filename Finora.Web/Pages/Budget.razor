@@ -5,9 +5,9 @@
 <PageTitle>Budget — Evergrove</PageTitle>
 
 <div class="pill-tabs">
-    @foreach (var t in new[]{"Overview","Categories","History","Forecast"})
+    @foreach (var t in new[]{"Overview","Categories","History","Forecast","Daily","Holiday"})
     {
-        <button class="pill @(_tab==t?"pill-active":"pill-inactive")" @onclick="() => _tab = t">@t</button>
+        <button class="pill @(_tab==t?"pill-active":"pill-inactive")" @onclick="() => SelectTopPill(t)">@t</button>
     }
 </div>
 
@@ -19,11 +19,6 @@
             <button class="pill @(State.SummaryPeriod==p?"pill-active":"pill-inactive")" @onclick="() => SetPeriodAsync(p)">@p</button>
         }
     </div>
-</div>
-
-<div style="padding:0 16px 8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
-    <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("daily")'>Daily spending</button>
-    <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("trips")'>Holiday budgets</button>
 </div>
 
 <div style="padding:16px">
@@ -239,6 +234,44 @@
             </div>
         }
     </div>
+
+    @if (State.WeeklyIncome > 0)
+    {
+        var daysRemaining = Math.Max((PeriodRange.To.Date - DateTime.Today).Days + 1, 1);
+        var remainingBudget = PeriodBudget - PeriodSpend;
+        var dailyPace = Math.Max(remainingBudget / daysRemaining, 0);
+        var elapsedDays = Math.Max((DateTime.Today.Date - PeriodRange.From.Date).Days + 1, 1);
+        var projectedSpend = PeriodSpend / elapsedDays * PeriodDays;
+        var paceColor = projectedSpend <= PeriodBudget ? "var(--green)" : "var(--red)";
+        <div class="card" style="margin-top:12px;border-color:@(projectedSpend <= PeriodBudget ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)")">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                <div>
+                    <div style="font-size:12px;color:var(--text3)">Spending Pace</div>
+                    <div style="font-size:18px;font-weight:700;color:@paceColor">
+                        @(projectedSpend <= PeriodBudget ? "On track" : "Running hot")
+                    </div>
+                </div>
+                <div style="text-align:right">
+                    <div style="font-size:11px;color:var(--text3)">Daily room</div>
+                    <div style="font-size:16px;font-weight:700">@dailyPace.ToString("C")</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">
+                <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
+                    <div class="stat-label">Left</div>
+                    <div style="font-size:14px;font-weight:700;color:@(remainingBudget >= 0 ? "var(--green)" : "var(--red)")">@remainingBudget.ToString("C")</div>
+                </div>
+                <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
+                    <div class="stat-label">Projected</div>
+                    <div style="font-size:14px;font-weight:700;color:@paceColor">@projectedSpend.ToString("C")</div>
+                </div>
+                <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
+                    <div class="stat-label">Days left</div>
+                    <div style="font-size:14px;font-weight:700">@daysRemaining</div>
+                </div>
+            </div>
+        </div>
+    }
 
     <!-- Debts -->
     @if (State.Debts.Any())
@@ -1081,6 +1114,21 @@ else if (_tab == "Forecast")
     private int _installmentCount = 4;
     private int _installmentFrequencyWeeks = 2;
     private Bill? _billDraft;
+
+    private void SelectTopPill(string tab)
+    {
+        if (tab == "Daily")
+        {
+            Nav.NavigateTo("daily");
+            return;
+        }
+        if (tab == "Holiday")
+        {
+            Nav.NavigateTo("trips");
+            return;
+        }
+        _tab = tab;
+    }
     private Debt? _debtDraft;
     private bool showAddTxn;
     private DateTime GoalTargetDate => DateTime.Today.AddDays(Math.Max(_goalWeeks, 1) * 7);
@@ -1268,12 +1316,14 @@ else if (_tab == "Forecast")
     }
 
     // Discretionary spend/budget: excludes bill categories (Debt, Rent, Phone, Insurance, etc.)
-    private (DateTime From, DateTime To) PayCycle => State.GetCurrentPeriod();
-    private int PayCycleDays => (PayCycle.To.Date - PayCycle.From.Date).Days + 1;
+    private (DateTime From, DateTime To) PeriodRange => State.GetCurrentPeriod();
+    private (DateTime From, DateTime To) PayCycle => PeriodRange;
+    private int PeriodDays => (PeriodRange.To.Date - PeriodRange.From.Date).Days + 1;
+    private int PayCycleDays => PeriodDays;
     private decimal PayCycleWeeks => PayCycleDays / 7m;
     private string PayCycleDateRange => $"{PayCycle.From:dd MMM} - {PayCycle.To:dd MMM}";
-    private decimal PeriodSpend    => State.GetDiscretionarySpendingForPeriod(PayCycle.From, PayCycle.To);
-    private decimal AllPeriodSpend => State.GetPeriodSpendingForPeriod(PayCycle.From, PayCycle.To);
+    private decimal PeriodSpend    => State.GetDiscretionarySpendingForPeriod(PeriodRange.From, PeriodRange.To);
+    private decimal AllPeriodSpend => State.GetPeriodSpendingForPeriod(PeriodRange.From, PeriodRange.To);
     private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
     private decimal PeriodIncome   => State.WeeklyIncome * PayCycleWeeks;
     // Budget for non-bill spending = unallocated budget after bills, savings and planned allocations.
