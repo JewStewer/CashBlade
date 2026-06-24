@@ -127,6 +127,30 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedTrips.Count > 0 ||
         _pendingDeletedTripIds.Count > 0;
 
+    public List<SyncQueueItem> GetPendingSyncQueue()
+    {
+        var items = new List<SyncQueueItem>();
+        AddQueueItem(items, "New transactions", _pendingNewTransactions.Count, "Transactions");
+        AddQueueItem(items, "Edited transactions", _pendingUpdatedTransactions.Count, "Transactions");
+        AddQueueItem(items, "Deleted transactions", Math.Max(_pendingDeletedTransactionIds.Count, _pendingDeletedTransactions.Count), "Transactions");
+        AddQueueItem(items, "Bill paid/unpaid changes", _pendingBillStatuses.Count, "Bills");
+        AddQueueItem(items, "New bills", _pendingNewBills.Count, "Bills");
+        AddQueueItem(items, "Edited bills", _pendingUpdatedBills.Count, "Bills");
+        AddQueueItem(items, "Deleted bills", Math.Max(_pendingDeletedBillIds.Count, _pendingDeletedBills.Count), "Bills");
+        AddQueueItem(items, "Budget/settings changes", _pendingUpdatedSettings.Count, "Settings");
+        AddQueueItem(items, "Account changes", _pendingUpdatedAccounts.Count, "Accounts");
+        AddQueueItem(items, "Debt changes", _pendingNewDebts.Count + _pendingUpdatedDebts.Count + _pendingDeletedDebtIds.Count + _pendingNewDebtPayments.Count + _pendingDeletedDebtPaymentIds.Count, "Debts");
+        AddQueueItem(items, "Savings goal changes", _pendingNewSavingsGoals.Count + _pendingUpdatedSavingsGoals.Count + _pendingDeletedSavingsGoalIds.Count, "Savings");
+        AddQueueItem(items, "Trip changes", _pendingNewTrips.Count + _pendingUpdatedTrips.Count + _pendingDeletedTripIds.Count, "Trips");
+        return items;
+    }
+
+    private static void AddQueueItem(List<SyncQueueItem> items, string label, int count, string kind)
+    {
+        if (count <= 0) return;
+        items.Add(new SyncQueueItem { Label = label, Count = count, Kind = kind });
+    }
+
     public async Task<(int Edits, int Deletes)> GetPersistedTransactionIntentCountsAsync()
     {
         var edits = await db.GetPendingTransactionOverridesAsync();
@@ -1000,6 +1024,144 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal SubscriptionWeeklyTotal => GetRecurringPayments().Sum(r => r.WeeklyAmount);
 
     public int SubscriptionsNotInBillsCount => GetRecurringPayments().Count(r => !r.IsAlreadyBill);
+
+    public List<TransactionCleanupSuggestion> GetTransactionCleanupSuggestions()
+    {
+        return Transactions
+            .Where(t => t.AmountCents < 0 && !IsInternalMovement(t) && !string.IsNullOrWhiteSpace(t.Description))
+            .GroupBy(t => NormalizeRecurringDescription(t.Description))
+            .Select(g => BuildCleanupSuggestion(g.ToList()))
+            .Where(s => s is not null)
+            .Cast<TransactionCleanupSuggestion>()
+            .OrderByDescending(s => s.AffectedCount)
+            .ThenByDescending(s => s.AffectedAmount)
+            .Take(8)
+            .ToList();
+    }
+
+    public async Task<int> ApplyTransactionCleanupSuggestionAsync(TransactionCleanupSuggestion suggestion)
+    {
+        var rows = Transactions
+            .Where(t => NormalizeRecurringDescription(t.Description) == suggestion.Merchant &&
+                        t.CategoryId != suggestion.SuggestedCategoryId &&
+                        t.AmountCents < 0 &&
+                        !IsInternalMovement(t))
+            .OrderByDescending(t => t.Date)
+            .ToList();
+
+        foreach (var transaction in rows)
+            await UpdateTransactionCategoryAsync(transaction.Id, suggestion.SuggestedCategoryId);
+
+        return rows.Count;
+    }
+
+    public List<BillIntelligenceSuggestion> GetBillIntelligenceSuggestions()
+    {
+        var suggestions = new List<BillIntelligenceSuggestion>();
+
+        foreach (var recurring in GetRecurringPayments().Where(r => !r.IsAlreadyBill).Take(6))
+        {
+            suggestions.Add(new BillIntelligenceSuggestion
+            {
+                Kind = "NewBill",
+                Title = recurring.Name,
+                Message = $"{recurring.AverageAmount:C} {recurring.Frequency.ToLowerInvariant()}, next expected {recurring.NextDueDisplay}.",
+                ActionLabel = "Create bill",
+                RecurringPayment = recurring
+            });
+        }
+
+        var recurringByName = GetRecurringPayments()
+            .ToDictionary(r => r.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var bill in Bills.Where(b => !StateIsGeneratedBillNameEmpty(b)).OrderBy(b => b.EffectiveDueDate))
+        {
+            var key = NormalizeRecurringDescription(bill.Name);
+            if (!recurringByName.TryGetValue(key, out var recurring)) continue;
+
+            var expected = recurring.AverageAmount;
+            var current = bill.AmountDollars;
+            var delta = Math.Abs(current - expected);
+            if (expected <= 0 || delta < Math.Max(5m, expected * 0.15m)) continue;
+
+            suggestions.Add(new BillIntelligenceSuggestion
+            {
+                Kind = "AmountChanged",
+                Title = $"{bill.Name} amount changed",
+                Message = $"Bill is {current:C}, recent average is {expected:C}.",
+                ActionLabel = "Update amount",
+                RecurringPayment = recurring,
+                BillId = bill.Id
+            });
+        }
+
+        return suggestions.Take(10).ToList();
+    }
+
+    public async Task<bool> CreateBillFromRecurringAsync(RecurringPayment recurring)
+    {
+        var accountId = Accounts.FirstOrDefault(a => string.Equals(a.Name, recurring.AccountName, StringComparison.OrdinalIgnoreCase))?.Id
+            ?? Accounts.FirstOrDefault()?.Id
+            ?? 0;
+        if (accountId == 0 || !Enum.TryParse<BillFrequency>(recurring.Frequency, out var frequency)) return false;
+
+        await AddBillAsync(new Bill
+        {
+            Name = recurring.Name,
+            AccountId = accountId,
+            AmountDollars = recurring.AverageAmount,
+            DueDate = recurring.NextExpected,
+            NextPayDate = recurring.NextExpected,
+            Frequency = frequency,
+            IsAutoPay = true,
+            IsCreatedFromRecurringPayment = true,
+            PaymentMatchText = recurring.Name
+        });
+        return true;
+    }
+
+    public async Task<bool> UpdateBillAmountFromRecurringAsync(int billId, RecurringPayment recurring)
+    {
+        var bill = Bills.FirstOrDefault(b => b.Id == billId);
+        if (bill is null) return false;
+
+        bill.AmountDollars = recurring.AverageAmount;
+        bill.PaymentMatchText = string.IsNullOrWhiteSpace(bill.PaymentMatchText) ? recurring.Name : bill.PaymentMatchText;
+        await UpdateBillAsync(bill);
+        return true;
+    }
+
+    private TransactionCleanupSuggestion? BuildCleanupSuggestion(List<Transaction> rows)
+    {
+        if (rows.Count < 2) return null;
+
+        var category = rows
+            .Where(t => t.CategoryId != 0 && !string.IsNullOrWhiteSpace(t.CategoryName))
+            .GroupBy(t => t.CategoryId)
+            .OrderByDescending(g => g.Count())
+            .ThenByDescending(g => g.Max(t => t.Date))
+            .FirstOrDefault();
+        if (category is null) return null;
+
+        var suggestedCategoryId = category.Key;
+        var suggestedCategoryName = Categories.FirstOrDefault(c => c.Id == suggestedCategoryId)?.Name
+            ?? category.First().CategoryName;
+        var affected = rows.Where(t => t.CategoryId != suggestedCategoryId).ToList();
+        if (affected.Count == 0) return null;
+
+        return new TransactionCleanupSuggestion
+        {
+            Merchant = NormalizeRecurringDescription(rows[0].Description),
+            SuggestedCategoryId = suggestedCategoryId,
+            SuggestedCategoryName = suggestedCategoryName,
+            AffectedCount = affected.Count,
+            TotalSeen = rows.Count,
+            AffectedAmount = affected.Sum(t => Math.Abs(t.AmountDollars))
+        };
+    }
+
+    private static bool StateIsGeneratedBillNameEmpty(Bill bill) =>
+        string.IsNullOrWhiteSpace(bill.Name);
 
     private void ComputeProactiveInsights()
     {

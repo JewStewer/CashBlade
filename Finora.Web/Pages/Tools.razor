@@ -1,0 +1,182 @@
+@page "/tools"
+@inject AppState State
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Tools - Evergrove</PageTitle>
+
+<div style="padding:10px 16px 16px;display:flex;flex-direction:column;gap:12px">
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
+                <div class="row-title">Sync queue</div>
+                <div class="row-sub">See exactly what iOS is waiting to push.</div>
+            </div>
+            <span class="badge @(State.HasPendingChanges ? "badge-amber" : "badge-green")">
+                @(State.HasPendingChanges ? "Pending" : "Clear")
+            </span>
+        </div>
+
+        @{
+            var queue = State.GetPendingSyncQueue();
+        }
+        @if (queue.Any())
+        {
+            <div style="display:flex;flex-direction:column;gap:6px">
+                @foreach (var item in queue)
+                {
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
+                        <span style="font-size:13px;color:var(--text2)">@item.Label</span>
+                        <span class="badge badge-gray">@item.Count</span>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div style="font-size:13px;color:var(--text3)">No local edits are waiting to sync.</div>
+        }
+
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="SyncNowAsync">Sync now</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ConfirmRepairAsync">Repair queue</button>
+        </div>
+        @if (!string.IsNullOrEmpty(_syncStatus))
+        {
+            <div style="font-size:12px;color:@_syncStatusColor">@_syncStatus</div>
+        }
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+            <div class="row-title">Smart transaction cleanup</div>
+            <div class="row-sub">Find repeated merchants with mixed categories and fix them in one tap.</div>
+        </div>
+        @{
+            var cleanup = State.GetTransactionCleanupSuggestions();
+        }
+        @if (cleanup.Any())
+        {
+            @foreach (var suggestion in cleanup)
+            {
+                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                        <div>
+                            <div style="font-size:14px;font-weight:700;color:var(--text)">@suggestion.Merchant</div>
+                            <div style="font-size:12px;color:var(--text3)">
+                                @suggestion.AffectedCount of @suggestion.TotalSeen can become @suggestion.SuggestedCategoryName.
+                            </div>
+                        </div>
+                        <span class="badge badge-gray">@suggestion.AffectedAmount.ToString("C")</span>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => ApplyCleanupAsync(suggestion)">
+                        Apply category
+                    </button>
+                </div>
+            }
+        }
+        else
+        {
+            <div style="font-size:13px;color:var(--text3)">No category cleanup needed right now.</div>
+        }
+        @if (!string.IsNullOrEmpty(_cleanupStatus))
+        {
+            <div style="font-size:12px;color:var(--green)">@_cleanupStatus</div>
+        }
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+            <div class="row-title">Bill intelligence</div>
+            <div class="row-sub">Turn detected recurring charges into bills and catch amount changes.</div>
+        </div>
+        @{
+            var billSuggestions = State.GetBillIntelligenceSuggestions();
+        }
+        @if (billSuggestions.Any())
+        {
+            @foreach (var suggestion in billSuggestions)
+            {
+                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+                    <div>
+                        <div style="font-size:14px;font-weight:700;color:var(--text)">@suggestion.Title</div>
+                        <div style="font-size:12px;color:var(--text3)">@suggestion.Message</div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => ApplyBillSuggestionAsync(suggestion)">
+                        @suggestion.ActionLabel
+                    </button>
+                </div>
+            }
+        }
+        else
+        {
+            <div style="font-size:13px;color:var(--text3)">No bill suggestions right now.</div>
+        }
+        @if (!string.IsNullOrEmpty(_billStatus))
+        {
+            <div style="font-size:12px;color:var(--green)">@_billStatus</div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _busy;
+    private string _syncStatus = string.Empty;
+    private string _syncStatusColor = "var(--text3)";
+    private string _cleanupStatus = string.Empty;
+    private string _billStatus = string.Empty;
+
+    private async Task SyncNowAsync()
+    {
+        _busy = true;
+        _syncStatus = "Syncing...";
+        _syncStatusColor = "var(--text3)";
+        try
+        {
+            await State.SyncAndReloadAsync();
+            _syncStatus = "Sync complete.";
+            _syncStatusColor = "var(--green)";
+        }
+        catch (Exception ex)
+        {
+            _syncStatus = $"Sync failed: {ex.Message}";
+            _syncStatusColor = "var(--red)";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConfirmRepairAsync()
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "Clear stuck pending phone sync intents? Existing finance data stays on this device.");
+        if (!ok) return;
+
+        _busy = true;
+        await State.RepairPendingSyncAsync();
+        _busy = false;
+        _syncStatus = "Pending queue cleared. Sync now to pull the latest cloud data.";
+        _syncStatusColor = "var(--green)";
+    }
+
+    private async Task ApplyCleanupAsync(TransactionCleanupSuggestion suggestion)
+    {
+        _busy = true;
+        var count = await State.ApplyTransactionCleanupSuggestionAsync(suggestion);
+        _busy = false;
+        _cleanupStatus = $"Updated {count} transaction{(count == 1 ? "" : "s")}.";
+    }
+
+    private async Task ApplyBillSuggestionAsync(BillIntelligenceSuggestion suggestion)
+    {
+        if (suggestion.RecurringPayment is null) return;
+
+        _busy = true;
+        var ok = suggestion.Kind == "AmountChanged" && suggestion.BillId is not null
+            ? await State.UpdateBillAmountFromRecurringAsync(suggestion.BillId.Value, suggestion.RecurringPayment)
+            : await State.CreateBillFromRecurringAsync(suggestion.RecurringPayment);
+        _busy = false;
+        _billStatus = ok ? "Bill updated." : "Could not apply that bill suggestion.";
+    }
+}

@@ -21,7 +21,7 @@
             <button class="btn btn-secondary btn-sm" disabled="@_toolsBusy" @onclick="SyncNowAsync">Sync now</button>
             <button class="btn btn-secondary btn-sm" disabled="@_toolsBusy" @onclick="ExportTransactionsAsync">Export CSV</button>
             <button class="btn btn-secondary btn-sm" disabled="@_toolsBusy" @onclick="DownloadSnapshotAsync">Snapshot</button>
-            <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("bills")'>Bills</button>
+            <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("tools")'>Tools</button>
         </div>
         @if (!string.IsNullOrEmpty(_toolsStatus))
         {
@@ -36,6 +36,14 @@
         <div class="row-main">
             <div class="row-title">Holiday</div>
             <div class="row-sub">Trip savings and budgets</div>
+        </div>
+        <span style="color:var(--text3)">></span>
+    </div>
+    <div class="list-row" style="cursor:pointer" @onclick='() => Nav.NavigateTo("tools")'>
+        <div class="row-icon" style="background:var(--surface2)">Tool</div>
+        <div class="row-main">
+            <div class="row-title">Tools</div>
+            <div class="row-sub">Sync queue, cleanup, and bill intelligence</div>
         </div>
         <span style="color:var(--text3)">></span>
     </div>
