@@ -755,6 +755,43 @@ else if (_tab == "Categories")
         </div>
     }
 
+    <!-- What-if budget simulator -->
+    @if (State.WeeklyIncome > 0)
+    {
+        var newLeftover = State.BudgetLeftover - _whatIfAmount;
+        var flips = (State.BudgetLeftover >= 0) != (newLeftover >= 0) && _whatIfAmount != 0;
+        <div class="card" style="margin-top:12px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:4px">Budget What-If</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">See how a spending change would affect your weekly budget — nothing is saved.</div>
+            <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:13px;color:var(--text2);flex:1">Extra spending per week</span>
+                <span style="font-size:16px;color:var(--text3);font-weight:300">$</span>
+                <input class="form-input" style="width:100px;text-align:right;padding:6px 10px;font-size:14px"
+                       type="number" step="1" @bind="_whatIfAmount" @bind:event="oninput"
+                       placeholder="e.g. -50" />
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">Use a negative number to model cutting spending instead.</div>
+
+            @if (_whatIfAmount != 0)
+            {
+                <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;font-size:13px">
+                    <span style="color:var(--text3)">New weekly budget</span>
+                    <span style="font-weight:700;color:@(newLeftover>=0?"var(--green)":"var(--red)")">@newLeftover.ToString("C")/wk</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px">
+                    <span style="color:var(--text3)">≈ monthly impact</span>
+                    <span style="font-weight:600">@((_whatIfAmount * 52m / 12m).ToString("C"))/mo</span>
+                </div>
+                @if (flips)
+                {
+                    <div style="font-size:12px;font-weight:600;color:@(newLeftover>=0?"var(--green)":"var(--red)");margin-top:8px">
+                        @(newLeftover >= 0 ? "✓ This would bring you back under budget" : "⚠ This would put you over budget")
+                    </div>
+                }
+            }
+        </div>
+    }
+
     <!-- Subscriptions / recurring payments -->
     @{
         var subscriptions = State.GetRecurringPayments();
@@ -985,12 +1022,10 @@ else if (_tab == "Forecast")
         var eventDays = forecast.Where(f => f.Note is not null).ToList();
         var totalBills = forecast.Sum(f => f.Bills);
         var totalPay = forecast.Sum(f => f.Pay);
-        var totalSpend = forecast.Sum(f => f.Spending);
         var balanceMin = forecast.Min(f => f.Balance);
         var balanceMax = forecast.Max(f => f.Balance);
         var linePoints = BuildForecastLinePoints(forecast, balanceMin, balanceMax);
-        var barBuckets = BuildForecastBarBuckets(forecast, 12);
-        var maxBar = Math.Max(barBuckets.SelectMany(b => new[] { b.Bills, b.Pay, b.Spending }).DefaultIfEmpty(1m).Max(), 1m);
+        var markers = BuildForecastMarkers(forecast, balanceMin, balanceMax);
     }
     <div class="card">
         <div style="font-size:12px;color:var(--text3);margin-bottom:2px">60-Day Balance Forecast</div>
@@ -1012,17 +1047,10 @@ else if (_tab == "Forecast")
                     <polyline points="@linePoints" fill="none" stroke="var(--teal-light)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
                 </svg>
             </div>
-            <div class="forecast-bars">
-                @foreach (var bucket in barBuckets)
+            <div class="forecast-markers">
+                @foreach (var m in markers)
                 {
-                    var billHeight = Math.Max((double)(bucket.Bills / maxBar) * 100.0, bucket.Bills > 0 ? 12.0 : 0.0);
-                    var payHeight = Math.Max((double)(bucket.Pay / maxBar) * 100.0, bucket.Pay > 0 ? 12.0 : 0.0);
-                    var spendHeight = Math.Max((double)(bucket.Spending / maxBar) * 100.0, bucket.Spending > 0 ? 12.0 : 0.0);
-                    <div style="display:grid;grid-template-columns:repeat(3,1fr);align-items:end;gap:1px;height:100%">
-                        <div class="forecast-bar bill" style="height:@($"{billHeight:F0}")%"></div>
-                        <div class="forecast-bar pay" style="height:@($"{payHeight:F0}")%"></div>
-                        <div class="forecast-bar spend" style="height:@($"{spendHeight:F0}")%"></div>
-                    </div>
+                    <div class="forecast-marker @m.Css" style="left:@(m.X.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;top:@(m.Y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                 }
             </div>
         </div>
@@ -1030,7 +1058,6 @@ else if (_tab == "Forecast")
             <span style="--legend-color:var(--teal-light)">Balance</span>
             <span style="--legend-color:var(--red)">Bills @totalBills.ToString("C0")</span>
             <span style="--legend-color:var(--green)">Pay @totalPay.ToString("C0")</span>
-            <span style="--legend-color:var(--teal-light)">Spend @totalSpend.ToString("C0")</span>
         </div>
         <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--text3)">Lowest projected point</span>
@@ -1114,8 +1141,8 @@ else if (_tab == "Forecast")
                         <div class="row-title">@day.Note</div>
                         <div class="row-sub">
                             Balance after: @day.Balance.ToString("C")
-                            @if (day.Bills > 0) { <span> Â· Bills @day.Bills.ToString("C")</span> }
-                            @if (day.Pay > 0) { <span> Â· Pay @day.Pay.ToString("C")</span> }
+                            @if (day.Bills > 0) { <span> · Bills @day.Bills.ToString("C")</span> }
+                            @if (day.Pay > 0) { <span> · Pay @day.Pay.ToString("C")</span> }
                         </div>
                     </div>
                 </div>
@@ -1124,8 +1151,16 @@ else if (_tab == "Forecast")
     }
     </div>
 }
-
 </div>
+
+@if (_tab == "Daily")
+{
+    <DailyTab />
+}
+else if (_tab == "Holiday")
+{
+    <HolidayTab />
+}
 
 @if (_billDraft is not null)
 {
@@ -1142,16 +1177,6 @@ else if (_tab == "Forecast")
         OnSaved="() => _debtDraft = null" />
 }
 
-<!-- FAB -->
-<button class="btn btn-primary fab" @onclick="() => showAddTxn = true">
-    +
-</button>
-
-@if (showAddTxn)
-{
-    <AddTransactionModal OnClose="() => showAddTxn = false" OnSaved="() => showAddTxn = false" />
-}
-
 <div style="height:16px"></div>
 
 @code {
@@ -1163,24 +1188,14 @@ else if (_tab == "Forecast")
     private string _goalAccountName = string.Empty;
     private int _installmentCount = 4;
     private int _installmentFrequencyWeeks = 2;
+    private decimal _whatIfAmount;
     private Bill? _billDraft;
 
     private void SelectTopPill(string tab)
     {
-        if (tab == "Daily")
-        {
-            Nav.NavigateTo("daily");
-            return;
-        }
-        if (tab == "Holiday")
-        {
-            Nav.NavigateTo("trips");
-            return;
-        }
         _tab = tab;
     }
     private Debt? _debtDraft;
-    private bool showAddTxn;
     private DateTime GoalTargetDate => DateTime.Today.AddDays(Math.Max(_goalWeeks, 1) * 7);
 
     // Multipliers applied to the user's chosen "Over how many weeks?" value —
@@ -1472,8 +1487,8 @@ else if (_tab == "Forecast")
         decimal Spending);
 
     private sealed record ForecastBillOccurrence(Bill Bill, DateTime DueDate);
-    private sealed record ForecastBarBucket(decimal Bills, decimal Pay, decimal Spending);
     private sealed record ForecastCalendarDay(DateTime Date, ForecastDay? Forecast, bool IsOutsideMonth, bool IsPayday);
+    private sealed record ForecastMarker(decimal X, decimal Y, string Css);
 
     // Day-by-day 60-day balance projection: starting balance minus average daily
     // discretionary spend, minus all unpaid recurring bill occurrences, plus
@@ -1614,18 +1629,35 @@ else if (_tab == "Forecast")
         return 100m - ((0m - min) / range * 100m);
     }
 
-    private static List<ForecastBarBucket> BuildForecastBarBuckets(List<ForecastDay> forecast, int buckets)
+    // Bill/payday markers plotted directly on the balance line (replaces a
+    // separate bucketed bar strip that was unreadable at the chart's height —
+    // every non-zero bucket hit the same height floor, so all 12 buckets
+    // looked identical regardless of actual amount).
+    private static List<ForecastMarker> BuildForecastMarkers(List<ForecastDay> forecast, decimal min, decimal max)
     {
-        var result = new List<ForecastBarBucket>();
-        var bucketSize = (double)forecast.Count / buckets;
-        for (var i = 0; i < buckets; i++)
+        var range = Math.Max(max - min, 1m);
+        var count = forecast.Count;
+        var result = new List<ForecastMarker>();
+
+        for (var i = 0; i < count; i++)
         {
-            var start = (int)Math.Floor(i * bucketSize);
-            var end = (int)Math.Floor((i + 1) * bucketSize);
-            if (i == buckets - 1) end = forecast.Count;
-            var slice = forecast.Skip(start).Take(Math.Max(end - start, 1)).ToList();
-            result.Add(new ForecastBarBucket(slice.Sum(f => f.Bills), slice.Sum(f => f.Pay), slice.Sum(f => f.Spending)));
+            var f = forecast[i];
+            if (f.Bills <= 0 && !f.IsPayday) continue;
+
+            var x = count <= 1 ? 0m : i * 100m / (count - 1);
+            var y = Math.Clamp(100m - ((f.Balance - min) / range * 100m), 0m, 100m);
+
+            if (f.Bills > 0 && f.IsPayday)
+            {
+                result.Add(new ForecastMarker(Math.Max(x - 1.2m, 0m), y, "bill"));
+                result.Add(new ForecastMarker(Math.Min(x + 1.2m, 100m), y, "pay"));
+            }
+            else
+            {
+                result.Add(new ForecastMarker(x, y, f.Bills > 0 ? "bill" : "pay"));
+            }
         }
+
         return result;
     }
 }

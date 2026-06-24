@@ -1704,6 +1704,35 @@ public class AppState(IndexedDbService db, SyncService sync)
         return streak;
     }
 
+    // Longest historical run of "spent something, none of it unnecessary"
+    // days, scanning the full transaction history (not just the trailing
+    // streak from GetCleanStreak).
+    public int GetBestCleanStreak()
+    {
+        var txByDay = Transactions
+            .Where(t => t.AmountCents < 0 && !IsInternalMovement(t))
+            .GroupBy(t => t.Date.Date)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        if (txByDay.Count == 0) return 0;
+
+        var best = 0;
+        var current = 0;
+        for (var date = txByDay.Keys.Min(); date <= DateTime.Today; date = date.AddDays(1))
+        {
+            if (txByDay.TryGetValue(date, out var dayTx) && dayTx.Count > 0 && !dayTx.Any(t => t.IsUnnecessary))
+            {
+                current++;
+                best = Math.Max(best, current);
+            }
+            else
+            {
+                current = 0;
+            }
+        }
+        return best;
+    }
+
     // ── Category classification (matches WPF logic) ───────────────────────────
     private static readonly HashSet<string> _billCats = new(StringComparer.OrdinalIgnoreCase)
     {

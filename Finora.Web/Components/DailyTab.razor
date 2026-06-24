@@ -1,9 +1,4 @@
-@page "/daily"
 @inject AppState State
-
-<PageTitle>Daily — Evergrove</PageTitle>
-
-<BackHeader To="budget" Label="Budget" />
 
 @if (!State.IsLoaded)
 {
@@ -13,12 +8,20 @@ else
 {
     @if (Streak > 0)
     {
-        <div style="margin:12px 16px 0;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:12px">
-            <div style="font-size:26px">🔥</div>
-            <div>
-                <div style="font-size:15px;font-weight:600;color:var(--green)">@Streak day streak</div>
+        var (emoji, tierLabel, tierColor) = StreakTier(Streak);
+        <div style="margin:12px 16px 0;background:color-mix(in srgb, @tierColor, transparent 88%);border:1px solid color-mix(in srgb, @tierColor, transparent 65%);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:12px">
+            <div style="font-size:26px">@emoji</div>
+            <div style="flex:1">
+                <div style="font-size:15px;font-weight:600;color:@tierColor">@Streak day streak · @tierLabel</div>
                 <div style="font-size:12px;color:var(--text3)">No unnecessary spending</div>
             </div>
+            @if (BestStreak > Streak)
+            {
+                <div style="text-align:right;flex-shrink:0">
+                    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em">Best</div>
+                    <div style="font-size:15px;font-weight:700;color:var(--text)">@BestStreak</div>
+                </div>
+            }
         </div>
     }
 
@@ -140,6 +143,16 @@ else
 
     private List<DailyScore> Scores => State.GetDailyScores(35);
     private int Streak => State.GetCleanStreak();
+    private int BestStreak => State.GetBestCleanStreak();
+
+    private static (string Emoji, string Label, string Color) StreakTier(int streak) => streak switch
+    {
+        >= 60 => ("👑", "Legendary", "#A855F7"),
+        >= 30 => ("🏆", "Money Master", "#FBBF24"),
+        >= 14 => ("⚡", "Unstoppable", "#34D399"),
+        >= 7 => ("🔥", "On a roll", "#6EE7B7"),
+        _ => ("🔥", "Streak", "var(--green)")
+    };
 
     private int PadStart
     {

@@ -22,6 +22,8 @@
 }
 
 html {
+    position: fixed;
+    inset: 0;
     height: 100%;
     height: 100dvh;
     /* iOS PWA full-height fix */
@@ -30,6 +32,8 @@ html {
 }
 
 body {
+    position: fixed;
+    inset: 0;
     height: 100%;
     height: 100dvh;
     height: -webkit-fill-available;
@@ -347,7 +351,7 @@ button, a, input, select, textarea, [role="button"] {
 
 .forecast-chart {
     position: relative;
-    height: 148px;
+    height: 160px;
     margin-top: 14px;
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -360,7 +364,7 @@ button, a, input, select, textarea, [role="button"] {
 
 .forecast-line {
     position: absolute;
-    inset: 12px 10px 28px;
+    inset: 16px 10px;
 }
 
 .forecast-line svg {
@@ -369,28 +373,22 @@ button, a, input, select, textarea, [role="button"] {
     overflow: visible;
 }
 
-.forecast-bars {
+.forecast-markers {
     position: absolute;
-    left: 10px;
-    right: 10px;
-    bottom: 8px;
-    height: 18px;
-    display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    align-items: end;
-    gap: 3px;
+    inset: 16px 10px;
 }
 
-.forecast-bar {
-    min-height: 2px;
-    border-radius: 3px 3px 0 0;
-    background: var(--text3);
-    opacity: 0.85;
+.forecast-marker {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--surface2);
+    transform: translate(-50%, -50%);
 }
 
-.forecast-bar.bill { background: var(--red); }
-.forecast-bar.pay { background: var(--green); }
-.forecast-bar.spend { background: var(--teal-light); }
+.forecast-marker.bill { background: var(--red); }
+.forecast-marker.pay { background: var(--green); }
 
 .forecast-legend {
     display: flex;

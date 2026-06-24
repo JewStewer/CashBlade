@@ -24,6 +24,7 @@ public class TripItineraryItem
 {
     public DateTime Date { get; set; }
     public string? Time { get; set; }
+    public string? EndTime { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public int AmountCents { get; set; }

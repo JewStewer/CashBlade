@@ -187,11 +187,6 @@ else
     <div style="height:16px"></div>
 }
 
-<!-- FAB -->
-<button class="btn btn-primary fab" @onclick="() => showAddTxn = true">
-    +
-</button>
-
 @if (showAddTxn)
 {
     <AddTransactionModal OnClose="() => showAddTxn = false" OnSaved="OnTxnSaved" />

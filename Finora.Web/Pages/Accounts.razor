@@ -367,21 +367,10 @@ else
         OnSaved="() => _accountGoalDraft = null" />
 }
 
-<!-- FAB -->
-<button class="btn btn-primary fab" @onclick="() => showAddTxn = true">
-    +
-</button>
-
-@if (showAddTxn)
-{
-    <AddTransactionModal OnClose="() => showAddTxn = false" OnSaved="() => showAddTxn = false" />
-}
-
 @code {
     private Debt? _debtDraft;
     private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
-    private bool showAddTxn;
     private int _expandedAccountId;
 
     private void ToggleAccount(int accountId) =>

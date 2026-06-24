@@ -115,7 +115,19 @@
             More
         </NavLink>
     </nav>
+
+    @if (ShowAddTxnFab)
+    {
+        <button class="btn btn-primary fab" @onclick="() => _showAddTxn = true">
+            +
+        </button>
+    }
 </div>
+
+@if (_showAddTxn)
+{
+    <AddTransactionModal OnClose="() => _showAddTxn = false" OnSaved="() => _showAddTxn = false" />
+}
 
 @code {
     private string? _initError;
@@ -127,6 +139,9 @@
     private bool _pendingNudge;
     private bool _pushSubscriptionChecked;
     private DateTime _lastUpBankSyncAttemptUtc = DateTime.MinValue;
+    private bool _showAddTxn;
+
+    private bool ShowAddTxnFab => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').Equals("transactions", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {
@@ -345,6 +360,7 @@
 
     private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        await InvokeAsync(StateHasChanged);
         try { await JS.InvokeVoidAsync("financeBlade.scrollPageToTop"); }
         catch { }
     }
