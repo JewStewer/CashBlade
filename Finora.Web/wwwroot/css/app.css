@@ -124,7 +124,7 @@ button, a, input, select, textarea, [role="button"] {
     overflow-x: hidden;
     overflow-anchor: none;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: auto;
+    overscroll-behavior-y: contain;
     touch-action: pan-y;
     position: relative;
     transform: translateZ(0);
@@ -514,12 +514,11 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 /* ── Pill tabs ── */
 .pill-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     padding: 10px 16px;
-    overflow-x: auto;
-    touch-action: pan-x;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    overflow: visible;
+    touch-action: manipulation;
 }
 
 .pill-tabs::-webkit-scrollbar { display: none; }
@@ -529,6 +528,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     border-radius: 20px;
     font-size: 13px;
     font-weight: 500;
+    flex: 0 0 auto;
     white-space: nowrap;
     cursor: pointer;
     border: none;

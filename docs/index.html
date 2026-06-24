@@ -122,6 +122,25 @@
         };
         document.addEventListener('touchstart', () => window.financeBlade.repairScroll(), { passive: true });
         document.addEventListener('touchmove', () => window.financeBlade.repairScroll(), { passive: true });
+        (() => {
+            let startY = 0;
+            const scrollBoxFor = target => target?.closest?.('.modal-sheet, .page-content');
+            document.addEventListener('touchstart', event => {
+                startY = event.touches?.[0]?.clientY || 0;
+                window.financeBlade.repairScroll();
+            }, { passive: true });
+            document.addEventListener('touchmove', event => {
+                const box = scrollBoxFor(event.target);
+                if (!box) return;
+                const y = event.touches?.[0]?.clientY || startY;
+                const delta = y - startY;
+                const atTop = box.scrollTop <= 0;
+                const atBottom = Math.ceil(box.scrollTop + box.clientHeight) >= box.scrollHeight;
+                if ((atTop && delta > 0) || (atBottom && delta < 0)) {
+                    event.preventDefault();
+                }
+            }, { passive: false });
+        })();
     </script>
     <script>
         // ── Resume / black-screen recovery (iOS PWA) ────────────────────────
