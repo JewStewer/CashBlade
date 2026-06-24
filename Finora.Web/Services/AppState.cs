@@ -216,6 +216,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Trips = await db.GetTripsAsync();
         LentTransactions = await db.GetLentTransactionsAsync();
         NormaliseLentRepayments();
+        await RemoveInvalidLentTransactionsAsync();
         _unrepaidLentIds = LentTransactions.Where(IsLentOutstanding).Select(l => l.Id).ToHashSet();
 
         // Apply any phone-side overrides that survived a cloud replace or app restart.
@@ -234,20 +235,29 @@ public class AppState(IndexedDbService db, SyncService sync)
     // a stale LentTransaction record (e.g. left over from a transaction Id that
     // got reused by a later sync) silently re-attaching to one of these.
     public bool IsLent(int txnId) =>
-        LentTransactions.Any(l => l.Id == txnId) && !IsInternalMovementById(txnId);
+        LentTransactions.Any(l => l.Id == txnId) && IsLentEligibleById(txnId);
     public bool IsUnrepaid(int txnId) =>
-        _unrepaidLentIds.Contains(txnId) && !IsInternalMovementById(txnId);
+        _unrepaidLentIds.Contains(txnId) && IsLentEligibleById(txnId);
 
-    private bool IsInternalMovementById(int txnId)
+    private bool IsLentEligibleById(int txnId)
     {
         var t = Transactions.FirstOrDefault(x => x.Id == txnId);
-        return t is not null && IsInternalMovement(t);
+        return t is not null && IsLentEligibleTransaction(t);
     }
+
+    private bool IsLentEligibleTransaction(Transaction t) =>
+        t.AmountCents < 0 &&
+        !IsInternalMovement(t) &&
+        !IsBudgetedBillTransaction(t);
+
     public decimal GetLentRepaidDollars(int txnId) =>
-        LentTransactions.FirstOrDefault(l => l.Id == txnId)?.RepaidDollars ?? 0m;
+        IsLentEligibleById(txnId)
+            ? LentTransactions.FirstOrDefault(l => l.Id == txnId)?.RepaidDollars ?? 0m
+            : 0m;
 
     public decimal GetLentOutstandingDollars(Transaction transaction)
     {
+        if (!IsLentEligibleTransaction(transaction)) return 0m;
         var lent = LentTransactions.FirstOrDefault(l => l.Id == transaction.Id);
         if (lent is null) return 0m;
         return Math.Max(Math.Abs(transaction.AmountDollars) - lent.RepaidDollars, 0m);
@@ -255,6 +265,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task MarkLentAsync(int txnId, string note)
     {
+        if (!IsLentEligibleById(txnId)) return;
         LentTransactions.RemoveAll(l => l.Id == txnId);
         var lent = new LentTransaction { Id = txnId, Note = note, Repaid = false, RepaidCents = 0, MarkedAt = DateTime.Now };
         LentTransactions.Add(lent);
@@ -276,10 +287,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         var lent = LentTransactions.FirstOrDefault(l => l.Id == txnId);
         if (lent is null) return;
         var transaction = Transactions.FirstOrDefault(t => t.Id == txnId);
-        if (transaction is not null)
-        {
-            lent.RepaidCents = Math.Abs(transaction.AmountCents);
-        }
+        if (transaction is null || !IsLentEligibleTransaction(transaction)) return;
+        lent.RepaidCents = Math.Abs(transaction.AmountCents);
         lent.Repaid = true;
         _unrepaidLentIds.Remove(txnId);
         await db.SetLentTransactionAsync(lent);
@@ -290,7 +299,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var lent = LentTransactions.FirstOrDefault(l => l.Id == txnId);
         var transaction = Transactions.FirstOrDefault(t => t.Id == txnId);
-        if (lent is null || transaction is null || amountDollars <= 0) return;
+        if (lent is null || transaction is null || !IsLentEligibleTransaction(transaction) || amountDollars <= 0) return;
 
         var totalCents = Math.Abs(transaction.AmountCents);
         var paidCents = Math.Min(totalCents, lent.RepaidCents + (int)Math.Round(amountDollars * 100m));
@@ -309,6 +318,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             var transaction = Transactions.FirstOrDefault(t => t.Id == lent.Id);
             if (transaction is null) continue;
+            if (!IsLentEligibleTransaction(transaction)) continue;
             if (lent.Repaid && lent.RepaidCents <= 0)
             {
                 lent.RepaidCents = Math.Abs(transaction.AmountCents);
@@ -320,10 +330,26 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
     }
 
+    private async Task RemoveInvalidLentTransactionsAsync()
+    {
+        var invalid = LentTransactions
+            .Where(l => !IsLentEligibleById(l.Id))
+            .Select(l => l.Id)
+            .Distinct()
+            .ToList();
+
+        foreach (var id in invalid)
+        {
+            LentTransactions.RemoveAll(l => l.Id == id);
+            _unrepaidLentIds.Remove(id);
+            await db.DeleteLentTransactionAsync(id);
+        }
+    }
+
     private bool IsLentOutstanding(LentTransaction lent)
     {
         var transaction = Transactions.FirstOrDefault(t => t.Id == lent.Id);
-        if (transaction is null) return !lent.Repaid;
+        if (transaction is null || !IsLentEligibleTransaction(transaction)) return false;
         return lent.RepaidCents < Math.Abs(transaction.AmountCents);
     }
 
