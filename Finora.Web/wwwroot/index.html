@@ -40,7 +40,7 @@
                 if (!page) return;
                 page.style.overflowY = 'auto';
                 page.style.webkitOverflowScrolling = 'touch';
-                page.style.touchAction = 'pan-y';
+                page.style.touchAction = 'pan-x pan-y';
                 // Force WebKit to re-evaluate the scrollable layer without
                 // changing the user's position.
                 const y = page.scrollTop;
@@ -123,23 +123,34 @@
         document.addEventListener('touchstart', () => window.financeBlade.repairScroll(), { passive: true });
         document.addEventListener('touchmove', () => window.financeBlade.repairScroll(), { passive: true });
         (() => {
+            let startX = 0;
             let startY = 0;
-            const scrollBoxFor = target => target?.closest?.('.modal-sheet, .page-content');
+            let startedAt = 0;
+            let handledBackSwipe = false;
+            const interactiveFor = target => target?.closest?.('button, a, input, select, textarea, [role="button"], .pill-tabs, .mini-timeline');
             document.addEventListener('touchstart', event => {
-                startY = event.touches?.[0]?.clientY || 0;
+                const touch = event.touches?.[0];
+                startX = touch?.clientX || 0;
+                startY = touch?.clientY || 0;
+                startedAt = Date.now();
+                handledBackSwipe = false;
                 window.financeBlade.repairScroll();
             }, { passive: true });
             document.addEventListener('touchmove', event => {
-                const box = scrollBoxFor(event.target);
-                if (!box) return;
-                const y = event.touches?.[0]?.clientY || startY;
-                const delta = y - startY;
-                const atTop = box.scrollTop <= 0;
-                const atBottom = Math.ceil(box.scrollTop + box.clientHeight) >= box.scrollHeight;
-                if ((atTop && delta > 0) || (atBottom && delta < 0)) {
-                    event.preventDefault();
+                if (handledBackSwipe || interactiveFor(event.target)) return;
+                const touch = event.touches?.[0];
+                if (!touch) return;
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+                const fastEnough = Date.now() - startedAt < 700;
+                const mostlyHorizontal = Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6;
+                const fromLeftEdge = startX <= 34 && dx > 0;
+                const fromRightEdge = startX >= window.innerWidth - 34 && dx < 0;
+                if (fastEnough && mostlyHorizontal && (fromLeftEdge || fromRightEdge) && history.length > 1) {
+                    handledBackSwipe = true;
+                    history.back();
                 }
-            }, { passive: false });
+            }, { passive: true });
         })();
     </script>
     <script>

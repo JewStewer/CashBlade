@@ -1038,6 +1038,57 @@ else if (_tab == "Forecast")
         </div>
     </div>
 
+    <div class="budget-calendar">
+        <div class="budget-calendar-head">
+            <div>
+                <div style="font-size:12px;color:var(--text3)">Budget Schedule</div>
+                <div style="font-size:16px;font-weight:700">@DateTime.Today.ToString("MMMM yyyy")</div>
+            </div>
+            <div style="font-size:11px;color:var(--text3);text-align:right">Bills, paydays and forecast balance</div>
+        </div>
+        <div class="budget-calendar-grid">
+            @foreach (var h in new[] { "M", "T", "W", "T", "F", "S", "S" })
+            {
+                <div class="budget-calendar-weekday">@h</div>
+            }
+            @foreach (var day in ForecastCalendarDays)
+            {
+                <div class="budget-calendar-day @(day.IsOutsideMonth ? "is-outside" : "") @(day.Date.Date == DateTime.Today ? "is-today" : "")">
+                    <div class="budget-calendar-date">
+                        <span>@day.Date.Day</span>
+                        @if (day.IsPayday)
+                        {
+                            <span style="color:var(--green);font-size:10px">PAY</span>
+                        }
+                    </div>
+                    @if (day.Forecast is not null)
+                    {
+                        <div class="budget-calendar-balance">@day.Forecast.Balance.ToString("C0")</div>
+                        <div class="budget-calendar-markers">
+                            @if (day.Forecast.Bills > 0)
+                            {
+                                <span class="budget-calendar-marker" style="--marker-color:var(--red)" title="Bills"></span>
+                            }
+                            @if (day.Forecast.Pay > 0)
+                            {
+                                <span class="budget-calendar-marker" style="--marker-color:var(--green)" title="Payday"></span>
+                            }
+                            @if (day.Forecast.Spending > 0)
+                            {
+                                <span class="budget-calendar-marker" style="--marker-color:var(--teal-light)" title="Estimated spending"></span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <div class="forecast-legend" style="padding:10px 12px;border-top:1px solid var(--border);margin-top:0">
+            <span style="--legend-color:var(--red)">Bills</span>
+            <span style="--legend-color:var(--green)">Payday</span>
+            <span style="--legend-color:var(--teal-light)">Daily spend</span>
+        </div>
+    </div>
+
     <div class="section-header" style="margin-top:12px"><span class="section-title">Upcoming Events</span></div>
     @if (!eventDays.Any())
     {
@@ -1092,8 +1143,7 @@ else if (_tab == "Forecast")
 }
 
 <!-- FAB -->
-<button class="btn btn-primary" @onclick="() => showAddTxn = true"
-    style="position:fixed;bottom:calc(var(--nav-height)+var(--safe-bottom)+16px);right:16px;width:52px;height:52px;border-radius:50%;padding:0;font-size:22px;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:10">
+<button class="btn btn-primary fab" @onclick="() => showAddTxn = true">
     +
 </button>
 
@@ -1423,6 +1473,7 @@ else if (_tab == "Forecast")
 
     private sealed record ForecastBillOccurrence(Bill Bill, DateTime DueDate);
     private sealed record ForecastBarBucket(decimal Bills, decimal Pay, decimal Spending);
+    private sealed record ForecastCalendarDay(DateTime Date, ForecastDay? Forecast, bool IsOutsideMonth, bool IsPayday);
 
     // Day-by-day 60-day balance projection: starting balance minus average daily
     // discretionary spend, minus all unpaid recurring bill occurrences, plus
@@ -1464,6 +1515,31 @@ else if (_tab == "Forecast")
 
                 result.Add(new ForecastDay(date, balance, note, isPayday, billsTotal, pay, spending));
             }
+            return result;
+        }
+    }
+
+    private List<ForecastCalendarDay> ForecastCalendarDays
+    {
+        get
+        {
+            var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            var startOffset = ((int)monthStart.DayOfWeek + 6) % 7;
+            var gridStart = monthStart.AddDays(-startOffset);
+            var forecastByDate = ForecastDays.ToDictionary(f => f.Date.Date);
+            var result = new List<ForecastCalendarDay>();
+
+            for (var i = 0; i < 42; i++)
+            {
+                var date = gridStart.AddDays(i);
+                forecastByDate.TryGetValue(date.Date, out var forecast);
+                result.Add(new ForecastCalendarDay(
+                    date,
+                    forecast,
+                    date.Month != DateTime.Today.Month,
+                    forecast?.IsPayday ?? IsForecastPayday(date)));
+            }
+
             return result;
         }
     }

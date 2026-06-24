@@ -623,6 +623,46 @@ public class AppState(IndexedDbService db, SyncService sync)
         return Math.Round(remaining / weeks, 2);
     }
 
+    public sealed record HolidayFundingOption(
+        int AccountId,
+        string AccountName,
+        decimal CurrentBalance,
+        decimal TargetBalance,
+        decimal ReservedBills,
+        decimal SpareDollars,
+        DateTime ProtectedUntil);
+
+    public List<HolidayFundingOption> GetHolidayFundingOptions(Trip trip)
+    {
+        var protectedUntil = trip.StartDate?.Date ?? DateTime.Today.AddDays(30);
+
+        return Accounts
+            .Where(a => a.TargetDollars is > 0)
+            .Where(a => trip.SavingsAccountId is null || a.Id != trip.SavingsAccountId.Value)
+            .Select(account =>
+            {
+                var balance = GetAccountBalance(account.Id);
+                var target = account.TargetDollars ?? 0m;
+                var reservedBills = Bills
+                    .Where(b => b.AccountId == account.Id &&
+                                !IsBillPaid(b) &&
+                                b.EffectiveDueDate.Date <= protectedUntil)
+                    .Sum(b => b.AmountDollars);
+                var spare = Math.Max(balance - reservedBills - target, 0m);
+                return new HolidayFundingOption(
+                    account.Id,
+                    account.Name,
+                    balance,
+                    target,
+                    reservedBills,
+                    Math.Round(spare, 2),
+                    protectedUntil);
+            })
+            .Where(o => o.SpareDollars > 0)
+            .OrderByDescending(o => o.SpareDollars)
+            .ToList();
+    }
+
     private void DenormaliseTransactions()
     {
         var accountMap = Accounts.ToDictionary(a => a.Id, a => a.Name);

@@ -40,7 +40,7 @@ body {
     font-size: 15px;
     line-height: 1.4;
     -webkit-font-smoothing: antialiased;
-    overscroll-behavior: none;
+    overscroll-behavior-y: auto;
     /* Prevent text size adjustment on orientation change */
     -webkit-text-size-adjust: 100%;
 }
@@ -124,12 +124,13 @@ button, a, input, select, textarea, [role="button"] {
     overflow-x: hidden;
     overflow-anchor: none;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
-    touch-action: pan-y;
+    overscroll-behavior-y: auto;
+    touch-action: pan-x pan-y;
     position: relative;
     transform: translateZ(0);
     /* Enough bottom padding to clear the fixed nav + home indicator */
-    padding: 0 0 calc(var(--nav-height) + var(--safe-bottom) + 8px) 0;
+    padding: 0 0 calc(var(--nav-height) + var(--safe-bottom) + 96px) 0;
+    scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 96px);
 }
 
 .bottom-nav {
@@ -411,6 +412,87 @@ button, a, input, select, textarea, [role="button"] {
     background: var(--legend-color);
 }
 
+.budget-calendar {
+    margin-top: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface);
+}
+
+.budget-calendar-head {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.budget-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.budget-calendar-weekday {
+    padding: 8px 0;
+    color: var(--text3);
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+}
+
+.budget-calendar-day {
+    min-height: 66px;
+    padding: 7px 5px;
+    border-right: 1px solid rgba(51,65,85,0.7);
+    border-bottom: 1px solid rgba(51,65,85,0.7);
+    background: var(--surface);
+}
+
+.budget-calendar-day:nth-child(7n) { border-right: none; }
+
+.budget-calendar-day.is-outside {
+    background: rgba(11,17,32,0.36);
+    color: var(--text3);
+}
+
+.budget-calendar-day.is-today {
+    outline: 2px solid var(--teal);
+    outline-offset: -2px;
+}
+
+.budget-calendar-date {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.budget-calendar-balance {
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--text3);
+    overflow-wrap: anywhere;
+}
+
+.budget-calendar-markers {
+    display: flex;
+    gap: 3px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.budget-calendar-marker {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--marker-color);
+}
+
 /* ── Progress bar ── */
 .progress-bar {
     height: 4px;
@@ -450,6 +532,20 @@ button, a, input, select, textarea, [role="button"] {
 .btn-sm { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
 .btn-full { width: 100%; }
 .btn-icon { padding: 8px; border-radius: 8px; background: var(--surface2); }
+
+.fab {
+    position: fixed;
+    bottom: calc(var(--nav-height) + var(--safe-bottom) + 28px);
+    right: max(16px, calc((100vw - 480px) / 2 + 16px));
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 26px;
+    line-height: 1;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.38);
+    z-index: 30;
+}
 
 /* ── Form inputs ── */
 .form-group { padding: 0 16px 14px; }
