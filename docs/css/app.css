@@ -467,6 +467,82 @@ button, a, input, select, textarea, [role="button"] {
     background: rgba(20,184,166,0.1);
 }
 
+.holiday-calendar-list {
+    display: grid;
+    gap: 0;
+}
+
+.holiday-calendar-day {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.holiday-calendar-day:last-child { border-bottom: none; }
+
+.holiday-calendar-day.is-today {
+    background: rgba(20,184,166,0.08);
+}
+
+.holiday-calendar-date span {
+    display: block;
+    color: var(--text3);
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.holiday-calendar-date strong {
+    display: block;
+    color: var(--text);
+    font-size: 13px;
+    margin-top: 2px;
+}
+
+.holiday-calendar-activities {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.holiday-activity-chip {
+    border-left: 3px solid var(--activity-color);
+    background: color-mix(in srgb, var(--activity-color), transparent 86%);
+    border-radius: 8px;
+    padding: 7px 8px;
+    min-width: 0;
+}
+
+.holiday-activity-chip span {
+    display: block;
+    color: var(--activity-color);
+    font-size: 10px;
+    font-weight: 800;
+    margin-bottom: 2px;
+}
+
+.holiday-activity-chip strong {
+    display: block;
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.holiday-activity-chip.time-morning { --activity-color: var(--green); }
+.holiday-activity-chip.time-afternoon { --activity-color: var(--blue); }
+.holiday-activity-chip.time-evening { --activity-color: var(--purple); }
+.holiday-activity-chip.time-any { --activity-color: var(--teal-light); }
+
+.holiday-calendar-empty {
+    color: var(--text3);
+    font-size: 12px;
+    padding: 7px 0;
+}
+
 .budget-calendar-date {
     display: flex;
     justify-content: space-between;

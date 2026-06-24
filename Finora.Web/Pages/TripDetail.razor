@@ -294,51 +294,43 @@ else
                     <div style="font-size:16px;font-weight:700">@TripCalendarTitle</div>
                 </div>
                 <div style="font-size:11px;color:var(--text3);text-align:right">
-                    @(tripCalendarDays.Count(d => d.IsTripDay)) trip day@(tripCalendarDays.Count(d => d.IsTripDay) == 1 ? "" : "s")
+                    @tripCalendarDays.Count date@(tripCalendarDays.Count == 1 ? "" : "s")
                 </div>
             </div>
-            <div class="budget-calendar-grid">
-                @foreach (var h in new[] { "M", "T", "W", "T", "F", "S", "S" })
-                {
-                    <div class="budget-calendar-weekday">@h</div>
-                }
+            <div class="holiday-calendar-list">
                 @foreach (var day in tripCalendarDays)
                 {
-                    <div class="budget-calendar-day @(day.IsOutsideMonth ? "is-outside" : "") @(day.Date.Date == DateTime.Today ? "is-today" : "") @(day.IsTripDay ? "is-trip-day" : "")">
-                        <div class="budget-calendar-date">
-                            <span>@day.Date.Day</span>
-                            @if (day.IsTripDay)
-                            {
-                                <span style="color:var(--teal-light);font-size:10px">TRIP</span>
-                            }
+                    <div class="holiday-calendar-day @(day.Date.Date == DateTime.Today ? "is-today" : "")">
+                        <div class="holiday-calendar-date">
+                            <span>@day.Date.ToString("ddd").ToUpper()</span>
+                            <strong>@day.Date.ToString("dd MMM")</strong>
                         </div>
-                        @if (day.Items.Any())
+                        @if (day.Activities.Any())
                         {
-                            <div class="budget-calendar-markers">
-                                @if (day.HasItinerary)
+                            <div class="holiday-calendar-activities">
+                                @foreach (var activity in day.Activities)
                                 {
-                                    <span class="budget-calendar-marker" style="--marker-color:var(--blue)" title="Schedule"></span>
-                                }
-                                @if (day.HasChecklist)
-                                {
-                                    <span class="budget-calendar-marker" style="--marker-color:var(--amber)" title="Checklist"></span>
-                                }
-                            </div>
-                            <div class="budget-calendar-balance">
-                                @day.Items.First()
-                                @if (day.Items.Count > 1)
-                                {
-                                    <span> +@(day.Items.Count - 1)</span>
+                                    <div class="holiday-activity-chip @activity.TimeClass">
+                                        @if (!string.IsNullOrWhiteSpace(activity.Time))
+                                        {
+                                            <span>@activity.Time</span>
+                                        }
+                                        <strong>@activity.Title</strong>
+                                    </div>
                                 }
                             </div>
+                        }
+                        else
+                        {
+                            <div class="holiday-calendar-empty">No activities yet</div>
                         }
                     </div>
                 }
             </div>
             <div class="forecast-legend" style="padding:10px 12px;border-top:1px solid var(--border);margin-top:0">
-                <span style="--legend-color:var(--teal-light)">Trip days</span>
-                <span style="--legend-color:var(--blue)">Schedule</span>
-                <span style="--legend-color:var(--amber)">Checklist</span>
+                <span style="--legend-color:var(--green)">Morning</span>
+                <span style="--legend-color:var(--blue)">Afternoon</span>
+                <span style="--legend-color:var(--purple)">Evening</span>
             </div>
         </div>
     </div>
@@ -564,54 +556,36 @@ else
     {
         get
         {
-            var anchor = _trip?.StartDate ?? DateTime.Today;
-            var monthStart = new DateTime(anchor.Year, anchor.Month, 1);
-            var startOffset = ((int)monthStart.DayOfWeek + 6) % 7;
-            var gridStart = monthStart.AddDays(-startOffset);
+            var start = _trip?.StartDate?.Date ?? DateTime.Today;
+            var end = (_trip?.EndDate ?? _trip?.StartDate ?? DateTime.Today).Date;
+            if (end < start) end = start;
             var result = new List<TripCalendarDay>();
 
-            for (var i = 0; i < 42; i++)
+            for (var date = start; date <= end; date = date.AddDays(1))
             {
-                var date = gridStart.AddDays(i);
-                var items = new List<string>();
-                var itinerary = _trip?.Itinerary
+                var activities = _trip?.Itinerary
                     .Where(x => x.Date.Date == date.Date)
                     .OrderBy(x => x.Time ?? string.Empty)
-                    .ToList() ?? new List<TripItineraryItem>();
-                var checklist = _trip?.Checklist
-                    .Where(x => x.DueDate?.Date == date.Date)
-                    .ToList() ?? new List<TripChecklistItem>();
+                    .Select(x => new TripCalendarActivity(x.Time, x.Title, GetActivityTimeClass(x.Time)))
+                    .ToList() ?? new List<TripCalendarActivity>();
 
-                items.AddRange(itinerary.Select(x => x.Title));
-                items.AddRange(checklist.Select(x => x.Text));
-
-                result.Add(new TripCalendarDay(
-                    date,
-                    IsTripDate(date),
-                    date.Month != anchor.Month,
-                    itinerary.Any(),
-                    checklist.Any(),
-                    items));
+                result.Add(new TripCalendarDay(date, activities));
             }
 
             return result;
         }
     }
 
-    private bool IsTripDate(DateTime date)
+    private static string GetActivityTimeClass(string? time)
     {
-        if (_trip?.StartDate is null) return false;
-        var end = _trip.EndDate ?? _trip.StartDate;
-        return date.Date >= _trip.StartDate.Value.Date && date.Date <= end.Value.Date;
+        if (!TimeSpan.TryParse(time, out var parsed)) return "time-any";
+        if (parsed.Hours < 12) return "time-morning";
+        if (parsed.Hours < 17) return "time-afternoon";
+        return "time-evening";
     }
 
-    private sealed record TripCalendarDay(
-        DateTime Date,
-        bool IsTripDay,
-        bool IsOutsideMonth,
-        bool HasItinerary,
-        bool HasChecklist,
-        List<string> Items);
+    private sealed record TripCalendarDay(DateTime Date, List<TripCalendarActivity> Activities);
+    private sealed record TripCalendarActivity(string? Time, string Title, string TimeClass);
 
     protected override void OnParametersSet()
     {

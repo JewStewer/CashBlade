@@ -2,6 +2,7 @@
 @inject AppState State
 @inject NavigationManager Nav
 @inject SyncService Sync
+@inject UpBankWebSyncService UpSync
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -125,6 +126,7 @@
     private bool _nudgedAfterLoad;
     private bool _pendingNudge;
     private bool _pushSubscriptionChecked;
+    private DateTime _lastUpBankSyncAttemptUtc = DateTime.MinValue;
 
     protected override void OnInitialized()
     {
@@ -230,8 +232,6 @@
     // so the app stays current without a manual "Sync Now" or the PC running.
     private void StartBackgroundSync()
     {
-        if (!Sync.HasCloudSync && !Sync.HasLocalSync) return;
-
         _ = SafeSyncAsync();
 
         _syncCts = new CancellationTokenSource();
@@ -253,7 +253,15 @@
     {
         try
         {
-            await State.SyncAndReloadAsync();
+            var upSynced = await SafeUpBankSyncAsync();
+            if (Sync.HasCloudSync || Sync.HasLocalSync)
+            {
+                await State.SyncAndReloadAsync();
+            }
+            else if (upSynced)
+            {
+                await State.LoadAsync();
+            }
             await NotifySmartInsightsAsync();
             await EnsurePushSubscriptionAsync();
             await InvokeAsync(StateHasChanged);
@@ -261,9 +269,29 @@
         catch { /* SyncService records LastError for the Settings page; nothing to do here */ }
     }
 
+    private async Task<bool> SafeUpBankSyncAsync()
+    {
+        if (UpSync.IsSyncing) return false;
+        if ((DateTime.UtcNow - _lastUpBankSyncAttemptUtc).TotalMinutes < 10) return false;
+
+        string token;
+        try { token = await UpSync.GetAccessTokenAsync(); }
+        catch { return false; }
+
+        if (string.IsNullOrWhiteSpace(token)) return false;
+
+        _lastUpBankSyncAttemptUtc = DateTime.UtcNow;
+        try
+        {
+            var result = await UpSync.SyncAsync();
+            return result is not null;
+        }
+        catch { return false; }
+    }
+
     private (string Text, string Css)? GetSyncBadge()
     {
-        if (State.IsSyncing) return ("syncing", "badge-teal");
+        if (State.IsSyncing || UpSync.IsSyncing) return ("syncing", "badge-teal");
         if (State.HasPendingChanges) return ("unsync'd", "badge-amber");
         if (Sync.LastSyncedAt is not null) return ("synced", "badge-green");
         return null;

@@ -638,7 +638,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         var protectedUntil = trip.StartDate?.Date ?? DateTime.Today.AddDays(30);
 
         return Accounts
-            .Where(a => a.Type != AccountType.Credit)
+            .Where(a => a.Type is AccountType.Savings or AccountType.Cash)
+            .Where(a => a.TargetDollars is > 0)
+            .Where(a => a.Id != PayAccountId)
             .Where(a => trip.SavingsAccountId is null || a.Id != trip.SavingsAccountId.Value)
             .Select(account =>
             {
