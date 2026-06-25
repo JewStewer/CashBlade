@@ -34,7 +34,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal BudgetWeeklyTransfers => BudgetBills + BudgetSavings;
     public decimal BudgetUnplanned { get; private set; }
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned;
-    public decimal SafeToSpendAmount => Math.Max(BudgetLeftover, 0);
+    public decimal SafeToSpendAmount => NoSpendMode ? 0 : Math.Max(BudgetLeftover, 0);
 
     // ── Settings ──────────────────────────────────────────────────────────────
     public DateTime NextPayDate { get; private set; } = DateTime.Today;

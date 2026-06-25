@@ -23,6 +23,7 @@
     </div>
     <div style="display:flex;gap:8px">
         <select class="form-input" style="flex:1;height:34px;font-size:13px;padding:0 8px" @bind="dateRange">
+            <option value="paycycle">Since payday</option>
             <option value="all">All dates</option>
             <option value="today">Today</option>
             <option value="week">This week</option>
@@ -66,6 +67,13 @@
         <div style="font-size:17px;font-weight:700;color:@(filteredNet >= 0 ? "var(--green)" : "var(--red)")">@filteredNet.ToString("C")</div>
     </div>
 </div>
+@if (State.NoSpendMode)
+{
+    <div class="ios-section-note">
+        No-spend mode is on. Safe-to-spend is held at $0 until you turn it off.
+        <button class="btn btn-sm btn-secondary" @onclick="DisableNoSpendAsync">Turn off</button>
+    </div>
+}
 <div style="padding:0 16px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button class="btn btn-secondary btn-sm" disabled="@(!HasActiveFilters)" @onclick="ClearFilters">Clear filters</button>
     <button class="btn btn-secondary btn-sm" disabled="@(!filteredRows.Any())" @onclick="ExportFilteredAsync">Export filtered</button>
@@ -242,7 +250,7 @@
 @code {
     private string filter = "All";
     private string search = string.Empty;
-    private string dateRange = "all";
+    private string dateRange = "paycycle";
     private int filterAccountId;
     private int filterCategoryId;
     private bool showAdd;
@@ -256,7 +264,7 @@
     private bool HasActiveFilters =>
         filter != "All" ||
         !string.IsNullOrWhiteSpace(search) ||
-        dateRange != "all" ||
+        dateRange != "paycycle" ||
         filterAccountId != 0 ||
         filterCategoryId != 0;
 
@@ -266,7 +274,7 @@
     {
         filter = "All";
         search = string.Empty;
-        dateRange = "all";
+        dateRange = "paycycle";
         filterAccountId = 0;
         filterCategoryId = 0;
         selectedId = 0;
@@ -342,6 +350,8 @@
         await JS.InvokeVoidAsync("financeBlade.downloadFile", $"transactions-filtered-{DateTime.Today:yyyy-MM-dd}.csv", csv, "text/csv");
     }
 
+    private Task DisableNoSpendAsync() => State.SetNoSpendModeAsync(false);
+
     private List<Transaction> GetFiltered()
     {
         var q = State.RecentTransactions.AsEnumerable();
@@ -353,6 +363,11 @@
 
         q = dateRange switch
         {
+            "paycycle" => q.Where(t =>
+            {
+                var (from, to) = State.GetCurrentPayCycle();
+                return t.Date.Date >= from && t.Date.Date <= to;
+            }),
             "today" => q.Where(t => t.Date.Date == DateTime.Today),
             "week"  => q.Where(t => t.Date.Date >= DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek)),
             "month" => q.Where(t => t.Date.Month == DateTime.Today.Month && t.Date.Year == DateTime.Today.Year),
