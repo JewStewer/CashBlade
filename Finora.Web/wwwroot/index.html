@@ -34,6 +34,13 @@
     <script src="js/db.js"></script>
     <script src="js/push.js"></script>
     <script>
+        // Tracked so nudgeRepaint (below) can defer instead of fighting an
+        // in-progress touch-scroll gesture — see the comment on nudgeRepaint.
+        let financeBladeTouchActive = false;
+        document.addEventListener('touchstart', () => { financeBladeTouchActive = true; }, { passive: true });
+        document.addEventListener('touchend', () => { financeBladeTouchActive = false; }, { passive: true });
+        document.addEventListener('touchcancel', () => { financeBladeTouchActive = false; }, { passive: true });
+
         window.financeBlade = {
             repairScroll: () => {
                 const page = document.querySelector('.page-content');
@@ -90,7 +97,19 @@
             // build, so this stacks a few different reflow/composite triggers
             // and retries briefly in case the first attempt races WKWebView's
             // own repaint scheduling.
+            //
+            // This fires after every background sync (MainLayout's 1-minute
+            // PeriodicTimer included), with no relation to what the user is
+            // doing — if it lands while a touch-scroll is in progress, the
+            // body display:none toggle plus the forced scrollTop restore below
+            // both fight the gesture mid-flight (interrupted scroll, a snap to
+            // a stale position, then the native elastic-bounce reacting to
+            // that snap). Defer until the finger lifts instead of doing that.
             nudgeRepaint: () => {
+                if (financeBladeTouchActive) {
+                    document.addEventListener('touchend', () => window.financeBlade.nudgeRepaint(), { once: true, passive: true });
+                    return;
+                }
                 const nudgeOnce = () => {
                     const root = document.documentElement;
                     const app = document.getElementById('app');
