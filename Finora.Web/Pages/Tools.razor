@@ -75,10 +75,22 @@
                 <div class="stat-cell-value">@State.GetTodaySpending().ToString("C")</div>
             </div>
             <div class="stat-cell">
+                <div class="stat-cell-label">Owed back</div>
+                <div class="stat-cell-value">@State.OutstandingLentDollars.ToString("C")</div>
+            </div>
+            <div class="stat-cell">
                 <div class="stat-cell-label">Non-bill spend</div>
                 <div class="stat-cell-value">@State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today).ToString("C")</div>
             </div>
+            <div class="stat-cell">
+                <div class="stat-cell-label">Safe today</div>
+                <div class="stat-cell-value">@State.SafeToSpendAmount.ToString("C")</div>
+            </div>
         </div>
+        @if (State.NoSpendMode)
+        {
+            <div style="font-size:12px;color:var(--text3)">Forecasts assume $0 discretionary spending while this is on.</div>
+        }
         <button class="btn @(State.NoSpendMode ? "btn-secondary" : "btn-primary") btn-sm" disabled="@_busy" @onclick="ToggleNoSpendModeAsync">
             @(State.NoSpendMode ? "Turn off no-spend mode" : "Start no-spend mode")
         </button>

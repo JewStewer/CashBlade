@@ -34,7 +34,13 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal BudgetWeeklyTransfers => BudgetBills + BudgetSavings;
     public decimal BudgetUnplanned { get; private set; }
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned;
+    public decimal BudgetSafeToSpendAmount => Math.Max(BudgetLeftover, 0);
     public decimal SafeToSpendAmount => NoSpendMode ? 0 : Math.Max(BudgetLeftover, 0);
+    public decimal OutstandingLentDollars =>
+        Transactions
+            .Where(t => IsUnrepaid(t.Id))
+            .Sum(GetLentOutstandingDollars);
+    public decimal SafeToSpendIfReimbursed => SafeToSpendAmount + OutstandingLentDollars;
 
     // ── Settings ──────────────────────────────────────────────────────────────
     public DateTime NextPayDate { get; private set; } = DateTime.Today;
@@ -1432,6 +1438,44 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         var todaySpend = GetTodaySpending();
         var avgDaily = GetAvgDailySpending();
+        var todayDiscretionary = GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
+        if (NoSpendMode)
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"no-spend:{DateTime.Today:yyyyMMdd}",
+                Severity = todayDiscretionary > 0 ? ProactiveInsightSeverity.Warning : ProactiveInsightSeverity.Info,
+                Title = todayDiscretionary > 0 ? "No-spend mode has spending" : "No-spend mode is protecting today",
+                Message = todayDiscretionary > 0
+                    ? $"{todayDiscretionary:C} non-bill spending today. Review it or turn no-spend off."
+                    : "Forecasts assume $0 discretionary spending while this is on.",
+                ActionUrl = "transactions"
+            });
+        }
+        else if (BudgetSafeToSpendAmount <= 0 && WeeklyIncome > 0)
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"no-spend-suggested:{DateTime.Today:yyyyMMdd}",
+                Severity = ProactiveInsightSeverity.Warning,
+                Title = "No-spend mode recommended",
+                Message = "Your safe-to-spend buffer is gone for this pay cycle.",
+                ActionUrl = "tools"
+            });
+        }
+
+        if (OutstandingLentDollars > 0)
+        {
+            insights.Add(new ProactiveInsight
+            {
+                Key = $"lent-outstanding:{DateTime.Today:yyyyMMdd}",
+                Severity = ProactiveInsightSeverity.Info,
+                Title = "Money owed back",
+                Message = $"{OutstandingLentDollars:C} is marked lent out and excluded from spending.",
+                ActionUrl = "budget"
+            });
+        }
+
         if (avgDaily > 0 && todaySpend >= Math.Max(avgDaily * 1.75m, avgDaily + 25m))
         {
             insights.Add(new ProactiveInsight
