@@ -93,14 +93,14 @@ else
                 <small>Smart mode</small>
             </button>
             <button class="@NoSpendQuickActionClass" @onclick="ToggleNoSpendModeAsync">
-                <span><Icon Name="@(State.NoSpendMode ? "lock" : "shield")" Size="14" /></span>
+                <span class="@(_noSpendPulse ? "icon-burst" : "")"><Icon Name="@(State.NoSpendMode ? "lock" : "shield")" Size="14" /></span>
                 <strong>No Spend</strong>
                 <small>@(State.NoSpendMode ? "Tap to unlock" : "Lock it down")</small>
             </button>
         </div>
 
         <div class="module-grid">
-            <button class="dashboard-module no-spend-module @(State.NoSpendMode ? "is-on" : "")" @onclick="ToggleNoSpendModeAsync">
+            <button class="dashboard-module no-spend-module @(State.NoSpendMode ? "is-on" : "") @(_noSpendPulse ? "just-toggled" : "")" @onclick="ToggleNoSpendModeAsync">
                 <span>No-Spend Mode</span>
                 <strong>@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
                 <small>@NoSpendMessage</small>
@@ -260,7 +260,7 @@ else
     private decimal PayCycleNet => PayCycleIncome - PayCycleSpend;
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
-    private string NoSpendQuickActionClass => $"quick-action{(State.NoSpendMode ? " active" : "")}";
+    private string NoSpendQuickActionClass => $"quick-action{(State.NoSpendMode ? " active" : "")}{(_noSpendPulse ? " just-toggled" : "")}";
 
     private string SafeSpendPercentCss
     {
@@ -443,9 +443,15 @@ else
         }
     }
 
+    private bool _noSpendPulse;
+
     private async Task ToggleNoSpendModeAsync()
     {
         await State.SetNoSpendModeAsync(!State.NoSpendMode);
+        _noSpendPulse = true;
+        StateHasChanged();
+        await Task.Delay(500);
+        _noSpendPulse = false;
         StateHasChanged();
     }
 

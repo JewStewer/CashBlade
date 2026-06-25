@@ -264,6 +264,11 @@ button, a, input, select, textarea, [role="button"] {
     text-align: left;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    transition: background 0.3s ease, border-color 0.3s ease, transform 0.15s ease;
+}
+
+.quick-action:active {
+    transform: scale(0.96);
 }
 
 .quick-action span {
@@ -276,6 +281,7 @@ button, a, input, select, textarea, [role="button"] {
     align-items: center;
     justify-content: center;
     font-weight: 800;
+    transition: background 0.3s ease, color 0.3s ease;
 }
 
 .quick-action strong {
@@ -498,6 +504,12 @@ button.dashboard-module {
     color: var(--text);
     text-align: left;
     cursor: pointer;
+    transition: background 0.3s ease, border-color 0.3s ease, transform 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+button.dashboard-module:active {
+    transform: scale(0.97);
 }
 
 .dashboard-module strong {
@@ -520,6 +532,32 @@ button.dashboard-module {
 .no-spend-module.is-on {
     border-color: rgba(245,158,11,0.5);
     background: rgba(245,158,11,0.12);
+}
+
+@keyframes module-pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+    35% { transform: scale(0.96); }
+    65% { transform: scale(1.025); box-shadow: 0 0 0 7px rgba(245,158,11,0.12); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+}
+
+.no-spend-module.just-toggled {
+    animation: module-pulse 0.5s ease;
+}
+
+@keyframes icon-burst {
+    0% { transform: scale(1) rotate(0deg); }
+    40% { transform: scale(1.3) rotate(-10deg); }
+    70% { transform: scale(0.9) rotate(5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+
+.quick-action span.icon-burst {
+    animation: icon-burst 0.5s ease;
+}
+
+.quick-action.just-toggled {
+    animation: module-pulse 0.5s ease;
 }
 
 .reimburse-module {
@@ -1042,7 +1080,7 @@ button.dashboard-module {
     -webkit-tap-highlight-color: transparent;
 }
 
-.btn:active { opacity: 0.75; }
+.btn:active { opacity: 0.75; transform: scale(0.97); }
 .btn-primary { background: var(--teal); color: #fff; }
 .btn-secondary { background: var(--surface2); color: var(--text); }
 .btn-danger { background: rgba(248,113,113,0.15); color: var(--red); }
@@ -1164,8 +1202,12 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     white-space: nowrap;
     cursor: pointer;
     border: none;
-    transition: background 0.15s;
+    transition: background 0.25s ease, color 0.25s ease, transform 0.15s ease;
     -webkit-tap-highlight-color: transparent;
+}
+
+.pill:active {
+    transform: scale(0.94);
 }
 
 .pill-active { background: var(--teal); color: #fff; }
@@ -1484,6 +1526,11 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     justify-content: space-between;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.25s ease, background 0.25s ease, transform 0.15s ease;
+}
+
+.timeline-chip:active {
+    transform: scale(0.96);
 }
 
 .timeline-chip span {

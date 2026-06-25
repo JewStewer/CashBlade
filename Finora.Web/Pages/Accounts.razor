@@ -151,13 +151,18 @@ else
                                     }
                                 </div>
                             }
-                            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+                            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
                                 <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("transactions")'>Transactions</button>
                                 <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("bills")'>Bills</button>
+                                <button class="btn btn-secondary btn-sm" @onclick="() => _loadMoneyAccount = acct">Load Money</button>
                             </div>
                         </div>
                     }
-                    @if (isPayAcct || acctAfterBills < 0 || acct.TargetCents is not null)
+                    @{
+                        var envelopeRemaining = acct.LoadedBalanceCents is not null ? State.GetEnvelopeRemainingDollars(acct) : (decimal?)null;
+                        var envelopeLocked = acct.LockSpendingWhenEmpty && envelopeRemaining is not null && envelopeRemaining <= 0;
+                    }
+                    @if (isPayAcct || acctAfterBills < 0 || acct.TargetCents is not null || envelopeRemaining is not null)
                     {
                         <div class="attention-row">
                             @if (isPayAcct)
@@ -171,6 +176,12 @@ else
                             @if (acct.TargetCents is not null)
                             {
                                 <span class="attention-chip tone-green">Goal tracked</span>
+                            }
+                            @if (envelopeRemaining is not null)
+                            {
+                                <button class="attention-chip @(envelopeLocked ? "tone-red" : "tone-green")" @onclick="() => _loadMoneyAccount = acct">
+                                    @(envelopeLocked ? "Locked — spending maxed" : $"{envelopeRemaining:C} left to spend")
+                                </button>
                             }
                         </div>
                     }
@@ -186,6 +197,18 @@ else
                             {
                                 <span>by @acct.TargetDate.Value.ToString("dd MMM yy")</span>
                             }
+                        </div>
+                    }
+                    @if (acct.LoadedBalanceCents is not null)
+                    {
+                        var loaded = acct.LoadedBalanceDollars ?? 0;
+                        var spent = State.GetEnvelopeSpentDollars(acct);
+                        var envProgress = loaded > 0 ? Math.Clamp(spent / loaded, 0, 1) : 0;
+                        <div class="progress-bar" style="margin-top:8px">
+                            <div class="progress-fill" style="width:@((int)(envProgress * 100))%;background:@(envelopeLocked ? "var(--red)" : "var(--green)")"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
+                            <span>@spent.ToString("C") spent of @loaded.ToString("C") loaded</span>
                         </div>
                     }
                 </div>
@@ -422,10 +445,18 @@ else
         OnSaved="() => _accountGoalDraft = null" />
 }
 
+@if (_loadMoneyAccount is not null)
+{
+    <LoadMoneyModal Account="@_loadMoneyAccount"
+        OnClose="() => _loadMoneyAccount = null"
+        OnSaved="() => _loadMoneyAccount = null" />
+}
+
 @code {
     private Debt? _debtDraft;
     private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
+    private Account? _loadMoneyAccount;
     private int _expandedAccountId;
     private string? _expandedGoalGroupName;
 

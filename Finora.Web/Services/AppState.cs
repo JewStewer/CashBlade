@@ -2517,6 +2517,63 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    // ── Loaded-balance envelopes (self-imposed spending caps) ─────────────────
+    public decimal GetEnvelopeSpentDollars(Account account) =>
+        account.LoadedStartDate is null
+            ? 0
+            : Math.Abs(Transactions
+                .Where(t => t.AccountId == account.Id && t.AmountCents < 0 && t.Date >= account.LoadedStartDate.Value)
+                .Sum(t => t.AmountDollars));
+
+    public decimal GetEnvelopeRemainingDollars(Account account) =>
+        (account.LoadedBalanceDollars ?? 0) - GetEnvelopeSpentDollars(account);
+
+    public bool IsAccountSpendingLocked(int accountId, decimal expenseAmountDollars)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null || !account.LockSpendingWhenEmpty) return false;
+        return GetEnvelopeRemainingDollars(account) - expenseAmountDollars < 0;
+    }
+
+    public async Task LoadMoneyIntoAccountAsync(int accountId, decimal amountDollars)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null || amountDollars <= 0) return;
+        account.LoadedStartDate ??= DateTime.Today;
+        account.LoadedBalanceDollars = (account.LoadedBalanceDollars ?? 0) + amountDollars;
+        await db.PutAsync("accounts", account);
+        QueueUpdatedAccount(account);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    public async Task SetLockSpendingWhenEmptyAsync(int accountId, bool enabled)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null) return;
+        account.LockSpendingWhenEmpty = enabled;
+        await db.PutAsync("accounts", account);
+        QueueUpdatedAccount(account);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    public async Task ClearLoadedBalanceAsync(int accountId)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null) return;
+        account.LoadedBalanceCents = null;
+        account.LoadedStartDate = null;
+        account.LockSpendingWhenEmpty = false;
+        await db.PutAsync("accounts", account);
+        QueueUpdatedAccount(account);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
     private void QueueUpdatedAccount(Account a)
     {
         _pendingUpdatedAccounts.RemoveAll(x => x.Id == a.Id);
