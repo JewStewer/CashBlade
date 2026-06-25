@@ -77,14 +77,13 @@
             <span>Due Soon</span>
         </div>
         <div class="mini-timeline">
-            @foreach (var bill in DueSoonBills)
+            @foreach (var occ in DueSoonBills)
             {
-                var isPaid = State.IsBillPaid(bill);
-                var (acctAfterBills, _) = State.GetAccountForecast(bill.AccountId);
-                <button class="timeline-chip @(isPaid ? "is-paid" : acctAfterBills < 0 ? "is-danger" : "is-ready")" @onclick="() => StartEdit(bill)">
-                    <span>@DueLabel(bill.EffectiveDueDate)</span>
-                    <strong>@bill.Name</strong>
-                    <small>@bill.AmountDollars.ToString("C")</small>
+                var (acctAfterBills, _) = State.GetAccountForecast(occ.Bill.AccountId);
+                <button class="timeline-chip @(acctAfterBills < 0 ? "is-danger" : "is-ready")" @onclick="() => StartEdit(occ.Bill)">
+                    <span>@DueLabel(occ.DueDate)</span>
+                    <strong>@occ.Bill.Name</strong>
+                    <small>@occ.Bill.AmountDollars.ToString("C")</small>
                 </button>
             }
         </div>
@@ -93,7 +92,7 @@
 else
 {
     <div class="ios-section-note">
-        No bills are due in the next 7 days.
+        No bills are due in the next 14 days.
         <button class="btn btn-sm btn-secondary" @onclick="() => editingBill = new Bill()">Add Bill</button>
     </div>
 }
@@ -171,11 +170,10 @@ else
     private string filter = "Unpaid";
     private string _search = string.Empty;
     private Bill? editingBill;
-    private List<Bill> DueSoonBills => State.Bills
-        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today.AddDays(7))
-        .OrderBy(b => b.EffectiveDueDate)
-        .Take(8)
-        .ToList();
+    private List<BillOccurrencePreview> DueSoonBills =>
+        State.GetUpcomingBillOccurrences(DateTime.Today, DateTime.Today.AddDays(14))
+            .Take(12)
+            .ToList();
 
     private void StartEdit(Bill bill) => editingBill = bill;
 

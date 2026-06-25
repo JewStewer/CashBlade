@@ -35,7 +35,7 @@
             <div style="display:flex;flex-direction:column;gap:6px">
                 @foreach (var item in queue)
                 {
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
+                    <div class="inset-card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px">
                         <span style="font-size:13px;color:var(--text2)">@item.Label</span>
                         <span class="badge badge-gray">@item.Count</span>
                     </div>
@@ -112,7 +112,7 @@
         {
             @foreach (var suggestion in cleanup)
             {
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+                <div class="inset-card" style="display:flex;flex-direction:column;gap:8px">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
                         <div>
                             <div style="font-size:14px;font-weight:700;color:var(--text)">@suggestion.Merchant</div>
@@ -155,7 +155,7 @@
         {
             @foreach (var item in watchlist)
             {
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+                <div class="inset-card" style="display:flex;flex-direction:column;gap:8px">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
                         <div>
                             <div style="font-size:14px;font-weight:700;color:var(--text)">@item.Merchant</div>
@@ -222,7 +222,7 @@
         {
             @foreach (var suggestion in billSuggestions)
             {
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
+                <div class="inset-card" style="display:flex;flex-direction:column;gap:8px">
                     <div>
                         <div style="font-size:14px;font-weight:700;color:var(--text)">@suggestion.Title</div>
                         <div style="font-size:12px;color:var(--text3)">@suggestion.Message</div>

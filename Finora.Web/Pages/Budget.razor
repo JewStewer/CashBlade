@@ -620,7 +620,7 @@ else if (_tab == "Spending")
     @if (allCats.Any())
     {
         <div class="card">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Spending Breakdown</div>
+            <div class="section-title" style="margin-bottom:2px">Spending Breakdown</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">All categories this pay cycle · @PayCycleDateRange · bar = % of largest category</div>
 
             @if (billCats.Any())
@@ -847,7 +847,7 @@ else if (_tab == "History")
     @if (State.WeeklyIncome > 0)
     {
         <div class="card">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Everyday Spending This @PeriodNoun</div>
+            <div class="section-title" style="margin-bottom:2px">Everyday Spending This @PeriodNoun</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px;opacity:0.9">@PayCycleDateRange</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget = unallocated spending (@PeriodBudget.ToString("C"))</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
@@ -898,7 +898,7 @@ else if (_tab == "History")
         @if (BiggestPeriodTxns.Any())
         {
             <div class="card" style="margin-top:12px">
-                <div style="font-size:12px;color:var(--text3);margin-bottom:2px">Biggest Transactions This Pay Cycle</div>
+                <div class="section-title" style="margin-bottom:2px">Biggest Transactions This Pay Cycle</div>
                 <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Everyday purchases only (bills excluded)</div>
                 @foreach (var t in BiggestPeriodTxns.Take(6))
                 {
@@ -922,7 +922,7 @@ else if (_tab == "History")
     @if (cycleTrend.Any(c => c.Income > 0 || c.Spending > 0))
     {
         <div class="card" style="margin-top:12px">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:2px">@PeriodNoun History</div>
+            <div class="section-title" style="margin-bottom:2px">@PeriodNoun History</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">Last 6 @PeriodNounLower periods · income vs spending vs net</div>
             @foreach (var c in cycleTrend)
             {
@@ -963,7 +963,7 @@ else if (_tab == "History")
     @if (trend.Any(t => t.Spending > 0 || t.Income > 0))
     {
         <div class="card" style="margin-top:12px">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Monthly History</div>
+            <div class="section-title" style="margin-bottom:14px">Monthly History</div>
             @foreach (var m in trend)
             {
                 var spendW = trendMax > 0 ? (double)(m.Spending / trendMax) * 100.0 : 0;
@@ -1015,7 +1015,7 @@ else if (_tab == "Forecast")
         var bars = BuildForecastBalanceBars(forecast, balanceMin, balanceMax, 12);
     }
     <div class="card">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:2px">60-Day Balance Forecast</div>
+        <div class="section-title" style="margin-bottom:2px">60-Day Balance Forecast</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">
             Projects all recurring bills, future paydays and @ForecastDailySpendAssumption.ToString("C")/day discretionary spend@(State.NoSpendMode ? " while no-spend mode is on" : " capped by your budget pace")
         </div>
@@ -1486,7 +1486,6 @@ else if (_tab == "Holiday")
         decimal Pay,
         decimal Spending);
 
-    private sealed record ForecastBillOccurrence(Bill Bill, DateTime DueDate);
     private sealed record ForecastCalendarDay(DateTime Date, ForecastDay? Forecast, bool IsOutsideMonth, bool IsPayday);
     private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay, DateTime Date);
 
@@ -1499,7 +1498,7 @@ else if (_tab == "Holiday")
         {
             const int days = 60;
             var avgDaily = ForecastDailySpendAssumption;
-            var billOccurrences = GetForecastBillOccurrences(DateTime.Today, DateTime.Today.AddDays(days))
+            var billOccurrences = State.GetUpcomingBillOccurrences(DateTime.Today, DateTime.Today.AddDays(days))
                 .GroupBy(o => o.DueDate.Date)
                 .ToDictionary(g => g.Key, g => g.ToList());
             var balance = State.TotalBalance;
@@ -1511,7 +1510,7 @@ else if (_tab == "Holiday")
                 var spending = i > 0 ? avgDaily : 0m;
                 if (spending > 0) balance -= spending;
 
-                var billsToday = billOccurrences.GetValueOrDefault(date) ?? new List<ForecastBillOccurrence>();
+                var billsToday = billOccurrences.GetValueOrDefault(date) ?? new List<BillOccurrencePreview>();
                 var billsTotal = billsToday.Sum(o => o.Bill.AmountDollars);
                 balance -= billsTotal;
 
@@ -1558,32 +1557,6 @@ else if (_tab == "Holiday")
         }
     }
 
-    private List<ForecastBillOccurrence> GetForecastBillOccurrences(DateTime from, DateTime to)
-    {
-        var result = new List<ForecastBillOccurrence>();
-        foreach (var bill in State.Bills)
-        {
-            var due = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
-            while (due < from.Date)
-                due = AdvanceDueDate(due, bill.Frequency);
-
-            while (due <= to.Date)
-            {
-                if (!IsBillOccurrencePaid(bill, due))
-                    result.Add(new ForecastBillOccurrence(bill, due));
-                due = AdvanceDueDate(due, bill.Frequency);
-            }
-        }
-        return result.OrderBy(o => o.DueDate).ThenBy(o => o.Bill.Name).ToList();
-    }
-
-    private bool IsBillOccurrencePaid(Bill bill, DateTime dueDate)
-    {
-        var exact = State.BillStatuses.FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == dueDate.Date);
-        if (exact is not null) return exact.IsPaid;
-        var effective = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
-        return dueDate.Date == effective.Date && State.IsBillPaid(bill);
-    }
 
     private decimal ForecastWeeklyPayAmount =>
         State.WeeklyIncome > 0 ? State.WeeklyIncome : State.EstimatedPayAmount;
@@ -1609,16 +1582,6 @@ else if (_tab == "Holiday")
 
         return date.Date >= payday && (date.Date - payday).Days % 7 == 0;
     }
-
-    private static DateTime AdvanceDueDate(DateTime d, BillFrequency f) => f switch
-    {
-        BillFrequency.Weekly => d.AddDays(7),
-        BillFrequency.Fortnightly => d.AddDays(14),
-        BillFrequency.Monthly => d.AddMonths(1),
-        BillFrequency.Quarterly => d.AddMonths(3),
-        BillFrequency.Yearly => d.AddYears(1),
-        _ => d.AddMonths(1)
-    };
 
     private static decimal ForecastZeroY(decimal min, decimal max)
     {

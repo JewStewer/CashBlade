@@ -796,6 +796,38 @@ public class AppState(IndexedDbService db, SyncService sync)
         _                         => d.AddMonths(-1)
     };
 
+    // A recurring Bill only ever tracks its single current/pending occurrence
+    // (EffectiveDueDate) — there's no separate record for "next week's" instance
+    // until the current one is settled. Forward-looking views (Bills' Due Soon,
+    // Budget's Forecast) need to see several cycles ahead, so this projects
+    // multiple future occurrences per bill instead of just the current one.
+    public List<BillOccurrencePreview> GetUpcomingBillOccurrences(DateTime from, DateTime to)
+    {
+        var result = new List<BillOccurrencePreview>();
+        foreach (var bill in Bills)
+        {
+            var due = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
+            while (due < from.Date)
+                due = AdvanceDueDate(due, bill.Frequency);
+
+            while (due <= to.Date)
+            {
+                if (!IsBillOccurrencePaid(bill, due))
+                    result.Add(new BillOccurrencePreview(bill, due));
+                due = AdvanceDueDate(due, bill.Frequency);
+            }
+        }
+        return result.OrderBy(o => o.DueDate).ThenBy(o => o.Bill.Name).ToList();
+    }
+
+    public bool IsBillOccurrencePaid(Bill bill, DateTime dueDate)
+    {
+        var exact = BillStatuses.FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == dueDate.Date);
+        if (exact is not null) return exact.IsPaid;
+        var effective = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
+        return dueDate.Date == effective.Date && IsBillPaid(bill);
+    }
+
     // Find (or create) the BillOccurrenceStatus for a bill's current billing
     // cycle, keyed by EffectiveDueDate to match IsBillPaid's primary check —
     // otherwise a status keyed on the (possibly stale) bill.DueDate never
@@ -888,9 +920,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (effectiveDue.Date > bill.DueDate.Date) return false;
 
         // A flat ±3 day grace window is a small sliver of a yearly bill's cycle but
-        // ~43% of a weekly one — wide enough to let last week's "paid" status leak
-        // into this week's fresh occurrence. Scale the window down for short cycles.
-        var graceDays = Math.Max(1, Math.Min(3, ApproxFrequencyDays(bill.Frequency) / 4));
+        // ~43% of a weekly one (21% fortnightly) — wide enough to let the previous
+        // cycle's "paid" status leak into the next fresh occurrence. Scale down for
+        // short cycles; the window only needs to cover sync latency (a day or two),
+        // not a fraction of the bill's own period.
+        var graceDays = Math.Max(1, Math.Min(3, ApproxFrequencyDays(bill.Frequency) / 7));
 
         // 3. Tight date-drift fallback: a status within ±graceDays of the effective
         //    due date covers cases where the PC recorded a slightly different date

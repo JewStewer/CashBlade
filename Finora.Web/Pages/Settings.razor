@@ -59,7 +59,7 @@
             </div>
         }
 
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px">
+        <div class="inset-card" style="margin-bottom:10px">
             <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:4px">What changed since Windows sync</div>
             <div style="font-size:13px;color:var(--text2)">@State.LastSyncChangeSummary</div>
         </div>
@@ -135,7 +135,7 @@
             <div style="margin-top:4px;font-size:11px;color:var(--text3);word-break:break-all;font-family:monospace">@Sync.LastTestDetail</div>
         }
 
-        <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--text3);line-height:1.6">
+        <div class="inset-card" style="margin-top:12px;font-size:12px;color:var(--text3);line-height:1.6">
             <strong style="color:var(--text2)">One-time setup:</strong><br/>
             1. Create a free account at <strong>supabase.com</strong><br/>
             2. New project → Settings → API → copy URL and anon key<br/>
