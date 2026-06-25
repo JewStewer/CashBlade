@@ -130,17 +130,6 @@ else
             </section>
         }
 
-        <section class="dashboard-module forecast-module">
-            <div class="module-head">
-                <span>Forecast Check</span>
-                <strong class="@(ForecastHealthAmount < 0 ? "negative" : "positive")">@ForecastHealthAmount.ToString("C")</strong>
-            </div>
-            <div class="forecast-mini-track">
-                <i></i><i class="bill"></i><i class="pay"></i><i></i><i class="@(ForecastHealthAmount < 0 ? "danger" : "pay")"></i>
-            </div>
-            <p>@ForecastHealthMessage</p>
-        </section>
-
         @if (ActionPrompts.Any())
         {
             <div class="action-stack action-stack-compact">
@@ -257,7 +246,6 @@ else
     private string _quickSyncStatus = string.Empty;
 
     private (decimal Now, decimal AfterBills, decimal AfterPay) Forecast => State.GetForecastTotals();
-    private (decimal LowestBalance, DateTime LowestDate) ShortfallProjection => State.GetPaydayShortfallProjection();
     private (DateTime From, DateTime To) PayCycle => State.GetCurrentPayCycle();
     private int DaysToPayday => Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0);
     private string DaysToPaydayLabel => DaysToPayday == 0 ? "Payday today" : $"{DaysToPayday}d to payday";
@@ -269,7 +257,6 @@ else
             && string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase))
         .Sum(t => t.AmountDollars);
     private decimal PayCycleNet => PayCycleIncome - PayCycleSpend;
-    private decimal ForecastHealthAmount => ShortfallProjection.LowestBalance;
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
     private string NoSpendQuickActionClass => $"quick-action{(State.NoSpendMode ? " active" : "")}";
@@ -311,10 +298,6 @@ else
             ? $"{State.OutstandingLentDollars:C} owed back is tracked separately."
             : "After bills, savings and essentials.";
 
-    private string ForecastHealthMessage =>
-        ForecastHealthAmount < 0
-            ? $"Lowest projected balance is {ForecastHealthAmount:C} on {ShortfallProjection.LowestDate:dd MMM}. Open Budget to inspect the 60-day forecast."
-            : $"Lowest projected balance before payday is {ForecastHealthAmount:C} on {ShortfallProjection.LowestDate:dd MMM}.";
 
     private string MobileStatusTitle
     {

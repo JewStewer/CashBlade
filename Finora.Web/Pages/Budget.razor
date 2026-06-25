@@ -1035,6 +1035,7 @@ else if (_tab == "Forecast")
                 @foreach (var bar in bars)
                 {
                     <div class="forecast-bar-col">
+                        <div class="forecast-bar-label @(bar.Negative ? "below" : "above")" style="top:@(bar.Y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%">@FormatCompactCurrency(bar.Balance)</div>
                         <div class="forecast-bar-fill @(bar.Negative ? "negative" : "")" style="top:@(bar.Top.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;height:@(bar.Height.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                         @if (bar.HasBill)
                         {
@@ -1487,7 +1488,14 @@ else if (_tab == "Holiday")
         decimal Spending);
 
     private sealed record ForecastCalendarDay(DateTime Date, ForecastDay? Forecast, bool IsOutsideMonth, bool IsPayday);
-    private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay, DateTime Date);
+    private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay, DateTime Date, decimal Balance);
+
+    private static string FormatCompactCurrency(decimal v)
+    {
+        var sign = v < 0 ? "-" : "";
+        var abs = Math.Abs(v);
+        return abs >= 1000m ? $"{sign}${(abs / 1000m).ToString("0.#")}k" : $"{sign}${abs:0}";
+    }
 
     // Day-by-day 60-day balance projection: starting balance minus average daily
     // discretionary spend, minus all unpaid recurring bill occurrences, plus
@@ -1613,7 +1621,7 @@ else if (_tab == "Holiday")
             var top = Math.Min(zeroY, y);
             var height = Math.Max(Math.Abs(zeroY - y), 1.5m);
 
-            result.Add(new ForecastBalanceBar(top, height, y, y > zeroY, slice.Any(f => f.Bills > 0), slice.Any(f => f.IsPayday), slice[^1].Date));
+            result.Add(new ForecastBalanceBar(top, height, y, y > zeroY, slice.Any(f => f.Bills > 0), slice.Any(f => f.IsPayday), slice[^1].Date, slice[^1].Balance));
         }
 
         return result;
