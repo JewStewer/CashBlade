@@ -106,13 +106,13 @@
             </svg>
             Accounts
         </NavLink>
-        <NavLink class="nav-item" href="more">
+        <NavLink class="nav-item" href="tools">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/>
                 <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
                 <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>
             </svg>
-            More
+            Tools
         </NavLink>
     </nav>
 
@@ -338,7 +338,7 @@
             var permission = await JS.InvokeAsync<string>("pushNotifications.getPermission");
             if (permission != "granted") return;
 
-            var insight = State.ProactiveInsights.FirstOrDefault();
+            var insight = State.SmartSignals.FirstOrDefault();
             if (insight is null) return;
 
             var key = "smart-" + insight.Key;

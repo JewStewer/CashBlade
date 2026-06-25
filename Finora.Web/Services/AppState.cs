@@ -171,6 +171,11 @@ public class AppState(IndexedDbService db, SyncService sync)
     // ── Transactions for display (most recent 100) ────────────────────────────
     public List<Transaction> RecentTransactions { get; private set; } = new();
     public List<ProactiveInsight> ProactiveInsights { get; private set; } = new();
+    // Superset of ProactiveInsights that also folds in the Tools-page-only suggestion
+    // sources (cleanup/watchlist/bill intelligence), so Dashboard, push notifications,
+    // and the Tools snapshot all agree on "what needs attention" instead of each
+    // reading a different subset.
+    public List<ProactiveInsight> SmartSignals { get; private set; } = new();
 
     public bool IsLoaded { get; private set; }
     public bool HasAnyFinanceData =>
@@ -557,6 +562,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         DetectPayAccount();
         ComputeBillsDue();
         ComputeProactiveInsights();
+        ComputeUnifiedSmartSignals();
         RecentTransactions = Transactions
             .OrderByDescending(t => t.Date)
             .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
@@ -1102,6 +1108,50 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public int SubscriptionsNotInBillsCount => GetRecurringPayments().Count(r => !r.IsAlreadyBill);
 
+    // Flags a merchant's most recent charge when it's well above that same merchant's
+    // own historical median — catches "your usual $20 Telstra bill just became $60"
+    // in a way the daily/weekly pace checks above can't, since those only look at
+    // aggregate spend, not any one merchant's normal range. Same dual relative+flat
+    // threshold shape as the daily/weekly pace checks in ComputeProactiveInsights.
+    public List<SpendingAnomaly> GetSpendingAnomalies()
+    {
+        var cutoff = DateTime.Today.AddDays(-14);
+        var anomalies = new List<SpendingAnomaly>();
+
+        foreach (var group in Transactions
+            .Where(t => t.AmountCents < 0 && !IsInternalMovement(t) && !string.IsNullOrWhiteSpace(t.Description))
+            .GroupBy(t => NormalizeRecurringDescription(t.Description)))
+        {
+            var ordered = group.OrderByDescending(t => t.Date).ToList();
+            if (ordered.Count < 4) continue; // need 3+ prior occurrences besides the most recent
+
+            var mostRecent = ordered[0];
+            if (mostRecent.Date.Date < cutoff) continue; // stale — don't resurface an old one-off
+
+            var priorAmounts = ordered.Skip(1).Select(t => Math.Abs(t.AmountDollars)).OrderBy(a => a).ToList();
+            var median = priorAmounts[priorAmounts.Count / 2];
+            if (median <= 0) continue;
+
+            var recentAmount = Math.Abs(mostRecent.AmountDollars);
+            var threshold = Math.Max(median * 1.6m, median + 10m);
+            if (recentAmount < threshold) continue;
+
+            anomalies.Add(new SpendingAnomaly
+            {
+                Merchant = group.Key,
+                TransactionId = mostRecent.Id,
+                RecentAmount = recentAmount,
+                TypicalAmount = median,
+                Date = mostRecent.Date
+            });
+        }
+
+        return anomalies
+            .OrderByDescending(a => a.RecentAmount - a.TypicalAmount)
+            .Take(5)
+            .ToList();
+    }
+
     public List<TransactionCleanupSuggestion> GetTransactionCleanupSuggestions()
     {
         var ignored = GetIgnoredCleanupMerchants().ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1333,6 +1383,25 @@ public class AppState(IndexedDbService db, SyncService sync)
                 ActionUrl = "bills"
             });
         }
+        else
+        {
+            // Both checks above look at the end state only, so a mid-cycle dip that
+            // recovers by payday (e.g. two bills land close together early, balance
+            // climbs back before NextPayDate) would otherwise go unnoticed until it's
+            // already happening.
+            var shortfall = GetPaydayShortfallProjection();
+            if (shortfall.LowestBalance < 0)
+            {
+                insights.Add(new ProactiveInsight
+                {
+                    Key = $"payday-shortfall:{NextPayDate:yyyyMMdd}",
+                    Severity = ProactiveInsightSeverity.Warning,
+                    Title = "Tight before payday",
+                    Message = $"Today looks fine, but you're projected as low as {shortfall.LowestBalance:C} on {shortfall.LowestDate:dd MMM} before payday.",
+                    ActionUrl = "budget"
+                });
+            }
+        }
 
         var todaySpend = GetTodaySpending();
         var avgDaily = GetAvgDailySpending();
@@ -1379,7 +1448,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 Severity = ProactiveInsightSeverity.Info,
                 Title = "Possible subscription found",
                 Message = $"{sub.Name} looks recurring at about {sub.AverageAmount:C}/{FrequencyShort(sub.Frequency)}.",
-                ActionUrl = "subscriptions"
+                ActionUrl = "budget"
             });
         }
 
@@ -1387,6 +1456,71 @@ public class AppState(IndexedDbService db, SyncService sync)
             .OrderByDescending(i => i.Severity)
             .ThenBy(i => i.Title)
             .Take(4)
+            .ToList();
+    }
+
+    // Folds the Tools-page-only suggestion sources into the same ProactiveInsight
+    // shape so they're visible anywhere ProactiveInsights used to be the only signal
+    // (Dashboard, local push notifications, the Tools snapshot export) without
+    // duplicating their underlying detection logic — Tools.razor's own cards still
+    // read GetTransactionCleanupSuggestions/GetMerchantSpendWatchlist/GetBillIntelligenceSuggestions
+    // directly for their full Apply/Ignore actions.
+    private void ComputeUnifiedSmartSignals()
+    {
+        var signals = new List<ProactiveInsight>(ProactiveInsights);
+
+        foreach (var suggestion in GetTransactionCleanupSuggestions().Take(3))
+        {
+            signals.Add(new ProactiveInsight
+            {
+                Key = $"cleanup:{suggestion.Merchant}",
+                Severity = ProactiveInsightSeverity.Info,
+                Title = $"{suggestion.Merchant} can be recategorized",
+                Message = $"{suggestion.AffectedCount} of {suggestion.TotalSeen} transactions could become {suggestion.SuggestedCategoryName}.",
+                ActionUrl = "tools"
+            });
+        }
+
+        foreach (var item in GetMerchantSpendWatchlist().Where(i => i.UnnecessaryAmount > 0).Take(2))
+        {
+            signals.Add(new ProactiveInsight
+            {
+                Key = $"watchlist:{item.Merchant}",
+                Severity = ProactiveInsightSeverity.Info,
+                Title = $"{item.Merchant} spend flagged as unnecessary",
+                Message = $"{item.UnnecessaryAmount:C} of {item.Amount:C} from {item.Merchant} in the last 30 days is marked unnecessary.",
+                ActionUrl = "tools"
+            });
+        }
+
+        foreach (var suggestion in GetBillIntelligenceSuggestions().Take(3))
+        {
+            signals.Add(new ProactiveInsight
+            {
+                Key = $"billintel:{suggestion.Kind}:{suggestion.Title}",
+                Severity = suggestion.Kind == "AmountChanged" ? ProactiveInsightSeverity.Warning : ProactiveInsightSeverity.Info,
+                Title = suggestion.Title,
+                Message = suggestion.Message,
+                ActionUrl = "tools"
+            });
+        }
+
+        foreach (var anomaly in GetSpendingAnomalies().Take(2))
+        {
+            signals.Add(new ProactiveInsight
+            {
+                Key = $"anomaly:{anomaly.TransactionId}",
+                Severity = ProactiveInsightSeverity.Warning,
+                Title = $"{anomaly.Merchant} charge looks high",
+                Message = $"{anomaly.RecentAmount:C} on {anomaly.Date:dd MMM} vs a usual {anomaly.TypicalAmount:C}.",
+                ActionUrl = "transactions"
+            });
+        }
+
+        SmartSignals = signals
+            .OrderByDescending(i => i.Severity)
+            .ThenBy(i => i.Title)
+            .Take(8)
             .ToList();
     }
 
@@ -1603,6 +1737,54 @@ public class AppState(IndexedDbService db, SyncService sync)
         var billsTotal = Bills.Where(b => !IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd).Sum(b => b.AmountDollars);
         var afterBills = TotalBalance - billsTotal;
         return (TotalBalance, afterBills, afterBills + EstimatedPayAmount);
+    }
+
+    // GetForecastTotals only looks at the END state (today's balance minus the
+    // sum of all bills due before payday) — it can miss a mid-cycle dip that
+    // recovers by payday (e.g. two bills land close together on day 5, then a
+    // smaller bill on day 12 in a 14-day cycle). This walks bills in due-date
+    // order, bleeding the average daily discretionary spend between them, to
+    // find the single lowest point and when it happens.
+    public (decimal LowestBalance, DateTime LowestDate) GetPaydayShortfallProjection()
+    {
+        var today   = DateTime.Today;
+        var payEnd  = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
+        var avgDaily = GetAvgDailySpending();
+
+        var billsInWindow = Bills
+            .Where(b => !IsBillPaid(b) && b.EffectiveDueDate.Date >= today && b.EffectiveDueDate.Date <= payEnd)
+            .OrderBy(b => b.EffectiveDueDate)
+            .ToList();
+
+        var balance = TotalBalance;
+        var lowest = balance;
+        var lowestDate = today;
+        var cursor = today;
+
+        void TrackLowest(DateTime date)
+        {
+            if (balance < lowest)
+            {
+                lowest = balance;
+                lowestDate = date;
+            }
+        }
+
+        foreach (var bill in billsInWindow)
+        {
+            var daysElapsed = (bill.EffectiveDueDate.Date - cursor).Days;
+            balance -= daysElapsed * avgDaily;
+            TrackLowest(bill.EffectiveDueDate.Date);
+            balance -= bill.AmountDollars;
+            TrackLowest(bill.EffectiveDueDate.Date);
+            cursor = bill.EffectiveDueDate.Date;
+        }
+
+        var remainingDays = (payEnd - cursor).Days;
+        balance -= remainingDays * avgDaily;
+        TrackLowest(payEnd);
+
+        return (lowest, lowestDate);
     }
 
     public (decimal AfterBills, decimal AfterPay) GetAccountForecast(int accountId)

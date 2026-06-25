@@ -5,7 +5,7 @@
 <PageTitle>Budget — Evergrove</PageTitle>
 
 <div class="pill-tabs">
-    @foreach (var t in new[]{"Overview","Categories","History","Forecast","Daily","Holiday"})
+    @foreach (var t in new[]{"Overview","Spending","History","Forecast","Daily","Holiday"})
     {
         <button class="pill @(_tab==t?"pill-active":"pill-inactive")" @onclick="() => SelectTopPill(t)">@t</button>
     }
@@ -26,61 +26,6 @@
 @if (_tab == "Overview")
 {
     <div>
-    <!-- WHERE'S MY MONEY? summary (always shown when budget is set) -->
-    @if (State.WeeklyIncome > 0)
-    {
-        var net = PeriodIncome - AllPeriodSpend;
-        var billsPct  = PeriodIncome > 0 ? BillsSpend  / PeriodIncome : 0m;
-        var discPct   = PeriodIncome > 0 ? PeriodSpend / PeriodIncome : 0m;
-        <div class="card">
-            <div style="font-size:12px;color:var(--text3);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.06em">This @PeriodNoun — Where's My Money?</div>
-
-            <!-- Income row -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                <span style="font-size:13px;color:var(--text2)">💰 Income (budgeted)</span>
-                <span style="font-size:14px;font-weight:600;color:var(--green)">+@PeriodIncome.ToString("C")</span>
-            </div>
-
-            <!-- Bills & Debt row -->
-            <div style="margin-bottom:10px">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-                    <span style="font-size:13px;color:var(--text2)">📋 Bills &amp; Debt (actual)</span>
-                    <span style="font-size:14px;font-weight:600">−@BillsSpend.ToString("C")</span>
-                </div>
-                <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
-                    <div style="height:100%;border-radius:4px;background:#2563EB;width:@((int)(Math.Clamp(billsPct,0,1)*100))%"></div>
-                </div>
-                <div style="font-size:11px;color:var(--text3);margin-top:2px">@billsPct.ToString("P0") of income · recurring bill transactions</div>
-            </div>
-
-            <!-- Everyday spending row -->
-            <div style="margin-bottom:12px">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-                    <span style="font-size:13px;color:var(--text2)">🛒 Everyday Spending</span>
-                    <span style="font-size:14px;font-weight:600;color:@(PeriodSpend > PeriodBudget ? "var(--red)" : "var(--text)")">−@PeriodSpend.ToString("C")</span>
-                </div>
-                <div style="background:var(--surface2);border-radius:4px;height:6px;overflow:hidden">
-                    <div style="height:100%;border-radius:4px;background:@(PeriodSpend > PeriodBudget ? "var(--red)" : "var(--teal)");width:@((int)(Math.Clamp(discPct,0,1)*100))%"></div>
-                </div>
-                <div style="font-size:11px;color:var(--text3);margin-top:2px">
-                    @discPct.ToString("P0") of income · spending budget: @PeriodBudget.ToString("C")
-                    @if (PeriodSpend > PeriodBudget)
-                    {
-                        <span style="color:var(--red);font-weight:600"> · @((PeriodSpend - PeriodBudget).ToString("C")) over!</span>
-                    }
-                </div>
-            </div>
-
-            <!-- Net -->
-            <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
-                <span style="font-size:13px;color:var(--text3)">Net this @PeriodNounLower</span>
-                <span style="font-size:17px;font-weight:700;color:@(net >= 0 ? "var(--green)" : "var(--red)")">
-                    @(net >= 0 ? "+" : "")@net.ToString("C")
-                </span>
-            </div>
-        </div>
-    }
-
     <!-- Pending reimbursements -->
     @{
         var unrepaid = State.LentTransactions.Where(l => State.IsUnrepaid(l.Id))
@@ -613,7 +558,7 @@
     </div>
     </div>
 }
-else if (_tab == "Categories")
+else if (_tab == "Spending")
 {
     <div>
     <!-- Unified spending breakdown: all categories with bills/everyday grouping -->
@@ -736,23 +681,31 @@ else if (_tab == "Categories")
     @if (State.Categories.Any(c => c.Type == CategoryType.Expense))
     {
         <div class="card" style="margin-top:12px">
-            <div style="font-size:14px;font-weight:600;margin-bottom:4px">Category Limits</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">@State.SummaryPeriod spending limits per category. Shown as "near"/"over" badges above.</div>
-            <div style="display:flex;flex-direction:column;gap:8px">
-                @foreach (var cat in State.Categories.Where(c => c.Type == CategoryType.Expense).OrderBy(c => c.Name))
-                {
-                    <div style="display:flex;align-items:center;gap:8px">
-                        <span style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@cat.Name</span>
-                        <input class="form-input" style="width:90px;text-align:right;padding:6px 10px;font-size:14px"
-                               type="number" min="0" step="1"
-                               value="@GetLimitDisplay(cat.Name)"
-                               @onchange="e => SetLimitAsync(cat.Name, e.Value?.ToString())"
-                               placeholder="0" />
-                        <span style="font-size:12px;color:var(--text3);flex-shrink:0">/@(State.SummaryPeriod == "Weekly" ? "wk" : "mo")</span>
-                    </div>
-                }
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <div style="font-size:14px;font-weight:600">Category Limits</div>
+                <button class="btn btn-secondary btn-sm" @onclick="() => _showCategoryLimits = !_showCategoryLimits">
+                    @(_showCategoryLimits ? "Hide" : "Show")
+                </button>
             </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:10px">Set to 0 to disable limit for that category.</div>
+            @if (_showCategoryLimits)
+            {
+                <div style="font-size:12px;color:var(--text3);margin:4px 0 12px">@State.SummaryPeriod spending limits per category. Shown as "near"/"over" badges above.</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    @foreach (var cat in State.Categories.Where(c => c.Type == CategoryType.Expense).OrderBy(c => c.Name))
+                    {
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <span style="flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@cat.Name</span>
+                            <input class="form-input" style="width:90px;text-align:right;padding:6px 10px;font-size:14px"
+                                   type="number" min="0" step="1"
+                                   value="@GetLimitDisplay(cat.Name)"
+                                   @onchange="e => SetLimitAsync(cat.Name, e.Value?.ToString())"
+                                   placeholder="0" />
+                            <span style="font-size:12px;color:var(--text3);flex-shrink:0">/@(State.SummaryPeriod == "Weekly" ? "wk" : "mo")</span>
+                        </div>
+                    }
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:10px">Set to 0 to disable limit for that category.</div>
+            }
         </div>
     }
 
@@ -889,21 +842,7 @@ else if (_tab == "History")
                     </div>
                 }
 
-                @if (TopCats.Any())
-                {
-                    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">By category</div>
-                    @foreach (var (cat, amount) in TopCats.Take(4))
-                    {
-                        var share = PeriodSpend > 0 ? amount / PeriodSpend : 0;
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-                            <span style="font-size:13px;color:var(--text2)">@cat</span>
-                            <div style="text-align:right">
-                                <span style="font-size:13px;font-weight:600">@amount.ToString("C")</span>
-                                <span style="font-size:11px;color:var(--text3);margin-left:4px">@share.ToString("P0")</span>
-                            </div>
-                        </div>
-                    }
-                }
+                <div style="font-size:11px;color:var(--text3)">See the Spending tab for a full category breakdown.</div>
             </div>
         </div>
 
@@ -1193,6 +1132,7 @@ else if (_tab == "Holiday")
 @code {
     private string _tab = "Overview";
     private bool _editingBudget;
+    private bool _showCategoryLimits;
     private decimal _affordAmount;
     private string _affordMode = "OneOff"; // OneOff | Savings | Installments
     private int _goalWeeks = 4;
@@ -1405,7 +1345,6 @@ else if (_tab == "Holiday")
     // Budget for non-bill spending = unallocated budget after bills, savings and planned allocations.
     private decimal PeriodBudget   => Math.Max(State.BudgetLeftover * PayCycleWeeks, 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
-    private List<(string Category, decimal Amount)> TopCats => State.GetTopCategoriesForPeriod(PayCycle.From, PayCycle.To, 5, excludeBills: true);
     private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
     private string PeriodNounLower => PeriodNoun.ToLowerInvariant();
 

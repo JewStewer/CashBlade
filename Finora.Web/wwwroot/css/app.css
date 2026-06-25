@@ -301,6 +301,40 @@ button, a, input, select, textarea, [role="button"] {
     overflow-wrap: anywhere;
 }
 
+/* ── Compact stat-cell grid (small inline metrics inside a card, e.g. Tools page) ── */
+.stat-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.stat-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stat-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.stat-cell {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.stat-cell-sm { padding: 8px; }
+
+.stat-cell-label {
+    font-size: 11px;
+    color: var(--text3);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.stat-cell-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text);
+    margin-top: 2px;
+}
+
+.stat-cell-value-sm { font-size: 18px; }
+
 /* ── Rounded list section (card-style alternative to a flush edge-to-edge list) ── */
 .list-card {
     background: var(--surface);

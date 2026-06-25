@@ -8,7 +8,7 @@
         <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:12px">
             <div>
                 <label class="form-label">Description</label>
-                <input class="form-input" @bind="desc" placeholder="e.g. Groceries" autofocus />
+                <input class="form-input" @bind="desc" @bind:after="SuggestCategoryFromDescription" placeholder="e.g. Groceries" autofocus />
             </div>
             <div>
                 <label class="form-label">Amount ($)</label>
@@ -38,7 +38,7 @@
             </div>
             <div>
                 <label class="form-label">Category</label>
-                <select class="form-input" @bind="categoryId">
+                <select class="form-input" @bind="categoryId" @bind:after="() => categoryTouchedByUser = true">
                     @foreach (var c in State.Categories)
                     {
                         <option value="@c.Id">@c.Name</option>
@@ -76,6 +76,7 @@
     private DateTime date = DateTime.Today;
     private int accountId;
     private int categoryId;
+    private bool categoryTouchedByUser;
     private bool unnecessary;
     private string error = string.Empty;
     private bool saving;
@@ -89,6 +90,19 @@
         accountId = Transaction.AccountId;
         categoryId = Transaction.CategoryId;
         unnecessary = Transaction.IsUnnecessary;
+    }
+
+    // Only re-suggest when the description is actually edited, and only if the
+    // user hasn't manually picked a category during this edit session — opening
+    // Edit must never silently change an existing, intentional category.
+    private void SuggestCategoryFromDescription()
+    {
+        if (categoryTouchedByUser) return;
+        if (desc == Transaction.Description) return;
+        if (State.SuggestCategoryId(desc) is int suggestedId)
+        {
+            categoryId = suggestedId;
+        }
     }
 
     private async Task Save()

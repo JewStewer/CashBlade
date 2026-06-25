@@ -290,7 +290,7 @@ else
     }
 
     private List<ProactiveInsight> SmartSignals =>
-        State.ProactiveInsights
+        State.SmartSignals
             .Where(i => !i.Key.StartsWith("bills-due:", StringComparison.Ordinal))
             .Take(3)
             .ToList();

@@ -1,4 +1,5 @@
 @page "/tools"
+@page "/more"
 @inject AppState State
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -37,9 +38,10 @@
             <div style="font-size:13px;color:var(--text3)">No local edits are waiting to sync.</div>
         }
 
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
             <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="SyncNowAsync">Sync now</button>
             <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ConfirmRepairAsync">Repair queue</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="DownloadSnapshotAsync">Snapshot</button>
         </div>
         @if (!string.IsNullOrEmpty(_syncStatus))
         {
@@ -57,14 +59,14 @@
                 @(State.NoSpendMode ? "On" : "Off")
             </span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
-            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px">
-                <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Today spent</div>
-                <div style="font-size:20px;font-weight:800;color:var(--text);margin-top:2px">@State.GetTodaySpending().ToString("C")</div>
+        <div class="stat-grid stat-grid-2">
+            <div class="stat-cell">
+                <div class="stat-cell-label">Today spent</div>
+                <div class="stat-cell-value">@State.GetTodaySpending().ToString("C")</div>
             </div>
-            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px">
-                <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Non-bill spend</div>
-                <div style="font-size:20px;font-weight:800;color:var(--text);margin-top:2px">@State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today).ToString("C")</div>
+            <div class="stat-cell">
+                <div class="stat-cell-label">Non-bill spend</div>
+                <div class="stat-cell-value">@State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today).ToString("C")</div>
             </div>
         </div>
         <button class="btn @(State.NoSpendMode ? "btn-secondary" : "btn-primary") btn-sm" disabled="@_busy" @onclick="ToggleNoSpendModeAsync">
@@ -159,27 +161,35 @@
     </div>
 
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
-        <div>
-            <div class="row-title">Bill intelligence</div>
-            <div class="row-sub">Turn detected recurring charges into bills and catch amount changes.</div>
-        </div>
         @{
             var recurring = State.GetRecurringPayments();
         }
-        @if (recurring.Any())
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
+                <div class="row-title">Bill intelligence</div>
+                <div class="row-sub">Turn detected recurring charges into bills and catch amount changes.</div>
+            </div>
+            @if (recurring.Any())
+            {
+                <button class="btn btn-secondary btn-sm" @onclick="() => _showBillIntelStats = !_showBillIntelStats">
+                    @(_showBillIntelStats ? "Hide stats" : "Show stats")
+                </button>
+            }
+        </div>
+        @if (recurring.Any() && _showBillIntelStats)
         {
-            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
-                    <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Recurring</div>
-                    <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:2px">@recurring.Count</div>
+            <div class="stat-grid stat-grid-3">
+                <div class="stat-cell stat-cell-sm">
+                    <div class="stat-cell-label">Recurring</div>
+                    <div class="stat-cell-value stat-cell-value-sm">@recurring.Count</div>
                 </div>
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
-                    <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Weekly</div>
-                    <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:2px">@State.SubscriptionWeeklyTotal.ToString("C")</div>
+                <div class="stat-cell stat-cell-sm">
+                    <div class="stat-cell-label">Weekly</div>
+                    <div class="stat-cell-value stat-cell-value-sm">@State.SubscriptionWeeklyTotal.ToString("C")</div>
                 </div>
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px">
-                    <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Untracked</div>
-                    <div style="font-size:18px;font-weight:800;color:var(--text);margin-top:2px">@State.SubscriptionsNotInBillsCount</div>
+                <div class="stat-cell stat-cell-sm">
+                    <div class="stat-cell-label">Untracked</div>
+                    <div class="stat-cell-value stat-cell-value-sm">@State.SubscriptionsNotInBillsCount</div>
                 </div>
             </div>
         }
@@ -226,6 +236,7 @@
 
 @code {
     private bool _busy;
+    private bool _showBillIntelStats;
     private string _syncStatus = string.Empty;
     private string _syncStatusColor = "var(--text3)";
     private string _cleanupStatus = string.Empty;
@@ -265,6 +276,57 @@
         _busy = false;
         _syncStatus = "Pending queue cleared. Sync now to pull the latest cloud data.";
         _syncStatusColor = "var(--green)";
+    }
+
+    private async Task DownloadSnapshotAsync()
+    {
+        _busy = true;
+        try
+        {
+            var snapshot = BuildSnapshotText();
+            await JS.InvokeVoidAsync("financeBlade.downloadFile", $"finora-snapshot-{DateTime.Today:yyyy-MM-dd}.txt", snapshot, "text/plain");
+            _syncStatus = "Snapshot downloaded.";
+            _syncStatusColor = "var(--green)";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private string BuildSnapshotText()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Finora snapshot - {DateTime.Today:yyyy-MM-dd}");
+        sb.AppendLine();
+        sb.AppendLine($"Balance: {State.TotalBalance:C}");
+        sb.AppendLine($"Safe to spend: {State.SafeToSpendAmount:C}");
+        sb.AppendLine($"Next payday: {State.NextPayDate:dd MMM yyyy}");
+        sb.AppendLine($"Bills before payday: {State.TotalBillsDue:C}");
+        sb.AppendLine();
+
+        var upcoming = State.GetUpcomingBills(5).ToList();
+        sb.AppendLine("Upcoming bills");
+        if (upcoming.Any())
+        {
+            foreach (var bill in upcoming)
+                sb.AppendLine($"- {bill.EffectiveDueDate:dd MMM}: {bill.Name} {bill.AmountDollars:C}");
+        }
+        else
+        {
+            sb.AppendLine("- None due soon");
+        }
+
+        var signals = State.SmartSignals.Take(5).ToList();
+        if (signals.Any())
+        {
+            sb.AppendLine();
+            sb.AppendLine("Smart signals");
+            foreach (var signal in signals)
+                sb.AppendLine($"- {signal.Title}: {signal.Message}");
+        }
+
+        return sb.ToString();
     }
 
     private async Task ToggleNoSpendModeAsync()
