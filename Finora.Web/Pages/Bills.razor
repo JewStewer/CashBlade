@@ -67,7 +67,6 @@
 </div>
 <div style="padding:0 16px 12px;display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn btn-secondary btn-sm" disabled="@(!dueNowBills.Any())" @onclick="MarkDuePaidAsync">Mark due paid</button>
-    <button class="btn btn-secondary btn-sm" @onclick='() => filter = "Unpaid"'>Show unpaid</button>
     <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">Add Bill</button>
 </div>
 
@@ -76,7 +75,6 @@
     <div class="mini-timeline-wrap">
         <div class="mini-timeline-head">
             <span>Due Soon</span>
-            <button class="btn btn-sm btn-secondary" @onclick='() => filter = "Unpaid"'>Show unpaid</button>
         </div>
         <div class="mini-timeline">
             @foreach (var bill in DueSoonBills)
@@ -189,12 +187,9 @@ else
 
     private IEnumerable<Bill> GetFiltered()
     {
-        var today      = DateTime.Today;
-        var payEnd     = State.NextPayDate.Date >= today ? State.NextPayDate.Date : today.AddDays(14);
-        var fourWeeksEnd = today.AddDays(28);
         IEnumerable<Bill> q = filter switch
         {
-            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= fourWeeksEnd).OrderBy(b => b.EffectiveDueDate),
+            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b)).OrderBy(b => b.EffectiveDueDate),
             "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.EffectiveDueDate),
             _        => State.Bills.OrderBy(b => b.EffectiveDueDate)
         };

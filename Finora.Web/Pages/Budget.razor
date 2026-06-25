@@ -26,6 +26,31 @@
 @if (_tab == "Overview")
 {
     <div>
+    <!-- Payday transfer plan -->
+    @{
+        var transferPlan = State.GetPaydayTransferPlan();
+    }
+    @if (transferPlan.Any())
+    {
+        <div class="card" style="margin-top:12px;border-color:rgba(245,158,11,0.4)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div>
+                    <div style="font-size:12px;color:var(--text3)">💸 Payday Transfer Plan</div>
+                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so each account can cover its own bills</div>
+                </div>
+                <span style="font-size:14px;font-weight:700;color:var(--amber)">@transferPlan.Sum(t => t.Amount).ToString("C")</span>
+            </div>
+            @foreach (var item in transferPlan)
+            {
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                    <div class="dot" style="background:@item.AccountColorHex"></div>
+                    <span style="flex:1;font-size:14px">@item.AccountName</span>
+                    <span style="font-size:14px;font-weight:600">@item.Amount.ToString("C")</span>
+                </div>
+            }
+        </div>
+    }
+
     <!-- Pending reimbursements -->
     @{
         var unrepaid = State.LentTransactions.Where(l => State.IsUnrepaid(l.Id))

@@ -1901,6 +1901,24 @@ public class AppState(IndexedDbService db, SyncService sync)
         return (afterBills, afterBills + (accountId == PayAccountId ? EstimatedPayAmount : 0m));
     }
 
+    // How much to move from the pay account into each other account this payday so
+    // it can cover the bills already assigned to it before the next payday — i.e.
+    // the same shortfall GetAccountForecast already flags per-account, just
+    // collected into one list instead of having to open each account to see it.
+    public List<PaydayTransferItem> GetPaydayTransferPlan() =>
+        Accounts
+            .Where(a => a.Id != PayAccountId && a.Type != AccountType.Credit)
+            .Select(a => new PaydayTransferItem
+            {
+                AccountId = a.Id,
+                AccountName = a.Name,
+                AccountColorHex = a.ColorHex,
+                Amount = -GetAccountForecast(a.Id).AfterBills
+            })
+            .Where(item => item.Amount > 0)
+            .OrderByDescending(item => item.Amount)
+            .ToList();
+
     public bool IsInternalMovement(Transaction t) =>
         IsGeneratedBalanceAdjustment(t) ||
         TransactionClassification.IsInternalMovementCategory(t.CategoryName) ||
