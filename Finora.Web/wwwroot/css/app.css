@@ -549,19 +549,21 @@ button.dashboard-module {
 .forecast-mini-track {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 5px;
+    gap: 8px;
     align-items: end;
-    height: 44px;
+    height: 64px;
     margin-top: 12px;
-    padding: 7px;
+    padding: 8px 14px;
     border-radius: 10px;
     background: var(--bg);
 }
 
 .forecast-mini-track i {
     display: block;
+    width: 60%;
+    margin: 0 auto;
     height: 42%;
-    border-radius: 999px 999px 3px 3px;
+    border-radius: 4px 4px 2px 2px;
     background: var(--teal-light);
     opacity: 0.75;
 }
