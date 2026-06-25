@@ -96,10 +96,10 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                     GetAccountColor(upAccount.Attributes));
             }
 
-            var existingUpIds = transactions
+            var existingByUpId = transactions
                 .Where(t => !string.IsNullOrWhiteSpace(t.UpTransactionId))
-                .Select(t => t.UpTransactionId!)
-                .ToHashSet(StringComparer.Ordinal);
+                .GroupBy(t => t.UpTransactionId!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
             var url = $"{ApiBaseUrl}/transactions?page[size]=100&filter[since]={Uri.EscapeDataString(sinceUtc.ToString("O"))}";
             while (!string.IsNullOrWhiteSpace(url))
@@ -107,14 +107,10 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                 var page = await FetchTransactionsPageAsync(url);
                 foreach (var upTransaction in page.Data)
                 {
-                    if (!string.Equals(upTransaction.Attributes.Status, "SETTLED", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
                     var occurredAt = upTransaction.Attributes.SettledAt ?? upTransaction.Attributes.CreatedAt;
                     if (occurredAt > newestSeenUtc) newestSeenUtc = occurredAt;
 
-                    if (existingUpIds.Contains(upTransaction.Id) ||
-                        transactionDeletes.Any(d => string.Equals(d.Deleted.UpTransactionId, upTransaction.Id, StringComparison.Ordinal)))
+                    if (transactionDeletes.Any(d => string.Equals(d.Deleted.UpTransactionId, upTransaction.Id, StringComparison.Ordinal)))
                     {
                         continue;
                     }
@@ -124,7 +120,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
 
                     var account = GetTransactionAccount(accounts, upTransaction.Relationships.Account.Data?.Id);
                     var description = BuildDescription(upTransaction.Attributes);
-                    var purchaseDate = DateOnlyUnspecified(upTransaction.Attributes.CreatedAt.LocalDateTime);
+                    var purchaseDate = DateOnlyUnspecified(occurredAt.LocalDateTime);
                     if (transactionDeletes.Any(d => SameTransactionSignature(d.Deleted.Date, d.Deleted.Description, d.Deleted.AmountCents, purchaseDate, description, amountCents)))
                         continue;
 
@@ -132,6 +128,18 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                         categories,
                         GetCategoryName(upTransaction.Relationships.Category.Data?.Id, description, amountCents),
                         amountCents > 0 ? CategoryType.Income : CategoryType.Expense);
+
+                    if (existingByUpId.TryGetValue(upTransaction.Id, out var existingTransaction))
+                    {
+                        existingTransaction.Date = purchaseDate;
+                        existingTransaction.Description = description;
+                        existingTransaction.AmountCents = amountCents;
+                        existingTransaction.AccountId = account.Id;
+                        existingTransaction.CategoryId = category.Id;
+                        existingTransaction.UpSettledAt = DateTime.SpecifyKind(occurredAt.LocalDateTime, DateTimeKind.Unspecified);
+                        await db.PutAsync("transactions", existingTransaction);
+                        continue;
+                    }
 
                     var transaction = new Transaction
                     {
@@ -142,12 +150,12 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                         AccountId = account.Id,
                         CategoryId = category.Id,
                         UpTransactionId = upTransaction.Id,
-                        UpSettledAt = DateTime.SpecifyKind(upTransaction.Attributes.CreatedAt.LocalDateTime, DateTimeKind.Unspecified)
+                        UpSettledAt = DateTime.SpecifyKind(occurredAt.LocalDateTime, DateTimeKind.Unspecified)
                     };
 
                     transactions.Add(transaction);
                     await db.PutAsync("transactions", transaction);
-                    existingUpIds.Add(upTransaction.Id);
+                    existingByUpId[upTransaction.Id] = transaction;
                     imported++;
                     newTransactionsForPush.Add(transaction);
 
