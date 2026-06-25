@@ -1,190 +1,243 @@
 @page "/"
+@using System.Globalization
 @inject AppState State
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
-<PageTitle>Dashboard — Evergrove</PageTitle>
+<PageTitle>Dashboard - Evergrove</PageTitle>
 
 @if (!State.IsLoaded)
 {
-    <div class="empty-state"><LoadingRings /><span>Loading…</span></div>
+    <div class="empty-state"><LoadingRings /><span>Loading...</span></div>
 }
 else
 {
-    <!-- Balance overview -->
-    <div style="padding:16px 16px 0">
-        <div class="card" style="text-align:center;padding:22px 14px">
-            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-weight:600">Total Balance</div>
-            <div style="font-size:28px;font-weight:700;color:@(State.TotalBalance>=0?"var(--text)":"var(--red)");margin-top:6px">
-                @State.TotalBalance.ToString("C")
+    <div class="dashboard-shell">
+        <section class="ultimate-balance">
+            <div class="ultimate-balance-head">
+                <span>Evergrove Core</span>
+                <button class="sync-pill" @onclick="QuickSyncAsync" disabled="@_quickSyncing">
+                    @(_quickSyncing ? "Syncing" : "Sync Now")
+                </button>
             </div>
-            <div style="display:flex;justify-content:center;gap:28px;margin-top:14px">
+            <div class="balance-label">Total Active Balance</div>
+            <div class="balance-total @(State.TotalBalance < 0 ? "negative" : "")">@State.TotalBalance.ToString("C")</div>
+            <div class="balance-grid">
                 <div>
-                    <div style="font-size:11px;color:var(--text3)">Net Worth</div>
-                    <div style="font-size:15px;font-weight:600;color:@(State.NetWorth>=0?"var(--text)":"var(--red)");margin-top:2px">
-                        @State.NetWorth.ToString("C")
-                    </div>
+                    <span>Net Worth</span>
+                    <strong class="@(State.NetWorth < 0 ? "negative" : "")">@State.NetWorth.ToString("C")</strong>
                 </div>
                 <div>
-                    <div style="font-size:11px;color:var(--text3)">Savings</div>
-                    <div style="font-size:15px;font-weight:600;color:var(--text);margin-top:2px">
-                        @State.SavingsTotal.ToString("C")
-                    </div>
+                    <span>Savings</span>
+                    <strong class="positive">@State.SavingsTotal.ToString("C")</strong>
                 </div>
-                @if (State.DebtTotal > 0)
-                {
-                    <div>
-                        <div style="font-size:11px;color:var(--text3)">Debt</div>
-                        <div style="font-size:15px;font-weight:600;color:var(--red);margin-top:2px">
-                            @State.DebtTotal.ToString("C")
-                        </div>
-                    </div>
-                }
+                <div>
+                    <span>Debt</span>
+                    <strong class="negative">@State.DebtTotal.ToString("C")</strong>
+                </div>
             </div>
-        </div>
-    </div>
+        </section>
 
-    <div style="padding:12px 16px 0">
-        <div class="hero-summary @MobileStatusTone">
+        <section class="hero-summary @MobileStatusTone">
             <div class="hero-copy">
                 <div class="hero-kicker">Today's Brief</div>
                 <div class="hero-title">@MobileStatusTitle</div>
                 <div class="hero-message">@MobileStatusMessage</div>
             </div>
             <button class="btn btn-sm btn-secondary" @onclick="() => Nav.NavigateTo(MobileStatusRoute)">@MobileStatusAction</button>
-        </div>
-    </div>
+        </section>
 
-    <div class="quick-actions">
-        <button class="quick-action" @onclick="() => showAddTxn = true">
-            <span>+</span>
-            <strong>Add Spend</strong>
-            <small>Record a transaction</small>
-        </button>
-        <button class="quick-action" @onclick="QuickSyncAsync" disabled="@_quickSyncing">
-            <span>🔄</span>
-            <strong>@(_quickSyncing ? "Syncing" : "Sync Now")</strong>
-            <small>@(string.IsNullOrWhiteSpace(_quickSyncStatus) ? "Push and pull" : _quickSyncStatus)</small>
-        </button>
-        <button class="quick-action" @onclick='() => Nav.NavigateTo("budget")'>
-            <span>$</span>
-            <strong>Budget</strong>
-            <small>Check safe spend</small>
-        </button>
-        <button class="quick-action" @onclick="() => showAddBill = true">
-            <span>🧾</span>
-            <strong>Add Bill</strong>
-            <small>Track a payment</small>
-        </button>
-        <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
-            <span>🧰</span>
-            <strong>Tools</strong>
-            <small>What-if and cleanup</small>
-        </button>
-    </div>
-
-    @if (ActionPrompts.Any())
-    {
-        <div class="action-stack">
-            @foreach (var prompt in ActionPrompts)
-            {
-                <button class="action-card @prompt.Tone" @onclick="() => Nav.NavigateTo(prompt.Route)">
-                    <span class="status-dot"></span>
-                    <span>
-                        <strong>@prompt.Title</strong>
-                        <small>@prompt.Message</small>
-                    </span>
-                    <b>@prompt.Action</b>
-                </button>
-            }
-        </div>
-    }
-
-    @if (SmartSignals.Any())
-    {
-        <div class="section-header" style="margin-top:8px">
-            <span class="section-title">Smart Signals</span>
-        </div>
-        <div class="action-stack" style="margin-top:0">
-            @foreach (var signal in SmartSignals)
-            {
-                <button class="action-card @InsightTone(signal)" @onclick="() => OpenInsight(signal)">
-                    <span class="status-dot"></span>
-                    <span>
-                        <strong>@signal.Title</strong>
-                        <small>@signal.Message</small>
-                    </span>
-                    <b>Open</b>
-                </button>
-            }
-        </div>
-    }
-
-    <!-- Bills due -->
-    @if (State.BillsDueBeforePayday.Count > 0)
-    {
-        <div class="section-header" style="margin-top:14px">
-            <span class="section-title">Bills Due</span>
-            <span style="font-size:13px;color:var(--red);font-weight:600">@State.TotalBillsDue.ToString("C")</span>
-        </div>
-        <div class="card-list" style="margin-top:0">
-            @foreach (var bill in State.BillsDueBeforePayday.Take(5))
-            {
-                <div class="list-row">
-                    <div class="row-icon" style="background:rgba(248,113,113,0.15)">📋</div>
-                    <div class="row-main">
-                        <div class="row-title">@bill.Name</div>
-                        <div class="row-sub">@bill.AccountName · @bill.EffectiveDueDate.ToString("dd MMM")</div>
-                    </div>
-                    <span class="row-amount neg">@bill.AmountDollars.ToString("C")</span>
+        <section class="budget-pulse">
+            <div class="pulse-head">
+                <div>
+                    <span>Pay Cycle</span>
+                    <strong>@PayCycle.From.ToString("dd MMM") - @PayCycle.To.ToString("dd MMM")</strong>
                 </div>
-            }
-            @if (State.BillsDueBeforePayday.Count > 5)
-            {
-                <div style="padding:10px 16px;color:var(--text3);font-size:13px">
-                    +@(State.BillsDueBeforePayday.Count - 5) more
-                </div>
-            }
-            <div style="padding:10px 16px;border-top:1px solid var(--border)">
-                <button class="btn btn-sm btn-secondary btn-full" @onclick='() => Nav.NavigateTo("bills")'>Open Bills</button>
+                <b>@DaysToPaydayLabel</b>
             </div>
-        </div>
-    }
+            <div class="pulse-track"><div style="width:@SafeSpendPercentCss"></div></div>
+            <div class="pulse-metrics">
+                <div>
+                    <span>Spent Since Payday</span>
+                    <strong class="negative">@PayCycleSpend.ToString("C")</strong>
+                </div>
+                <div>
+                    <span>Made Since Payday</span>
+                    <strong class="positive">@PayCycleIncome.ToString("C")</strong>
+                </div>
+                <div>
+                    <span>Cycle Net</span>
+                    <strong class="@(PayCycleNet < 0 ? "negative" : "positive")">@PayCycleNet.ToString("C")</strong>
+                </div>
+            </div>
+        </section>
 
-    <!-- Recent transactions -->
-    <div class="section-header" style="margin-top:14px">
-        <span class="section-title">Recent</span>
-        <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("transactions")' style="padding:4px 10px;font-size:12px">See all</button>
-    </div>
-    <div class="card-list" style="margin-top:0">
-        @if (State.RecentTransactions.Count == 0)
+        <div class="quick-actions quick-actions-ultimate">
+            <button class="quick-action" @onclick="() => showAddTxn = true">
+                <span>+</span>
+                <strong>Spend</strong>
+                <small>Record transaction</small>
+            </button>
+            <button class="quick-action" @onclick='() => Nav.NavigateTo("budget")'>
+                <span>$</span>
+                <strong>Budget</strong>
+                <small>Safe-to-spend</small>
+            </button>
+            <button class="quick-action" @onclick="() => showAddBill = true">
+                <span>!</span>
+                <strong>Bill</strong>
+                <small>Add payment</small>
+            </button>
+            <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
+                <span>?</span>
+                <strong>Tools</strong>
+                <small>Smart mode</small>
+            </button>
+            <button class="@NoSpendQuickActionClass" @onclick="ToggleNoSpendModeAsync">
+                <span>@(State.NoSpendMode ? "ON" : "NO")</span>
+                <strong>No Spend</strong>
+                <small>@(State.NoSpendMode ? "Tap to unlock" : "Lock it down")</small>
+            </button>
+        </div>
+
+        <div class="module-grid">
+            <button class="dashboard-module no-spend-module @(State.NoSpendMode ? "is-on" : "")" @onclick="ToggleNoSpendModeAsync">
+                <span>No-Spend Mode</span>
+                <strong>@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
+                <small>@NoSpendMessage</small>
+            </button>
+            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("budget")'>
+                <span>Safe To Spend</span>
+                <strong>@State.SafeToSpendAmount.ToString("C")</strong>
+                <small>@SafeSpendMessage</small>
+            </button>
+        </div>
+
+        @if (State.OutstandingLentDollars > 0)
         {
-            <div class="empty-state" style="padding:24px">
-                <span>No transactions yet. Sync from your PC to load data.</span>
-                <button class="btn btn-sm btn-primary" @onclick='() => Nav.NavigateTo("settings")'>Open Sync Settings</button>
+            <section class="dashboard-module reimburse-module">
+                <div class="module-head">
+                    <span>Money Owed Back</span>
+                    <strong>@State.OutstandingLentDollars.ToString("C")</strong>
+                </div>
+                <p>Excluded from budget spending. If paid back, safe-to-spend becomes @State.SafeToSpendIfReimbursed.ToString("C").</p>
+                @foreach (var item in OutstandingLentItems.Take(3))
+                {
+                    <button class="mini-row" @onclick='() => Nav.NavigateTo("transactions")'>
+                        <span>@item.Transaction.Description</span>
+                        <b>@State.GetLentOutstandingDollars(item.Transaction).ToString("C")</b>
+                    </button>
+                }
+            </section>
+        }
+
+        <section class="dashboard-module forecast-module">
+            <div class="module-head">
+                <span>Forecast Check</span>
+                <strong class="@(ForecastHealthAmount < 0 ? "negative" : "positive")">@ForecastHealthAmount.ToString("C")</strong>
+            </div>
+            <div class="forecast-mini-track">
+                <i></i><i class="bill"></i><i class="pay"></i><i></i><i class="@(ForecastHealthAmount < 0 ? "danger" : "pay")"></i>
+            </div>
+            <p>@ForecastHealthMessage</p>
+        </section>
+
+        @if (ActionPrompts.Any())
+        {
+            <div class="action-stack action-stack-compact">
+                @foreach (var prompt in ActionPrompts)
+                {
+                    <button class="action-card @prompt.Tone" @onclick="() => Nav.NavigateTo(prompt.Route)">
+                        <span class="status-dot"></span>
+                        <span>
+                            <strong>@prompt.Title</strong>
+                            <small>@prompt.Message</small>
+                        </span>
+                        <b>@prompt.Action</b>
+                    </button>
+                }
             </div>
         }
-        else
+
+        @if (SmartSignals.Any())
         {
-            @foreach (var t in State.RecentTransactions.Take(8))
+            <div class="section-header dashboard-section-head">
+                <span class="section-title">Smart Signals</span>
+            </div>
+            <div class="action-stack action-stack-compact">
+                @foreach (var signal in SmartSignals)
+                {
+                    <button class="action-card @InsightTone(signal)" @onclick="() => OpenInsight(signal)">
+                        <span class="status-dot"></span>
+                        <span>
+                            <strong>@signal.Title</strong>
+                            <small>@signal.Message</small>
+                        </span>
+                        <b>Open</b>
+                    </button>
+                }
+            </div>
+        }
+
+        @if (State.BillsDueBeforePayday.Count > 0)
+        {
+            <div class="section-header dashboard-section-head">
+                <span class="section-title">Bills Due Soon</span>
+                <span style="font-size:13px;color:var(--red);font-weight:600">@State.TotalBillsDue.ToString("C")</span>
+            </div>
+            <div class="card-list dashboard-list">
+                @foreach (var bill in State.BillsDueBeforePayday.Take(5))
+                {
+                    <div class="list-row">
+                        <div class="row-icon" style="background:rgba(248,113,113,0.15)">!</div>
+                        <div class="row-main">
+                            <div class="row-title">@bill.Name</div>
+                            <div class="row-sub">@bill.AccountName - @bill.EffectiveDueDate.ToString("dd MMM")</div>
+                        </div>
+                        <span class="row-amount neg">@bill.AmountDollars.ToString("C")</span>
+                    </div>
+                }
+                @if (State.BillsDueBeforePayday.Count > 5)
+                {
+                    <div class="list-more">+@(State.BillsDueBeforePayday.Count - 5) more</div>
+                }
+                <div class="list-action">
+                    <button class="btn btn-sm btn-secondary btn-full" @onclick='() => Nav.NavigateTo("bills")'>Open Bills</button>
+                </div>
+            </div>
+        }
+
+        <div class="section-header dashboard-section-head">
+            <span class="section-title">Recent Activity</span>
+            <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("transactions")' style="padding:4px 10px;font-size:12px">See all</button>
+        </div>
+        <div class="card-list dashboard-list">
+            @if (State.RecentTransactions.Count == 0)
             {
-                <div class="list-row">
-                    <div class="row-icon" style="background:var(--surface2)">
-                        @GetCategoryEmoji(t.CategoryName)
-                    </div>
-                    <div class="row-main">
-                        <div class="row-title">@t.Description</div>
-                        <div class="row-sub">@t.AccountName · @t.Date.ToString("dd MMM")</div>
-                    </div>
-                    <span class="row-amount @(t.AmountCents>=0?"pos":"neg")">
-                        @t.AmountDollars.ToString("C")
-                    </span>
+                <div class="empty-state" style="padding:24px">
+                    <span>No transactions yet. Sync from your PC to load data.</span>
+                    <button class="btn btn-sm btn-primary" @onclick='() => Nav.NavigateTo("settings")'>Open Sync Settings</button>
                 </div>
             }
-        }
+            else
+            {
+                @foreach (var t in State.RecentTransactions.Take(8))
+                {
+                    <div class="list-row">
+                        <div class="row-icon" style="background:var(--surface2)">
+                            @GetCategorySymbol(t.CategoryName)
+                        </div>
+                        <div class="row-main">
+                            <div class="row-title">@t.Description</div>
+                            <div class="row-sub">@t.AccountName - @t.Date.ToString("dd MMM")</div>
+                        </div>
+                        <span class="row-amount @(t.AmountCents >= 0 ? "pos" : "neg")">
+                            @t.AmountDollars.ToString("C")
+                        </span>
+                    </div>
+                }
+            }
+        </div>
     </div>
-
-    <div style="height:16px"></div>
 }
 
 @if (showAddTxn)
@@ -204,9 +257,64 @@ else
     private string _quickSyncStatus = string.Empty;
 
     private (decimal Now, decimal AfterBills, decimal AfterPay) Forecast => State.GetForecastTotals();
-
+    private (decimal LowestBalance, DateTime LowestDate) ShortfallProjection => State.GetPaydayShortfallProjection();
+    private (DateTime From, DateTime To) PayCycle => State.GetCurrentPayCycle();
+    private int DaysToPayday => Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0);
+    private string DaysToPaydayLabel => DaysToPayday == 0 ? "Payday today" : $"{DaysToPayday}d to payday";
+    private decimal PayCycleSpend => State.GetDiscretionarySpendingForPeriod(PayCycle.From, PayCycle.To);
+    private decimal PayCycleIncome => State.Transactions
+        .Where(t => t.Date.Date >= PayCycle.From.Date
+            && t.Date.Date <= PayCycle.To.Date
+            && t.AmountCents > 0
+            && string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase))
+        .Sum(t => t.AmountDollars);
+    private decimal PayCycleNet => PayCycleIncome - PayCycleSpend;
+    private decimal ForecastHealthAmount => ShortfallProjection.LowestBalance;
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
+    private string NoSpendQuickActionClass => $"quick-action{(State.NoSpendMode ? " active" : "")}";
+
+    private string SafeSpendPercentCss
+    {
+        get
+        {
+            var denominator = Math.Max(State.BudgetSafeToSpendAmount + PayCycleSpend, 1m);
+            var percent = Math.Clamp(State.BudgetSafeToSpendAmount / denominator * 100m, 0m, 100m);
+            return $"{percent.ToString("0", CultureInfo.InvariantCulture)}%";
+        }
+    }
+
+    private IEnumerable<(LentTransaction Lent, Transaction Transaction)> OutstandingLentItems =>
+        State.LentTransactions
+            .Where(l => State.IsUnrepaid(l.Id))
+            .Select(l => (Lent: l, Transaction: State.Transactions.FirstOrDefault(t => t.Id == l.Id)))
+            .Where(x => x.Transaction is not null)
+            .Select(x => (x.Lent, x.Transaction!));
+
+    private string NoSpendSuggestion =>
+        State.BudgetSafeToSpendAmount <= 0 || State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today) > 0
+            ? "Recommended"
+            : "Ready";
+
+    private string NoSpendMessage
+    {
+        get
+        {
+            if (State.NoSpendMode) return $"Discretionary forecast is paused; today's spend is {State.GetTodaySpending():C}.";
+            if (State.BudgetSafeToSpendAmount <= 0) return "Switch on to hold safe-to-spend at $0 and quiet discretionary planning.";
+            return $"{(State.SafeToSpendAmount / Math.Max(DaysToPayday, 1)):C}/day keeps this cycle steady.";
+        }
+    }
+
+    private string SafeSpendMessage =>
+        State.OutstandingLentDollars > 0
+            ? $"{State.OutstandingLentDollars:C} owed back is tracked separately."
+            : "After bills, savings and essentials.";
+
+    private string ForecastHealthMessage =>
+        ForecastHealthAmount < 0
+            ? $"Lowest projected balance is {ForecastHealthAmount:C} on {ShortfallProjection.LowestDate:dd MMM}. Open Budget to inspect the 60-day forecast."
+            : $"Lowest projected balance before payday is {ForecastHealthAmount:C} on {ShortfallProjection.LowestDate:dd MMM}.";
 
     private string MobileStatusTitle
     {
@@ -227,9 +335,9 @@ else
             var urgent = State.BillsDueBeforePayday.FirstOrDefault(b => b.EffectiveDueDate.Date <= DateTime.Today.AddDays(1));
             if (urgent is not null) return $"{urgent.Name} is due {DueLabel(urgent.EffectiveDueDate)}. Check it off or move money before it lands.";
             if (Forecast.AfterBills < 0) return $"You are forecast to be {Math.Abs(Forecast.AfterBills):C} short before payday.";
-            if (State.NoSpendMode) return "Stick to bills and essentials today. Tools can turn this off when you are ready.";
+            if (State.NoSpendMode) return "Stick to bills and essentials today. Forecasts assume no discretionary spending while this is on.";
             if (State.SafeToSpendAmount <= 0) return "Your safe-to-spend buffer is gone for this pay cycle.";
-            var days = Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 1);
+            var days = Math.Max(DaysToPayday, 1);
             return $"{(State.SafeToSpendAmount / days):C} per day keeps you steady until payday.";
         }
     }
@@ -277,6 +385,15 @@ else
             {
                 prompts.Add(new("Move money", $"{Math.Abs(Forecast.AfterBills):C} short after scheduled bills.", "accounts", "Fix", "tone-red"));
             }
+            if (State.OutstandingLentDollars > 0)
+            {
+                prompts.Add(new("Collect reimbursements", $"{State.OutstandingLentDollars:C} is still owed back and excluded from spending.", "transactions", "Open", "tone-blue"));
+            }
+            var todayDiscretionary = State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
+            if (State.NoSpendMode && todayDiscretionary > 0)
+            {
+                prompts.Add(new("No-spend check", $"{todayDiscretionary:C} discretionary spend landed today.", "transactions", "Review", "tone-amber"));
+            }
             if (ThisWeek > LastWeek && LastWeek > 0)
             {
                 prompts.Add(new("Spending up", $"{(ThisWeek - LastWeek):C} higher than last week.", "transactions", "Inspect", "tone-blue"));
@@ -285,7 +402,7 @@ else
             {
                 prompts.Add(new("Sync needed", "No recent transactions are loaded on this device.", "settings", "Sync", "tone-blue"));
             }
-            return prompts.Take(3).ToList();
+            return prompts.Take(4).ToList();
         }
     }
 
@@ -342,10 +459,10 @@ else
         }
     }
 
-    private async Task ExportTransactionsCsv()
+    private async Task ToggleNoSpendModeAsync()
     {
-        var csv = State.BuildTransactionsCsv();
-        await JS.InvokeVoidAsync("financeBlade.downloadFile", $"transactions-{DateTime.Today:yyyy-MM-dd}.csv", csv, "text/csv");
+        await State.SetNoSpendModeAsync(!State.NoSpendMode);
+        StateHasChanged();
     }
 
     private Task OnTxnSaved()
@@ -362,11 +479,19 @@ else
         return Task.CompletedTask;
     }
 
-    private static string GetCategoryEmoji(string cat) => cat switch
+    private static string GetCategorySymbol(string cat) => cat switch
     {
-        "Income" => "💰", "Groceries" => "🛒", "Fuel" => "⛽", "Rent" => "🏠",
-        "Phone" => "📱", "Internet" => "📡", "Medical" => "💊", "Transfer" => "↔️",
-        "Insurance" => "🛡️", "Debt" => "💳", "Study" => "📚",
-        _ => "💸"
+        "Income" => "$",
+        "Groceries" => "G",
+        "Fuel" => "F",
+        "Rent" => "H",
+        "Phone" => "P",
+        "Internet" => "I",
+        "Medical" => "M",
+        "Transfer" => "T",
+        "Insurance" => "S",
+        "Debt" => "D",
+        "Study" => "B",
+        _ => "$"
     };
 }
