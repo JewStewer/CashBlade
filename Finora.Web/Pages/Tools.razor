@@ -38,10 +38,11 @@
             <div style="font-size:13px;color:var(--text3)">No local edits are waiting to sync.</div>
         }
 
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
             <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="SyncNowAsync">Sync now</button>
             <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ConfirmRepairAsync">Repair queue</button>
             <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="DownloadSnapshotAsync">Snapshot</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ForceUpdateAsync">🔄 Clear cache &amp; reload</button>
         </div>
         @if (!string.IsNullOrEmpty(_syncStatus))
         {
@@ -205,9 +206,18 @@
                         <div style="font-size:14px;font-weight:700;color:var(--text)">@suggestion.Title</div>
                         <div style="font-size:12px;color:var(--text3)">@suggestion.Message</div>
                     </div>
-                    <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => ApplyBillSuggestionAsync(suggestion)">
-                        @suggestion.ActionLabel
-                    </button>
+                    @if (suggestion.Kind == "PriceCreep")
+                    {
+                        <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("bills")'>
+                            @suggestion.ActionLabel
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => ApplyBillSuggestionAsync(suggestion)">
+                            @suggestion.ActionLabel
+                        </button>
+                    }
                     @if (suggestion.Kind == "NewBill" && suggestion.RecurringPayment is not null)
                     {
                         <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => IgnoreRecurringAsync(suggestion.RecurringPayment)">
@@ -276,6 +286,24 @@
         _busy = false;
         _syncStatus = "Pending queue cleared. Sync now to pull the latest cloud data.";
         _syncStatusColor = "var(--green)";
+    }
+
+    private async Task ForceUpdateAsync()
+    {
+        // Same as Settings' "Clear cache & reload" — duplicated here rather than
+        // shared, since it's a one-shot JS eval with no state this page needs back.
+        await JS.InvokeVoidAsync("eval", @"
+            (async () => {
+                if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    for (const r of regs) await r.unregister();
+                }
+                const cacheKeys = await caches.keys();
+                for (const k of cacheKeys) await caches.delete(k);
+                const appRoot = new URL('.', document.baseURI).href;
+                window.location.replace(appRoot + '?refresh=' + Date.now());
+            })()
+        ");
     }
 
     private async Task DownloadSnapshotAsync()
@@ -358,6 +386,11 @@
     private async Task ApplyBillSuggestionAsync(BillIntelligenceSuggestion suggestion)
     {
         if (suggestion.RecurringPayment is null) return;
+        // PriceCreep is informational only (no single correct automated action — the
+        // user has to decide whether to call and negotiate, switch provider, etc.) and
+        // is routed to a "review in Bills" navigation button instead; never let it fall
+        // through to CreateBillFromRecurringAsync, which would duplicate an existing bill.
+        if (suggestion.Kind == "PriceCreep") return;
 
         _busy = true;
         var ok = suggestion.Kind == "AmountChanged" && suggestion.BillId is not null

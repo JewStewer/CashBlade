@@ -561,8 +561,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         ComputeSummaries();
         DetectPayAccount();
         ComputeBillsDue();
-        ComputeProactiveInsights();
-        ComputeUnifiedSmartSignals();
+        // Insight computation is supplementary — it must never be able to stop the rest
+        // of Compute() (and the UI re-render/sync that follows it) from completing.
+        try { ComputeProactiveInsights(); } catch { }
+        try { ComputeUnifiedSmartSignals(); } catch { }
         RecentTransactions = Transactions
             .OrderByDescending(t => t.Date)
             .ThenByDescending(t => t.UpSettledAt ?? DateTime.MinValue)
@@ -1264,8 +1266,15 @@ public class AppState(IndexedDbService db, SyncService sync)
             });
         }
 
+        // GroupBy-then-First instead of ToDictionary directly: GetRecurringPayments groups
+        // by NormalizeRecurringDescription with the default (case-sensitive) comparer, so two
+        // real transactions for the same merchant with different casing (common in bank-imported
+        // descriptions, e.g. "Netflix.com" vs "NETFLIX.COM") can come back as two separate entries
+        // whose Names only collide once compared case-insensitively — ToDictionary would throw on
+        // that collision instead of just picking one.
         var recurringByName = GetRecurringPayments()
-            .ToDictionary(r => r.Name, StringComparer.OrdinalIgnoreCase);
+            .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var bill in Bills.Where(b => !StateIsGeneratedBillNameEmpty(b)).OrderBy(b => b.EffectiveDueDate))
         {
@@ -1275,17 +1284,35 @@ public class AppState(IndexedDbService db, SyncService sync)
             var expected = recurring.AverageAmount;
             var current = bill.AmountDollars;
             var delta = Math.Abs(current - expected);
-            if (expected <= 0 || delta < Math.Max(5m, expected * 0.15m)) continue;
-
-            suggestions.Add(new BillIntelligenceSuggestion
+            if (expected > 0 && delta >= Math.Max(5m, expected * 0.15m))
             {
-                Kind = "AmountChanged",
-                Title = $"{bill.Name} amount changed",
-                Message = $"Bill is {current:C}, recent average is {expected:C}.",
-                ActionLabel = "Update amount",
-                RecurringPayment = recurring,
-                BillId = bill.Id
-            });
+                suggestions.Add(new BillIntelligenceSuggestion
+                {
+                    Kind = "AmountChanged",
+                    Title = $"{bill.Name} amount changed",
+                    Message = $"Bill is {current:C}, recent average is {expected:C}.",
+                    ActionLabel = "Update amount",
+                    RecurringPayment = recurring,
+                    BillId = bill.Id
+                });
+            }
+            // Distinct from AmountChanged above: a slow creep raises the average right
+            // along with it, so a bill that's gone from $40 to $52 over a year of small
+            // rises never trips the vs-average check. Comparing against the all-time low
+            // instead catches that gradual drift, which is exactly the shape a "should I
+            // negotiate/switch providers" nudge is for.
+            else if (recurring.MinAmount > 0 && current >= recurring.MinAmount * 1.25m && (current - recurring.MinAmount) >= 10m)
+            {
+                suggestions.Add(new BillIntelligenceSuggestion
+                {
+                    Kind = "PriceCreep",
+                    Title = $"{bill.Name} has crept up",
+                    Message = $"Now {current:C} — as low as {recurring.MinAmount:C} before. Might be worth a quick review or a call to negotiate.",
+                    ActionLabel = "Review in Bills",
+                    RecurringPayment = recurring,
+                    BillId = bill.Id
+                });
+            }
         }
 
         return suggestions.Take(10).ToList();
@@ -1412,7 +1439,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 Key = $"daily-spend:{DateTime.Today:yyyyMMdd}",
                 Severity = ProactiveInsightSeverity.Warning,
                 Title = "Spending is running hot today",
-                Message = $"{todaySpend:C} today vs a usual daily pace of about {avgDaily:C}.",
+                Message = $"{todaySpend:C} today vs a usual daily pace of about {avgDaily:C}.{TopCategorySuffix(DateTime.Today, DateTime.Today)}",
                 ActionUrl = "transactions"
             });
         }
@@ -1429,7 +1456,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     Key = $"weekly-pace:{StartOfWeek(DateTime.Today):yyyyMMdd}",
                     Severity = ProactiveInsightSeverity.Warning,
                     Title = "This week is above normal",
-                    Message = $"{thisWeek:C0} spent this week vs about {avgWeek:C0} usually.",
+                    Message = $"{thisWeek:C0} spent this week vs about {avgWeek:C0} usually.{TopCategorySuffix(StartOfWeek(DateTime.Today), DateTime.Today)}",
                     ActionUrl = "transactions"
                 });
             }
@@ -1465,57 +1492,80 @@ public class AppState(IndexedDbService db, SyncService sync)
     // duplicating their underlying detection logic — Tools.razor's own cards still
     // read GetTransactionCleanupSuggestions/GetMerchantSpendWatchlist/GetBillIntelligenceSuggestions
     // directly for their full Apply/Ignore actions.
+    //
+    // Each source runs inside its own try/catch: this method is called from Compute(),
+    // which every write path (e.g. MarkBillPaidAsync) calls before notifying the UI —
+    // a real-world data edge case (e.g. one of these LINQ queries throwing on an
+    // unexpected shape) must never be able to abort Compute() and silently block the
+    // rest of the app from re-rendering. A "nothing happened" bug report after tapping
+    // an unrelated button (e.g. on the Bills page) is exactly what that would look like.
     private void ComputeUnifiedSmartSignals()
     {
         var signals = new List<ProactiveInsight>(ProactiveInsights);
 
-        foreach (var suggestion in GetTransactionCleanupSuggestions().Take(3))
+        try
         {
-            signals.Add(new ProactiveInsight
+            foreach (var suggestion in GetTransactionCleanupSuggestions().Take(3))
             {
-                Key = $"cleanup:{suggestion.Merchant}",
-                Severity = ProactiveInsightSeverity.Info,
-                Title = $"{suggestion.Merchant} can be recategorized",
-                Message = $"{suggestion.AffectedCount} of {suggestion.TotalSeen} transactions could become {suggestion.SuggestedCategoryName}.",
-                ActionUrl = "tools"
-            });
+                signals.Add(new ProactiveInsight
+                {
+                    Key = $"cleanup:{suggestion.Merchant}",
+                    Severity = ProactiveInsightSeverity.Info,
+                    Title = $"{suggestion.Merchant} can be recategorized",
+                    Message = $"{suggestion.AffectedCount} of {suggestion.TotalSeen} transactions could become {suggestion.SuggestedCategoryName}.",
+                    ActionUrl = "tools"
+                });
+            }
         }
+        catch { /* supplementary signal source — never block Compute() over this */ }
 
-        foreach (var item in GetMerchantSpendWatchlist().Where(i => i.UnnecessaryAmount > 0).Take(2))
+        try
         {
-            signals.Add(new ProactiveInsight
+            foreach (var item in GetMerchantSpendWatchlist().Where(i => i.UnnecessaryAmount > 0).Take(2))
             {
-                Key = $"watchlist:{item.Merchant}",
-                Severity = ProactiveInsightSeverity.Info,
-                Title = $"{item.Merchant} spend flagged as unnecessary",
-                Message = $"{item.UnnecessaryAmount:C} of {item.Amount:C} from {item.Merchant} in the last 30 days is marked unnecessary.",
-                ActionUrl = "tools"
-            });
+                signals.Add(new ProactiveInsight
+                {
+                    Key = $"watchlist:{item.Merchant}",
+                    Severity = ProactiveInsightSeverity.Info,
+                    Title = $"{item.Merchant} spend flagged as unnecessary",
+                    Message = $"{item.UnnecessaryAmount:C} of {item.Amount:C} from {item.Merchant} in the last 30 days is marked unnecessary.",
+                    ActionUrl = "tools"
+                });
+            }
         }
+        catch { }
 
-        foreach (var suggestion in GetBillIntelligenceSuggestions().Take(3))
+        try
         {
-            signals.Add(new ProactiveInsight
+            foreach (var suggestion in GetBillIntelligenceSuggestions().Take(3))
             {
-                Key = $"billintel:{suggestion.Kind}:{suggestion.Title}",
-                Severity = suggestion.Kind == "AmountChanged" ? ProactiveInsightSeverity.Warning : ProactiveInsightSeverity.Info,
-                Title = suggestion.Title,
-                Message = suggestion.Message,
-                ActionUrl = "tools"
-            });
+                signals.Add(new ProactiveInsight
+                {
+                    Key = $"billintel:{suggestion.Kind}:{suggestion.Title}",
+                    Severity = suggestion.Kind == "AmountChanged" ? ProactiveInsightSeverity.Warning : ProactiveInsightSeverity.Info,
+                    Title = suggestion.Title,
+                    Message = suggestion.Message,
+                    ActionUrl = "tools"
+                });
+            }
         }
+        catch { }
 
-        foreach (var anomaly in GetSpendingAnomalies().Take(2))
+        try
         {
-            signals.Add(new ProactiveInsight
+            foreach (var anomaly in GetSpendingAnomalies().Take(2))
             {
-                Key = $"anomaly:{anomaly.TransactionId}",
-                Severity = ProactiveInsightSeverity.Warning,
-                Title = $"{anomaly.Merchant} charge looks high",
-                Message = $"{anomaly.RecentAmount:C} on {anomaly.Date:dd MMM} vs a usual {anomaly.TypicalAmount:C}.",
-                ActionUrl = "transactions"
-            });
+                signals.Add(new ProactiveInsight
+                {
+                    Key = $"anomaly:{anomaly.TransactionId}",
+                    Severity = ProactiveInsightSeverity.Warning,
+                    Title = $"{anomaly.Merchant} charge looks high",
+                    Message = $"{anomaly.RecentAmount:C} on {anomaly.Date:dd MMM} vs a usual {anomaly.TypicalAmount:C}.",
+                    ActionUrl = "transactions"
+                });
+            }
         }
+        catch { }
 
         SmartSignals = signals
             .OrderByDescending(i => i.Severity)
@@ -1528,6 +1578,14 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var dow = (int)date.DayOfWeek;
         return date.Date.AddDays(-(dow == 0 ? 6 : dow - 1));
+    }
+
+    // Names which category is actually driving a pace warning — "$120 today" on its
+    // own doesn't tell you what to look at, "$120 today, Groceries leads at $80" does.
+    private string TopCategorySuffix(DateTime from, DateTime to)
+    {
+        var top = GetTopCategoriesForPeriod(from, to, 1, excludeBills: true);
+        return top.Count > 0 ? $" {top[0].Category} leads at {top[0].Amount:C}." : "";
     }
 
     private static string FrequencyShort(string frequency) => frequency switch

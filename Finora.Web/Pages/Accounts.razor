@@ -281,7 +281,14 @@ else
                     <div class="progress-fill" style="width:@((int)(progress * 100))%;background:var(--purple)"></div>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
-                    <span>@progress.ToString("P0")</span>
+                    <span>
+                        @progress.ToString("P0")
+                        @if (progress >= 0.25m)
+                        {
+                            var (emoji, label, color) = GoalMilestoneTier(progress);
+                            <span style="margin-left:6px;color:@color;font-weight:600">@emoji @label</span>
+                        }
+                    </span>
                     @if (goal.TargetDate is not null)
                     {
                         <span>@goal.TargetDate.Value.ToString("dd MMM yy")</span>
@@ -375,4 +382,14 @@ else
 
     private void ToggleAccount(int accountId) =>
         _expandedAccountId = _expandedAccountId == accountId ? 0 : accountId;
+
+    // Mirrors DailyTab's StreakTier badge pattern, applied to savings-goal progress
+    // instead of a day count — same colors already used there for tier badges.
+    private static (string Emoji, string Label, string Color) GoalMilestoneTier(decimal progress) => progress switch
+    {
+        >= 1m => ("🎉", "Goal reached!", "var(--green)"),
+        >= 0.75m => ("🔥", "Almost there", "#34D399"),
+        >= 0.5m => ("⚡", "Halfway there", "#FBBF24"),
+        _ => ("🌱", "Building", "var(--purple)")
+    };
 }
