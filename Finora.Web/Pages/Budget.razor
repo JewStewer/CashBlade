@@ -542,10 +542,17 @@
     </div>
 
     <!-- Safe to spend / Over budget breakdown -->
-    <div class="card" style="margin-top:12px;border-color:@(State.SafeToSpendAmount>0?"var(--teal)":"var(--red)")">
+    @{
+        // SafeToSpendAmount is forced to $0 while No-Spend Mode is on, regardless of
+        // the real underlying budget — BudgetSafeToSpendAmount ignores that override,
+        // so it's the only reliable signal for whether the user is actually over
+        // budget vs. just voluntarily holding spend at $0.
+        var trulyOverBudget = State.BudgetSafeToSpendAmount <= 0 && State.WeeklyIncome > 0;
+    }
+    <div class="card" style="margin-top:12px;border-color:@(trulyOverBudget?"var(--red)":"var(--teal)")">
         <div style="font-size:12px;color:var(--text3)">Safe to Spend</div>
-        <div style="font-size:28px;font-weight:700;color:@(State.SafeToSpendAmount>0?"var(--green)":"var(--red)")">
-            @(State.SafeToSpendAmount > 0 ? State.SafeToSpendAmount.ToString("C") : "Over budget")
+        <div style="font-size:28px;font-weight:700;color:@(trulyOverBudget?"var(--red)":"var(--green)")">
+            @(trulyOverBudget ? "Over budget" : State.SafeToSpendAmount.ToString("C"))
         </div>
         <div style="font-size:13px;color:var(--text3);margin-top:4px">
             @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After bills, savings and essentials")
@@ -565,7 +572,7 @@
             </div>
         }
 
-        @if (State.SafeToSpendAmount <= 0 && State.WeeklyIncome > 0)
+        @if (trulyOverBudget)
         {
             <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
                 <div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:8px">Why you're over budget</div>
