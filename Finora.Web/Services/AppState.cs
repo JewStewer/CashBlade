@@ -1858,6 +1858,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     }
 
     public bool IsInternalMovement(Transaction t) =>
+        IsGeneratedBalanceAdjustment(t) ||
         TransactionClassification.IsInternalMovementCategory(t.CategoryName) ||
         TransactionClassification.HasLinkedTransferId(t) ||
         TransactionClassification.IsCoverMovementDescription(t.Description) ||

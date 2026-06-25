@@ -120,7 +120,8 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
 
                     var account = GetTransactionAccount(accounts, upTransaction.Relationships.Account.Data?.Id);
                     var description = BuildDescription(upTransaction.Attributes);
-                    var purchaseDate = DateOnlyUnspecified(occurredAt.LocalDateTime);
+                    var purchaseDate = DateOnlyUnspecified(ToUpBankLocalDateTime(upTransaction.Attributes.CreatedAt));
+                    var occurredLocal = ToUpBankLocalDateTime(occurredAt);
                     if (transactionDeletes.Any(d => SameTransactionSignature(d.Deleted.Date, d.Deleted.Description, d.Deleted.AmountCents, purchaseDate, description, amountCents)))
                         continue;
 
@@ -136,7 +137,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                         existingTransaction.AmountCents = amountCents;
                         existingTransaction.AccountId = account.Id;
                         existingTransaction.CategoryId = category.Id;
-                        existingTransaction.UpSettledAt = DateTime.SpecifyKind(occurredAt.LocalDateTime, DateTimeKind.Unspecified);
+                        existingTransaction.UpSettledAt = DateTime.SpecifyKind(occurredLocal, DateTimeKind.Unspecified);
                         await db.PutAsync("transactions", existingTransaction);
                         continue;
                     }
@@ -150,7 +151,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                         AccountId = account.Id,
                         CategoryId = category.Id,
                         UpTransactionId = upTransaction.Id,
-                        UpSettledAt = DateTime.SpecifyKind(occurredAt.LocalDateTime, DateTimeKind.Unspecified)
+                        UpSettledAt = DateTime.SpecifyKind(occurredLocal, DateTimeKind.Unspecified)
                     };
 
                     transactions.Add(transaction);
@@ -606,6 +607,19 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
 
     private static DateTime DateOnlyUnspecified(DateTime value) =>
         new(value.Year, value.Month, value.Day);
+
+    private static DateTime ToUpBankLocalDateTime(DateTimeOffset value)
+    {
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById("Australia/Sydney");
+            return TimeZoneInfo.ConvertTime(value, zone).DateTime;
+        }
+        catch
+        {
+            return value.LocalDateTime;
+        }
+    }
 
     private static int ParseAmountCents(string value) =>
         decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var dollars)
