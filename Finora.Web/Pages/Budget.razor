@@ -104,6 +104,25 @@
         @if (_editingBudget)
         {
             <div style="display:flex;flex-direction:column;gap:10px">
+                @if (_smartSuggestion is null)
+                {
+                    <button class="btn btn-secondary btn-sm" style="align-self:flex-start" @onclick="PreviewSmartBudget">✨ Suggest a smart budget</button>
+                }
+                else
+                {
+                    <div style="background:var(--surface2);border-radius:10px;padding:10px;font-size:12px">
+                        <div style="font-weight:600;margin-bottom:6px">Based on your last 8 weeks of activity</div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Income</span><strong>@_smartSuggestion.Income.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Bills</span><strong>@_smartSuggestion.Bills.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Essentials</span><strong>@_smartSuggestion.Essentials.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Savings</span><strong>@_smartSuggestion.Savings.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between"><span>Unplanned</span><strong>@_smartSuggestion.Unplanned.ToString("C")</strong></div>
+                        <div style="display:flex;gap:8px;margin-top:8px">
+                            <button class="btn btn-primary btn-sm" style="flex:1" @onclick="ApplySmartBudgetAsync">Apply</button>
+                            <button class="btn btn-secondary btn-sm" style="flex:1" @onclick="() => _smartSuggestion = null">Dismiss</button>
+                        </div>
+                    </div>
+                }
                 <div style="display:flex;align-items:center;gap:8px">
                     <span style="flex:1;font-size:14px;font-weight:600">Weekly Income</span>
                     <input class="form-input" style="width:110px;text-align:right;padding:6px 10px;font-size:14px"
@@ -1228,6 +1247,22 @@ else if (_tab == "Holiday")
     private async Task SetBudgetFieldAsync(string field, ChangeEventArgs e)
     {
         await State.SetBudgetOverrideAsync(field, e.Value?.ToString());
+    }
+
+    private AppState.SmartBudgetSuggestion? _smartSuggestion;
+
+    private void PreviewSmartBudget() => _smartSuggestion = State.GetSmartBudgetSuggestion();
+
+    private async Task ApplySmartBudgetAsync()
+    {
+        if (_smartSuggestion is null) return;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        await State.SetBudgetOverrideAsync("Income", _smartSuggestion.Income.ToString(inv));
+        await State.SetBudgetOverrideAsync("Bills", _smartSuggestion.Bills.ToString(inv));
+        await State.SetBudgetOverrideAsync("Essentials", _smartSuggestion.Essentials.ToString(inv));
+        await State.SetBudgetOverrideAsync("Savings", _smartSuggestion.Savings.ToString(inv));
+        await State.SetBudgetOverrideAsync("Unplanned", _smartSuggestion.Unplanned.ToString(inv));
+        _smartSuggestion = null;
     }
 
     private IEnumerable<(string Label, string Field, decimal Amount, string Color)> EditableBudgetRows()

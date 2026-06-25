@@ -1071,6 +1071,53 @@ public class AppState(IndexedDbService db, SyncService sync)
     // Weekly discretionary budget = essentials + unplanned
     public decimal DiscretionaryBudget => BudgetEssentials + BudgetUnplanned;
 
+    public record SmartBudgetSuggestion(decimal Income, decimal Bills, decimal Essentials, decimal Unplanned, decimal Savings);
+
+    // Heuristic budget suggestion built from real history, not a model call:
+    // bills = real weekly-equivalent of tracked Bills, essentials/unplanned = trailing
+    // 8-week averages of essential vs. discretionary spend, savings = whatever's left
+    // of income once those are covered.
+    public SmartBudgetSuggestion GetSmartBudgetSuggestion(int weeksBack = 8)
+    {
+        var to = DateTime.Today;
+        var from = to.AddDays(-7 * weeksBack);
+        var weeks = Math.Max(weeksBack, 1);
+
+        var income = WeeklyIncome > 0 ? WeeklyIncome : GetAverageWeeklyIncome(from, to);
+
+        var bills = Bills.Sum(b => GetWeeklyEquivalent(b.AmountDollars, b.Frequency));
+
+        var discretionary = Transactions
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
+                        && !IsInternalMovement(t) && !IsBudgetedBillTransaction(t) && !IsLent(t.Id))
+            .ToList();
+        var essentials = Math.Round(discretionary.Where(t => IsEssentialCategory(t.CategoryName)).Sum(t => Math.Abs(t.AmountDollars)) / weeks, 0);
+        var unplanned = Math.Round(discretionary.Where(t => !IsEssentialCategory(t.CategoryName)).Sum(t => Math.Abs(t.AmountDollars)) / weeks, 0);
+
+        var savings = Math.Max(income - bills - essentials - unplanned, 0);
+
+        return new SmartBudgetSuggestion(Math.Round(income, 0), Math.Round(bills, 0), essentials, unplanned, Math.Round(savings, 0));
+    }
+
+    private decimal GetAverageWeeklyIncome(DateTime from, DateTime to)
+    {
+        var weeks = Math.Max((to - from).Days / 7.0, 1);
+        var total = Transactions
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents > 0 && !IsInternalMovement(t))
+            .Sum(t => t.AmountDollars);
+        return (decimal)((double)total / weeks);
+    }
+
+    private static decimal GetWeeklyEquivalent(decimal amount, BillFrequency frequency) => frequency switch
+    {
+        BillFrequency.Weekly => amount,
+        BillFrequency.Fortnightly => amount / 2m,
+        BillFrequency.Monthly => amount * 12m / 52m,
+        BillFrequency.Quarterly => amount * 4m / 52m,
+        BillFrequency.Yearly => amount / 52m,
+        _ => 0
+    };
+
     public decimal GetTodaySpending() =>
         Transactions
             .Where(t => t.Date.Date == DateTime.Today && t.AmountCents < 0 && !IsInternalMovement(t))
