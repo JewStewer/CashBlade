@@ -887,10 +887,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         //    advancing bill.DueDate to the next cycle.)
         if (effectiveDue.Date > bill.DueDate.Date) return false;
 
-        // 3. Tight date-drift fallback: a status within ±3 days of the effective due
-        //    date covers cases where the PC recorded a slightly different date (e.g.
-        //    same-day payment).  Intentionally narrow so a previous cycle's payment
-        //    (e.g. paid June 2, due June 9) is NOT treated as "paid for this cycle".
+        // A flat ±3 day grace window is a small sliver of a yearly bill's cycle but
+        // ~43% of a weekly one — wide enough to let last week's "paid" status leak
+        // into this week's fresh occurrence. Scale the window down for short cycles.
+        var graceDays = Math.Max(1, Math.Min(3, ApproxFrequencyDays(bill.Frequency) / 4));
+
+        // 3. Tight date-drift fallback: a status within ±graceDays of the effective
+        //    due date covers cases where the PC recorded a slightly different date
+        //    (e.g. same-day payment). Intentionally narrow so a previous cycle's
+        //    payment (e.g. paid June 2, due June 9) is NOT treated as "paid for this cycle".
         var latest = BillStatuses
             .Where(s => s.BillId == bill.Id)
             .OrderByDescending(s => s.DueDate)
@@ -898,7 +903,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (latest is not null)
         {
             var daysFromEffective = Math.Abs((latest.DueDate.Date - effectiveDue.Date).TotalDays);
-            if (daysFromEffective <= 3) return latest.IsPaid;
+            if (daysFromEffective <= graceDays) return latest.IsPaid;
         }
 
         // 4. If bill.DueDate is already in the next cycle (WPF paid today and
@@ -912,7 +917,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (effectiveDue.Date > DateTime.Today)
         {
             var prevDue = ReverseDueDate(effectiveDue, bill.Frequency);
-            if (Math.Abs((DateTime.Today - prevDue.Date).TotalDays) <= 3)
+            if (Math.Abs((DateTime.Today - prevDue.Date).TotalDays) <= graceDays)
             {
                 var prevStatus = BillStatuses
                     .FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == prevDue.Date);
@@ -920,12 +925,22 @@ public class AppState(IndexedDbService db, SyncService sync)
                 if (latest is not null)
                 {
                     var daysToPrev = Math.Abs((latest.DueDate.Date - prevDue.Date).TotalDays);
-                    if (daysToPrev <= 3) return latest.IsPaid;
+                    if (daysToPrev <= graceDays) return latest.IsPaid;
                 }
             }
         }
         return false;
     }
+
+    private static int ApproxFrequencyDays(BillFrequency f) => f switch
+    {
+        BillFrequency.Weekly      => 7,
+        BillFrequency.Fortnightly => 14,
+        BillFrequency.Monthly     => 30,
+        BillFrequency.Quarterly   => 91,
+        BillFrequency.Yearly      => 365,
+        _                         => 30
+    };
 
     public List<Transaction> GetTransactionsForPeriod(DateTime from, DateTime to) =>
         Transactions.Where(t => t.Date.Date >= from && t.Date.Date <= to).ToList();

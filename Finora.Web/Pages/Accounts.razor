@@ -6,12 +6,12 @@
 
 <div style="padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between">
     <div>
-        <div style="font-size:12px;color:var(--text3)">Total Balance</div>
-        <div style="font-size:26px;font-weight:700">@State.TotalBalance.ToString("C")</div>
+        <div class="stat-label">Total Balance</div>
+        <div style="font-size:26px;font-weight:700;margin-top:2px">@State.TotalBalance.ToString("C")</div>
     </div>
     <div style="text-align:right">
-        <div style="font-size:12px;color:var(--text3)">Net Worth</div>
-        <div style="font-size:18px;font-weight:600;color:@(State.NetWorth>=0?"var(--green)":"var(--red)")">@State.NetWorth.ToString("C")</div>
+        <div class="stat-label">Net Worth</div>
+        <div style="font-size:18px;font-weight:600;margin-top:2px;color:@(State.NetWorth>=0?"var(--text)":"var(--red)")">@State.NetWorth.ToString("C")</div>
     </div>
 </div>
 
@@ -47,13 +47,13 @@ else
 {
     @foreach (var typeGroup in State.Accounts.GroupBy(a => a.Type).OrderBy(g => (int)g.Key))
     {
-        <div class="section-header" style="margin-top:8px">
+        <div class="section-header" style="margin-top:14px">
             <span class="section-title">@typeGroup.Key</span>
             <span style="font-size:13px;color:var(--text2)">
                 @typeGroup.Sum(a => State.GetAccountBalance(a.Id)).ToString("C")
             </span>
         </div>
-        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="card-list" style="margin-top:0">
             @foreach (var acct in typeGroup.OrderByDescending(a => State.GetAccountBalance(a.Id)))
             {
                 var balance = State.GetAccountBalance(acct.Id);
@@ -195,7 +195,7 @@ else
 }
 
 <!-- Debts section -->
-<div class="section-header" style="margin-top:8px">
+<div class="section-header" style="margin-top:14px">
     <span class="section-title">Debts</span>
     <div style="display:flex;align-items:center;gap:10px">
         @if (State.Debts.Any())
@@ -207,7 +207,7 @@ else
 </div>
 @if (State.Debts.Any())
 {
-    <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    <div class="card-list" style="margin-top:0">
         @foreach (var debt in State.Debts.OrderByDescending(d => d.BalanceDollars))
         {
             var paidOff = Math.Max(debt.OriginalBalanceDollars - debt.BalanceDollars, 0);
@@ -241,13 +241,13 @@ else
 }
 else
 {
-    <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    <div class="card-list" style="margin-top:0;padding:20px;text-align:center;color:var(--text3);font-size:13px">
         No debts tracked yet — tap "+ Add" to add one.
     </div>
 }
 
 <!-- Savings goals -->
-<div class="section-header" style="margin-top:8px">
+<div class="section-header" style="margin-top:14px">
     <span class="section-title">Savings Goals</span>
     <div style="display:flex;align-items:center;gap:10px">
         @if (State.SavingsGoals.Any())
@@ -259,7 +259,7 @@ else
 </div>
 @if (State.SavingsGoals.Any())
 {
-    <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    <div class="card-list" style="margin-top:0">
         @foreach (var group in State.GetSavingsGoalGroups())
         {
             var isGroupExpanded = string.Equals(_expandedGoalGroupName, group.Name, StringComparison.OrdinalIgnoreCase);
@@ -348,7 +348,7 @@ else
 }
 else
 {
-    <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    <div class="card-list" style="margin-top:0;padding:20px;text-align:center;color:var(--text3);font-size:13px">
         No savings goals yet — tap "+ Add" to create one.
     </div>
 }
@@ -359,11 +359,11 @@ else
 }
 @if (accountGoals.Any())
 {
-    <div class="section-header" style="margin-top:8px">
+    <div class="section-header" style="margin-top:14px">
         <span class="section-title">Targets</span>
         <span style="font-size:13px;color:var(--text2)">@(accountGoals.Sum(a => State.GetAccountBalance(a.Id)).ToString("C"))</span>
     </div>
-    <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+    <div class="card-list" style="margin-top:0">
         @foreach (var acct in accountGoals)
         {
             var current = State.GetAccountBalance(acct.Id);

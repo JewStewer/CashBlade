@@ -35,7 +35,7 @@
         <div class="card" style="margin-top:12px;border-color:rgba(245,158,11,0.4)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <div>
-                    <div style="font-size:12px;color:var(--text3)">💸 Payday Transfer Plan</div>
+                    <div class="section-title">💸 Payday Transfer Plan</div>
                     <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so each account can cover its own bills</div>
                 </div>
                 <span style="font-size:14px;font-weight:700;color:var(--amber)">@transferPlan.Sum(t => t.Amount).ToString("C")</span>
@@ -65,7 +65,7 @@
         <div class="card" style="margin-top:12px;border-color:rgba(99,102,241,0.4)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
-                    <div style="font-size:12px;color:var(--text3)">🤝 Pending Reimbursements</div>
+                    <div class="section-title">🤝 Pending Reimbursements</div>
                     <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Excluded from your spending until marked repaid</div>
                 </div>
                 <span style="font-size:14px;font-weight:700;color:#818CF8">@totalOwed.ToString("C")</span>
@@ -92,7 +92,7 @@
     <!-- Budget overview card -->
     <div class="card" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-            <div style="font-size:12px;color:var(--text3)">Planned Weekly Budget</div>
+            <div class="section-title">Planned Weekly Budget</div>
             @if (State.WeeklyIncome > 0 || _editingBudget)
             {
                 <button class="btn btn-sm btn-secondary" @onclick="() => _editingBudget = !_editingBudget">@(_editingBudget ? "Done" : "Edit")</button>
@@ -216,7 +216,7 @@
         <div class="card" style="margin-top:12px;border-color:@(projectedSpend <= PeriodBudget ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
-                    <div style="font-size:12px;color:var(--text3)">Spending Pace</div>
+                    <div class="section-title">Spending Pace</div>
                     <div style="font-size:18px;font-weight:700;color:@paceColor">
                         @(projectedSpend <= PeriodBudget ? "On track" : "Running hot")
                     </div>
@@ -249,7 +249,7 @@
     {
         <div class="card" style="margin-top:12px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-                <div style="font-size:12px;color:var(--text3)">Debts</div>
+                <div class="section-title">Debts</div>
                 <span style="font-size:13px;font-weight:700;color:var(--red)">@State.Debts.Sum(d => d.BalanceDollars).ToString("C") total</span>
             </div>
             @foreach (var debt in State.Debts)
@@ -550,7 +550,7 @@
         var trulyOverBudget = State.BudgetSafeToSpendAmount <= 0 && State.WeeklyIncome > 0;
     }
     <div class="card" style="margin-top:12px;border-color:@(trulyOverBudget?"var(--red)":"var(--teal)")">
-        <div style="font-size:12px;color:var(--text3)">Safe to Spend</div>
+        <div class="section-title">Safe to Spend</div>
         <div style="font-size:28px;font-weight:700;color:@(trulyOverBudget?"var(--red)":"var(--green)")">
             @(trulyOverBudget ? "Over budget" : State.SafeToSpendAmount.ToString("C"))
         </div>
@@ -802,7 +802,7 @@ else if (_tab == "Spending")
     {
         <div class="card" style="margin-top:12px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-                <div style="font-size:12px;color:var(--text3)">🔁 Subscriptions</div>
+                <div class="section-title">🔁 Subscriptions</div>
                 <span style="font-size:14px;font-weight:700">@State.SubscriptionWeeklyTotal.ToString("C")<span style="font-size:10px;color:var(--text3);font-weight:400">/wk</span></span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">@subscriptions.Count recurring payment@(subscriptions.Count == 1 ? "" : "s") detected from your transaction history</div>
@@ -1068,7 +1068,7 @@ else if (_tab == "Forecast")
     <div class="budget-calendar">
         <div class="budget-calendar-head">
             <div>
-                <div style="font-size:12px;color:var(--text3)">Budget Schedule</div>
+                <div class="section-title">Budget Schedule</div>
                 <div style="font-size:16px;font-weight:700">@DateTime.Today.ToString("MMMM yyyy")</div>
             </div>
             <div style="font-size:11px;color:var(--text3);text-align:right">Bills, paydays and forecast balance</div>
@@ -1125,7 +1125,7 @@ else if (_tab == "Forecast")
     }
     else
     {
-        <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+        <div class="card-list" style="margin-top:0">
             @foreach (var day in eventDays)
             {
                 <div class="list-row">

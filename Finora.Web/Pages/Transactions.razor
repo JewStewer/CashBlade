@@ -79,7 +79,7 @@
     <button class="btn btn-secondary btn-sm" disabled="@(!filteredRows.Any())" @onclick="ExportFilteredAsync">Export filtered</button>
 </div>
 
-<div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<div class="card-list" style="margin-top:0">
     @{var rows = filteredRows;}
     @if (!rows.Any())
     {

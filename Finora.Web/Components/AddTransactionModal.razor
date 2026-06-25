@@ -58,7 +58,7 @@
             <div style="padding:6px 16px;color:var(--red);font-size:13px">@error</div>
         }
 
-        <div style="padding:14px 16px;display:flex;gap:8px">
+        <div class="modal-actions">
             <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
             <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
                 @(saving ? "Saving…" : "Add")

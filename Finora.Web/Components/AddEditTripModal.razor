@@ -58,7 +58,7 @@
                 <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Delete this trip?</div>
                 <div style="font-size:12px;color:var(--text2)">This removes the itinerary, checklist, and budget too. This can't be undone.</div>
             </div>
-            <div style="padding:14px 16px;display:flex;gap:8px">
+            <div class="modal-actions">
                 <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
                 <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
                     @(saving ? "Deleting..." : "Delete")
@@ -67,7 +67,7 @@
         }
         else
         {
-            <div style="padding:14px 16px;display:flex;gap:8px">
+            <div class="modal-actions">
                 @if (Trip?.Id != 0)
                 {
                     <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Delete</button>
