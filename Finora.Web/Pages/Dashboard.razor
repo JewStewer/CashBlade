@@ -73,27 +73,27 @@ else
 
         <div class="quick-actions quick-actions-ultimate">
             <button class="quick-action" @onclick="() => showAddTxn = true">
-                <span>+</span>
+                <span><Icon Name="plus" Size="14" /></span>
                 <strong>Spend</strong>
                 <small>Record transaction</small>
             </button>
             <button class="quick-action" @onclick='() => Nav.NavigateTo("budget")'>
-                <span>$</span>
+                <span><Icon Name="dollar-sign" Size="14" /></span>
                 <strong>Budget</strong>
                 <small>Safe-to-spend</small>
             </button>
             <button class="quick-action" @onclick="() => showAddBill = true">
-                <span>!</span>
+                <span><Icon Name="clipboard" Size="14" /></span>
                 <strong>Bill</strong>
                 <small>Add payment</small>
             </button>
             <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
-                <span>?</span>
+                <span><Icon Name="sparkles" Size="14" /></span>
                 <strong>Tools</strong>
                 <small>Smart mode</small>
             </button>
             <button class="@NoSpendQuickActionClass" @onclick="ToggleNoSpendModeAsync">
-                <span>@(State.NoSpendMode ? "ON" : "NO")</span>
+                <span><Icon Name="@(State.NoSpendMode ? "lock" : "shield")" Size="14" /></span>
                 <strong>No Spend</strong>
                 <small>@(State.NoSpendMode ? "Tap to unlock" : "Lock it down")</small>
             </button>
@@ -177,7 +177,7 @@ else
                 @foreach (var bill in State.BillsDueBeforePayday.Take(5))
                 {
                     <div class="list-row">
-                        <div class="row-icon" style="background:rgba(248,113,113,0.15)">!</div>
+                        <div class="row-icon" style="background:rgba(248,113,113,0.15);color:var(--red)"><Icon Name="alert-circle" /></div>
                         <div class="row-main">
                             <div class="row-title">@bill.Name</div>
                             <div class="row-sub">@bill.AccountName - @bill.EffectiveDueDate.ToString("dd MMM")</div>
@@ -211,9 +211,10 @@ else
             {
                 @foreach (var t in State.RecentTransactions.Take(8))
                 {
+                    var visual = CategoryIcon.Get(t.CategoryName);
                     <div class="list-row">
-                        <div class="row-icon" style="background:var(--surface2)">
-                            @GetCategorySymbol(t.CategoryName)
+                        <div class="row-icon" style="background:@visual.Bg;color:@visual.Fg">
+                            <Icon Name="@visual.Icon" />
                         </div>
                         <div class="row-main">
                             <div class="row-title">@t.Description</div>
@@ -462,19 +463,4 @@ else
         return Task.CompletedTask;
     }
 
-    private static string GetCategorySymbol(string cat) => cat switch
-    {
-        "Income" => "$",
-        "Groceries" => "G",
-        "Fuel" => "F",
-        "Rent" => "H",
-        "Phone" => "P",
-        "Internet" => "I",
-        "Medical" => "M",
-        "Transfer" => "T",
-        "Insurance" => "S",
-        "Debt" => "D",
-        "Study" => "B",
-        _ => "$"
-    };
 }

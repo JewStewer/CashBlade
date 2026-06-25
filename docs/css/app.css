@@ -174,16 +174,20 @@ button, a, input, select, textarea, [role="button"] {
 
 /* ── Cards ── */
 .card {
-    background: var(--surface);
-    border-radius: 12px;
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.09), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
     padding: 14px;
 }
 
 .card-sm {
-    background: var(--surface);
-    border-radius: 10px;
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.08), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
     padding: 10px 12px;
 }
 
@@ -222,9 +226,11 @@ button, a, input, select, textarea, [role="button"] {
 }
 
 .stat-tile {
-    background: var(--surface);
-    border-radius: 12px;
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.09), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
     padding: 12px;
 }
 
@@ -244,9 +250,11 @@ button, a, input, select, textarea, [role="button"] {
 
 .quick-action {
     min-height: 86px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.09), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
+    border-radius: 14px;
     color: var(--text);
     padding: 10px 8px;
     display: flex;
@@ -387,9 +395,11 @@ button, a, input, select, textarea, [role="button"] {
 
 .budget-pulse,
 .dashboard-module {
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 78%);
     border-radius: 14px;
-    background: var(--surface);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.10), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
     padding: 13px;
 }
 
@@ -584,9 +594,11 @@ button.dashboard-module {
 }
 
 .metric-strip div {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.08), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
+    border-radius: 12px;
     padding: 10px;
     min-width: 0;
 }
@@ -642,9 +654,11 @@ button.dashboard-module {
 
 /* ── Rounded list section (card-style alternative to a flush edge-to-edge list) ── */
 .list-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.08), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
+    border-radius: 14px;
     overflow: hidden;
     margin: 12px 16px 0;
 }
@@ -653,8 +667,10 @@ button.dashboard-module {
    Dashboard's look can never cascade into HolidayTab's existing .list-card
    usage elsewhere. Adds the last-row divider cleanup .list-card doesn't have. */
 .card-list {
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.08), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
     border-radius: 14px;
     overflow: hidden;
     margin: 14px 16px 0;
@@ -676,7 +692,7 @@ button.dashboard-module {
 
 .row-icon {
     width: 36px; height: 36px;
-    border-radius: 9px;
+    border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
     font-size: 15px;
@@ -1366,7 +1382,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     border: 1px solid color-mix(in srgb, var(--tone), var(--border) 68%);
     background: var(--tone-bg);
     color: var(--text);
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 11px 12px;
     display: flex;
     align-items: center;

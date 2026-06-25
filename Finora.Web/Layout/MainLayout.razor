@@ -42,7 +42,7 @@
                     b.EffectiveDueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} (tomorrow)" :
                     $"{b.Name} (in {(b.EffectiveDueDate.Date - DateTime.Today).Days}d)"))</span>
             </div>
-            <button class="bill-alert-close" @onclick="() => _dismissedBillAlert = true">✕</button>
+            <button class="bill-alert-close" @onclick="() => _dismissedBillAlert = true"><Icon Name="x" Size="14" /></button>
         </div>
     }
 

@@ -282,8 +282,8 @@ else
                         @group.Progress.ToString("P0")
                         @if (group.Progress >= 0.25m)
                         {
-                            var (emoji, label, color) = GoalMilestoneTier(group.Progress);
-                            <span style="margin-left:6px;color:@color;font-weight:600">@emoji @label</span>
+                            var (icon, label, color) = GoalMilestoneTier(group.Progress);
+                            <span style="margin-left:6px;color:@color;font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="@icon" Size="12" /> @label</span>
                         }
                     </span>
                     <span>@(isGroupExpanded ? "Tap to close" : "Tap to see goals")</span>
@@ -333,8 +333,8 @@ else
                         @progress.ToString("P0")
                         @if (progress >= 0.25m)
                         {
-                            var (emoji, label, color) = GoalMilestoneTier(progress);
-                            <span style="margin-left:6px;color:@color;font-weight:600">@emoji @label</span>
+                            var (icon, label, color) = GoalMilestoneTier(progress);
+                            <span style="margin-left:6px;color:@color;font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="@icon" Size="12" /> @label</span>
                         }
                     </span>
                     @if (goal.TargetDate is not null)
@@ -437,11 +437,11 @@ else
 
     // Mirrors DailyTab's StreakTier badge pattern, applied to savings-goal progress
     // instead of a day count — same colors already used there for tier badges.
-    private static (string Emoji, string Label, string Color) GoalMilestoneTier(decimal progress) => progress switch
+    private static (string Icon, string Label, string Color) GoalMilestoneTier(decimal progress) => progress switch
     {
-        >= 1m => ("🎉", "Goal reached!", "var(--green)"),
-        >= 0.75m => ("🔥", "Almost there", "#34D399"),
-        >= 0.5m => ("⚡", "Halfway there", "#FBBF24"),
-        _ => ("🌱", "Building", "var(--purple)")
+        >= 1m => ("award", "Goal reached!", "var(--green)"),
+        >= 0.75m => ("flame", "Almost there", "#34D399"),
+        >= 0.5m => ("zap", "Halfway there", "#FBBF24"),
+        _ => ("sprout", "Building", "var(--purple)")
     };
 }

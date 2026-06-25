@@ -18,7 +18,7 @@
         <input class="form-input" style="flex:1" placeholder="Search…" @bind="search" @bind:event="oninput" />
         @if (!string.IsNullOrEmpty(search))
         {
-            <button class="btn btn-icon" @onclick="() => search = string.Empty">✕</button>
+            <button class="btn btn-icon" @onclick="() => search = string.Empty"><Icon Name="x" Size="14" /></button>
         }
     </div>
     <div style="display:flex;gap:8px">
@@ -119,7 +119,8 @@
                                        : "";
                     }
                     <div class="list-row" style="cursor:pointer;@rowBorder" @onclick="() => SelectTxn(t.Id)">
-                        <div class="row-icon" style="background:var(--surface2)">@GetEmoji(isInternalMovement ? "Transfer" : t.CategoryName)</div>
+                        @{var visual = CategoryIcon.Get(isInternalMovement ? "Transfer" : t.CategoryName);}
+                        <div class="row-icon" style="background:@visual.Bg;color:@visual.Fg"><Icon Name="@visual.Icon" /></div>
                         <div class="row-main">
                             <div class="row-title">@t.Description</div>
                             <div class="row-sub">@t.AccountName · @(isInternalMovement ? "Transfer" : t.CategoryName)</div>
@@ -128,11 +129,11 @@
                             <div class="row-amount @(t.AmountCents>=0?"pos":"neg")">@t.AmountDollars.ToString("C")</div>
                             @if (lentUnrepaid)
                             {
-                                <div style="font-size:10px;color:#818CF8">🤝 lent out</div>
+                                <div style="font-size:10px;color:#818CF8;display:flex;align-items:center;gap:3px;justify-content:flex-end"><Icon Name="users" Size="10" /> lent out</div>
                             }
                             else if (lentRepaid)
                             {
-                                <div style="font-size:10px;color:var(--green)">✓ repaid</div>
+                                <div style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:3px;justify-content:flex-end"><Icon Name="check" Size="10" /> repaid</div>
                             }
                             else if (t.IsUnnecessary)
                             {
@@ -164,7 +165,14 @@
                                     <button class="btn btn-sm @(localT.IsUnnecessary ? "btn-primary" : "btn-secondary")"
                                             style="@(localT.IsUnnecessary ? "background:rgba(245,158,11,0.2);color:var(--amber);border:1px solid var(--amber)" : "")"
                                             @onclick="() => DoToggleUnnecessary(localT)" @onclick:stopPropagation="true">
-                                        @(localT.IsUnnecessary ? "✓ Unnecessary" : "Mark unnecessary")
+                                        @if (localT.IsUnnecessary)
+                                        {
+                                            <span style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="13" /> Unnecessary</span>
+                                        }
+                                        else
+                                        {
+                                            @("Mark unnecessary")
+                                        }
                                     </button>
                                     @if (isLent)
                                     {
@@ -188,7 +196,7 @@
                                                     <button class="btn btn-sm btn-primary" @onclick:stopPropagation="true"
                                                             @onclick="() => DoRecordRepayment(localT.Id, _repayAmount)">Save</button>
                                                     <button class="btn btn-sm btn-secondary" @onclick:stopPropagation="true"
-                                                            @onclick="CancelRepayPick">x</button>
+                                                            @onclick="CancelRepayPick"><Icon Name="x" Size="13" /></button>
                                                 }
                                                 else
                                                 {
@@ -198,9 +206,9 @@
                                             </div>
                                         }
                                         <button class="btn btn-sm" @onclick:stopPropagation="true"
-                                                style="background:rgba(99,102,241,0.15);color:#818CF8;border:1px solid #818CF8"
+                                                style="background:rgba(99,102,241,0.15);color:#818CF8;border:1px solid #818CF8;display:inline-flex;align-items:center;gap:5px"
                                                 @onclick="() => DoUnmarkLent(localT.Id)">
-                                            🤝 @(isUnrepaid ? "Awaiting repayment" : "Repaid") ✕
+                                            <Icon Name="users" Size="13" /> @(isUnrepaid ? "Awaiting repayment" : "Repaid") <Icon Name="x" Size="11" />
                                         </button>
                                     }
                                     else if (_lentPickId == localT.Id)
@@ -211,19 +219,19 @@
                                             <button class="btn btn-sm btn-primary" @onclick:stopPropagation="true"
                                                     @onclick="() => DoMarkLent(localT.Id)">Confirm</button>
                                             <button class="btn btn-sm btn-secondary" @onclick:stopPropagation="true"
-                                                    @onclick="() => _lentPickId = 0">✕</button>
+                                                    @onclick="() => _lentPickId = 0"><Icon Name="x" Size="13" /></button>
                                         </div>
                                     }
                                     else
                                     {
                                         <button class="btn btn-sm btn-secondary" @onclick:stopPropagation="true"
-                                                @onclick="() => { _lentPickId = localT.Id; _lentNote = string.Empty; }">
-                                            🤝 Lent out
+                                                @onclick="() => { _lentPickId = localT.Id; _lentNote = string.Empty; }" style="display:inline-flex;align-items:center;gap:5px">
+                                            <Icon Name="users" Size="13" /> Lent out
                                         </button>
                                     }
                                 }
                                 <button class="btn btn-sm btn-danger" @onclick="() => DoDelete(localT)" @onclick:stopPropagation="true">Delete</button>
-                                <button class="btn btn-sm btn-secondary" style="margin-left:auto" @onclick="() => selectedId = 0" @onclick:stopPropagation="true">✕</button>
+                                <button class="btn btn-sm btn-secondary" style="margin-left:auto" @onclick="() => selectedId = 0" @onclick:stopPropagation="true"><Icon Name="x" Size="13" /></button>
                             </div>
                         </div>
                     }
@@ -416,10 +424,4 @@
         return $"\"{safe}\"";
     }
 
-    private static string GetEmoji(string cat) => cat switch
-    {
-        "Income" => "💰", "Groceries" => "🛒", "Fuel" => "⛽", "Rent" => "🏠",
-        "Phone" => "📱", "Internet" => "📡", "Medical" => "💊", "Transfer" => "↔️",
-        _ => "💸"
-    };
 }

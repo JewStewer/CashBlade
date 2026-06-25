@@ -20,14 +20,14 @@
             </div>
             @if (_updateDone)
             {
-                <span class="badge badge-green">✓ Reloading…</span>
+                <span class="badge badge-green" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Reloading…</span>
             }
         </div>
         <div style="font-size:13px;color:var(--text3);margin-bottom:10px">
             If the app looks out of date, tap below to clear the cache and reload the latest version.
         </div>
-        <button class="btn btn-primary btn-full" @onclick="ForceUpdate">
-            🔄 Clear cache &amp; reload
+        <button class="btn btn-primary btn-full" @onclick="ForceUpdate" style="display:inline-flex;align-items:center;justify-content:center;gap:6px">
+            <Icon Name="rotate-cw" Size="14" /> Clear cache &amp; reload
         </button>
     </div>
 
@@ -38,7 +38,7 @@
         @if (Sync.LastSyncedAt is not null)
         {
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
-                <span class="badge badge-green">✓ Synced</span>
+                <span class="badge badge-green" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Synced</span>
                 <span style="font-size:13px;color:var(--text3)">@Sync.LastSyncedAt.Value.ToLocalTime().ToString("dd MMM HH:mm")</span>
             </div>
         }
@@ -49,7 +49,7 @@
 
         @if (State.HasPendingChanges)
         {
-            <div style="font-size:13px;color:var(--amber);margin-bottom:8px">⚠ You have unsaved local changes.</div>
+            <div style="font-size:13px;color:var(--amber);margin-bottom:8px;display:flex;align-items:center;gap:5px"><Icon Name="alert-triangle" Size="13" /> You have unsaved local changes.</div>
         }
 
         @if (localEditIntents > 0 || localDeleteIntents > 0)
@@ -98,7 +98,7 @@
     <!-- Supabase cloud sync (recommended) -->
     <div class="card" style="border-color:@(Sync.HasCloudSync?"var(--teal)":"var(--border)")">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <div style="font-size:14px;font-weight:600">☁ Cloud Sync (Supabase)</div>
+            <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px"><Icon Name="cloud" Size="15" /> Cloud Sync (Supabase)</div>
             @if (Sync.HasCloudSync)
             {
                 <span class="badge badge-teal">Active</span>
@@ -211,7 +211,7 @@
 
     <!-- Push notifications -->
     <div class="card">
-        <div style="font-size:14px;font-weight:600;margin-bottom:4px">🔔 Push Notifications</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px"><Icon Name="bell" Size="15" /> Push Notifications</div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Bill and insight reminders while the app is open. Subscribe below too if you want them even when the app is closed.</div>
 
         @if (!_pushSupported)
@@ -244,7 +244,7 @@
             <div style="display:flex;gap:8px;margin-top:10px">
                 @if (_pushSubscribed)
                 {
-                    <span class="badge badge-teal" style="align-self:center">✓ Subscribed</span>
+                    <span class="badge badge-teal" style="align-self:center;display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Subscribed</span>
                     <button class="btn btn-secondary btn-sm" style="flex:1" @onclick="UnsubscribePush" disabled="@_pushBusy">
                         @(_pushBusy ? "…" : "Disable")
                     </button>
@@ -272,7 +272,7 @@
 
     <!-- App lock -->
     <div class="card">
-        <div style="font-size:14px;font-weight:600;margin-bottom:4px">🔒 App Lock</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px"><Icon Name="lock" Size="15" /> App Lock</div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
             @(State.AppLockEnabled ? "A PIN is required to open the app." : "Set a PIN to lock the app when it's reopened.")
         </div>
@@ -448,7 +448,7 @@
         if (string.IsNullOrWhiteSpace(supabaseUrl) || string.IsNullOrWhiteSpace(supabaseKey)) return;
         testingSupabase = true; supabaseStatus = string.Empty; StateHasChanged();
         var ok = await Sync.TestSupabaseAsync(supabaseUrl, supabaseKey);
-        supabaseStatus = ok ? "✓ Supabase connection works" : "✕ Could not connect — check URL and key, and that the table exists";
+        supabaseStatus = ok ? "Supabase connection works" : "Could not connect — check URL and key, and that the table exists";
         supabaseStatusColor = ok ? "var(--green)" : "var(--red)";
         testingSupabase = false; StateHasChanged();
     }
@@ -575,8 +575,8 @@
             var saved = await Sync.SavePushSubscriptionAsync(subJson);
             _pushSubscribed = true;
             _pushStatus = saved
-                ? "✓ Notifications enabled! You'll receive bill reminders."
-                : "✓ Subscribed locally (Supabase save failed — check connection).";
+                ? "Notifications enabled! You'll receive bill reminders."
+                : "Subscribed locally (Supabase save failed — check connection).";
             _pushStatusColor = "var(--green)";
         }
         catch (Exception ex)

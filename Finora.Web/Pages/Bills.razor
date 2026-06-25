@@ -14,7 +14,7 @@
         @if (!string.IsNullOrEmpty(_search))
         {
             <button @onclick="() => _search = string.Empty"
-                    style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+                    style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--text3);cursor:pointer;padding:0 4px;display:flex"><Icon Name="x" Size="14" /></button>
         }
     </div>
 </div>
@@ -121,7 +121,7 @@ else
             <div class="list-row" style="align-items:flex-start;gap:10px">
                 <div style="padding-top:2px">
                     <button @onclick="() => TogglePaid(bill)" style="width:22px;height:22px;border-radius:50%;border:2px solid @(isPaid?"var(--green)":"var(--border)");background:@(isPaid?"var(--green)":"transparent");cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                        @if (isPaid) { <span style="color:#fff;font-size:12px">✓</span> }
+                        @if (isPaid) { <span style="color:#fff;display:flex"><Icon Name="check" Size="13" /></span> }
                     </button>
                 </div>
                 <div class="row-main" style="cursor:pointer" @onclick="() => StartEdit(bill)">
