@@ -1060,6 +1060,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 
 .mini-timeline-wrap {
     padding: 0 16px 12px;
+    touch-action: pan-x pan-y;
 }
 
 .mini-timeline-head {
@@ -1083,13 +1084,23 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     grid-auto-columns: minmax(118px, 42%);
     gap: 8px;
     overflow-x: auto;
-    touch-action: pan-x;
+    /* pan-x-only leaves a dead zone at this element's edge where a vertical
+       drag doesn't hand off to .page-content's scroll — every other
+       scrollable region in this app (.page-content, .modal-sheet) allows
+       both axes for exactly this reason, even when only one axis scrolls. */
+    touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 2px;
     scrollbar-width: none;
 }
 
 .mini-timeline::-webkit-scrollbar { display: none; }
+
+.scroll-handoff-gap {
+    height: 10px;
+    touch-action: pan-y;
+    pointer-events: none;
+}
 
 .timeline-chip {
     min-height: 94px;

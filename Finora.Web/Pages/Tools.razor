@@ -7,6 +7,15 @@
 <PageTitle>Tools - Evergrove</PageTitle>
 
 <div style="padding:10px 16px 16px;display:flex;flex-direction:column;gap:12px">
+    <div class="card-sm" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+            <div class="row-title">Settings</div>
+            <div class="row-sub">Up Bank, notifications, sync, app lock</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:3px">@AppInfo.DisplayVersion</div>
+        </div>
+        <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("settings")'>Open</button>
+    </div>
+
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div>
@@ -42,7 +51,7 @@
             <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="SyncNowAsync">Sync now</button>
             <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ConfirmRepairAsync">Repair queue</button>
             <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="DownloadSnapshotAsync">Snapshot</button>
-            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ForceUpdateAsync">🔄 Clear cache &amp; reload</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ForceUpdateAsync">Clear cache &amp; reload</button>
         </div>
         @if (!string.IsNullOrEmpty(_syncStatus))
         {

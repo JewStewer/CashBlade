@@ -16,7 +16,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
             <div>
                 <div style="font-size:14px;font-weight:600">App Update</div>
-                <div style="font-size:12px;color:var(--text3);margin-top:2px">@AppVersion</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">@AppInfo.DisplayVersion</div>
             </div>
             @if (_updateDone)
             {
@@ -305,12 +305,11 @@
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px">About</div>
         <div style="font-size:13px;color:var(--text3)">Evergrove Mobile — offline-first, syncs via Supabase</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">@AppVersion</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">@AppInfo.DisplayVersion</div>
     </div>
 </div>
 
 @code {
-    private const string AppVersion = "v2026.06.25.3";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
