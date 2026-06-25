@@ -187,6 +187,16 @@ button, a, input, select, textarea, [role="button"] {
     padding: 10px 12px;
 }
 
+/* Nested "inset" box for a sub-item or info note inside a .card/.card-sm —
+   a step down in tone (var(--bg) instead of var(--surface)) so it reads as
+   content nested inside the card, not another card of its own. */
+.inset-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+}
+
 /* ── Section headers ── */
 .section-header {
     display: flex;
@@ -767,20 +777,27 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
-    scroll-padding-bottom: calc(64px + var(--safe-bottom));
+    /* Reserve room so the last form field can scroll clear of the fixed
+       .modal-actions bar overlaid on top of it (see below). */
+    padding-bottom: calc(80px + var(--safe-bottom));
+    scroll-padding-bottom: calc(80px + var(--safe-bottom));
 }
 
-/* Sticky action bar for modal forms — sticks to the bottom of .modal-sheet's
-   own scroll viewport as the form content scrolls, instead of scrolling away
-   with it. */
+/* Fixed action bar for modal forms. Deliberately position:fixed (anchored to
+   the viewport), not sticky — sticky inside a -webkit-overflow-scrolling:touch
+   container has a history of WebKit quirks where it fails to stay pinned.
+   position:fixed is the same proven technique .bottom-nav already uses. */
 .modal-actions {
-    position: sticky;
+    position: fixed;
     bottom: 0;
+    left: 0;
+    right: 0;
     background: var(--surface);
     padding: 14px 16px calc(14px + var(--safe-bottom));
     display: flex;
     gap: 8px;
     border-top: 1px solid var(--border);
+    z-index: 101;
 }
 
 @supports not (height: 100dvh) {
