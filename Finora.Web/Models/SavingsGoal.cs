@@ -23,4 +23,5 @@ public class SavingsGoal
         set => WeeklyContributionCents = (int)Math.Round(value * 100m);
     }
     public DateTime? TargetDate { get; set; }
+    public string? GroupName { get; set; }
 }

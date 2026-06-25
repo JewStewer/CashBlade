@@ -2229,6 +2229,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         existing.CurrentCents = g.CurrentCents;
         existing.WeeklyContributionCents = g.WeeklyContributionCents;
         existing.TargetDate = g.TargetDate;
+        existing.GroupName = g.GroupName;
         await db.PutAsync("savingsGoals", existing);
         // Negative-id (not-yet-synced) goals are mutated in place via the
         // same object reference already queued in _pendingNewSavingsGoals.
@@ -2253,6 +2254,26 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
         ScheduleSyncSoon();
     }
+
+    public List<string> GetSavingsGoalGroupNames() =>
+        SavingsGoals
+            .Where(g => !string.IsNullOrWhiteSpace(g.GroupName))
+            .Select(g => g.GroupName!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n)
+            .ToList();
+
+    public List<SavingsGoalGroup> GetSavingsGoalGroups() =>
+        SavingsGoals
+            .Where(g => !string.IsNullOrWhiteSpace(g.GroupName))
+            .GroupBy(g => g.GroupName!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(grp => new SavingsGoalGroup
+            {
+                Name = grp.First().GroupName!.Trim(),
+                Goals = grp.OrderByDescending(g => g.CurrentDollars).ToList()
+            })
+            .OrderBy(grp => grp.Name)
+            .ToList();
 
     public async Task<Trip> AddTripAsync(Trip t)
     {

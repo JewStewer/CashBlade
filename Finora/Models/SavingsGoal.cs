@@ -31,4 +31,8 @@ public class SavingsGoal
     }
 
     public DateTime? TargetDate { get; set; }
+
+    // Set from the phone (Savings Groups). Mirrored here only so the WPF
+    // round-trip (pull -> edit -> push) doesn't silently drop it.
+    public string? GroupName { get; set; }
 }

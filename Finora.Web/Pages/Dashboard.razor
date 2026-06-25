@@ -62,7 +62,7 @@ else
             <small>Record a transaction</small>
         </button>
         <button class="quick-action" @onclick="QuickSyncAsync" disabled="@_quickSyncing">
-            <span>S</span>
+            <span>🔄</span>
             <strong>@(_quickSyncing ? "Syncing" : "Sync Now")</strong>
             <small>@(string.IsNullOrWhiteSpace(_quickSyncStatus) ? "Push and pull" : _quickSyncStatus)</small>
         </button>
@@ -72,12 +72,12 @@ else
             <small>Check safe spend</small>
         </button>
         <button class="quick-action" @onclick="() => showAddBill = true">
-            <span>B</span>
+            <span>🧾</span>
             <strong>Add Bill</strong>
             <small>Track a payment</small>
         </button>
         <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
-            <span>T</span>
+            <span>🧰</span>
             <strong>Tools</strong>
             <small>What-if and cleanup</small>
         </button>

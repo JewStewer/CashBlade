@@ -24,6 +24,17 @@
                 <label class="form-label">Target Date</label>
                 <input class="form-input" type="date" @bind="targetDate" @bind:event="oninput" />
             </div>
+            <div>
+                <label class="form-label">Group (optional)</label>
+                <input class="form-input" @bind="groupName" @bind:event="oninput" list="savings-group-options" placeholder="e.g. Room setup" />
+                <datalist id="savings-group-options">
+                    @foreach (var existingGroup in State.GetSavingsGoalGroupNames())
+                    {
+                        <option value="@existingGroup" />
+                    }
+                </datalist>
+                <div style="font-size:11px;color:var(--text3);margin-top:4px">Give two or more goals the same group name to track them under one combined total.</div>
+            </div>
         </div>
 
         @if (WeeklyPreview > 0)
@@ -76,6 +87,7 @@
     private decimal current;
     private decimal target;
     private DateTime? targetDate;
+    private string groupName = string.Empty;
     private string error = string.Empty;
     private bool saving;
     private bool confirmingDelete;
@@ -89,6 +101,7 @@
         current = Goal.CurrentDollars;
         target = Goal.TargetDollars;
         targetDate = Goal.TargetDate;
+        groupName = Goal.GroupName ?? string.Empty;
         confirmingDelete = false;
     }
 
@@ -108,7 +121,8 @@
             CurrentDollars = current,
             TargetDollars = target,
             TargetDate = targetDate,
-            WeeklyContributionDollars = WeeklyPreview
+            WeeklyContributionDollars = WeeklyPreview,
+            GroupName = string.IsNullOrWhiteSpace(groupName) ? null : groupName.Trim()
         };
 
         if (Goal.Id == 0)
