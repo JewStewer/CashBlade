@@ -218,7 +218,7 @@ button, a, input, select, textarea, [role="button"] {
     padding: 12px;
 }
 
-.stat-label { font-size: 11px; color: var(--text3); font-weight: 500; }
+.stat-label { font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .stat-value { font-size: 20px; font-weight: 700; color: var(--text); margin-top: 2px; }
 .stat-value.green { color: var(--green); }
 .stat-value.red { color: var(--red); }
@@ -767,8 +767,20 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
-    padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 32px);
-    scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 32px);
+    scroll-padding-bottom: calc(64px + var(--safe-bottom));
+}
+
+/* Sticky action bar for modal forms — sticks to the bottom of .modal-sheet's
+   own scroll viewport as the form content scrolls, instead of scrolling away
+   with it. */
+.modal-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+    padding: 14px 16px calc(14px + var(--safe-bottom));
+    display: flex;
+    gap: 8px;
+    border-top: 1px solid var(--border);
 }
 
 @supports not (height: 100dvh) {
