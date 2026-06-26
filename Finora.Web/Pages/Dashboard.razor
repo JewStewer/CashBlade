@@ -72,42 +72,42 @@ else
         </section>
 
         <div class="quick-actions quick-actions-ultimate">
-            <button class="quick-action" @onclick="() => showAddTxn = true">
+            <button class="quick-action tone-spend" @onclick="() => showAddTxn = true">
                 <span><Icon Name="plus" Size="14" /></span>
                 <strong>Spend</strong>
                 <small>Record transaction</small>
             </button>
-            <button class="quick-action" @onclick='() => Nav.NavigateTo("budget")'>
+            <button class="quick-action tone-budget" @onclick='() => Nav.NavigateTo("budget")'>
                 <span><Icon Name="dollar-sign" Size="14" /></span>
                 <strong>Budget</strong>
                 <small>Safe-to-spend</small>
             </button>
-            <button class="quick-action" @onclick="() => showAddBill = true">
+            <button class="quick-action tone-bill" @onclick="() => showAddBill = true">
                 <span><Icon Name="clipboard" Size="14" /></span>
                 <strong>Bill</strong>
                 <small>Add payment</small>
             </button>
-            <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
+            <button class="quick-action tone-tools" @onclick='() => Nav.NavigateTo("tools")'>
                 <span><Icon Name="sparkles" Size="14" /></span>
                 <strong>Tools</strong>
                 <small>Smart mode</small>
             </button>
             <button class="@NoSpendQuickActionClass" @onclick="ToggleNoSpendModeAsync">
-                <span class="@(_noSpendPulse ? "icon-burst" : "")"><Icon Name="@(State.NoSpendMode ? "lock" : "shield")" Size="14" /></span>
+                <span><Icon Name="@(State.NoSpendMode ? "lock" : "shield")" Size="14" /></span>
                 <strong>No Spend</strong>
                 <small>@(State.NoSpendMode ? "Tap to unlock" : "Lock it down")</small>
             </button>
         </div>
 
         <div class="module-grid">
-            <button class="dashboard-module no-spend-module @(State.NoSpendMode ? "is-on" : "") @(_noSpendPulse ? "just-toggled" : "")" @onclick="ToggleNoSpendModeAsync">
+            <button class="dashboard-module no-spend-module @(State.NoSpendMode ? "is-on" : "")" @onclick="ToggleNoSpendModeAsync">
                 <span>No-Spend Mode</span>
-                <strong>@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
+                <strong style="color:@(State.NoSpendMode ? "var(--red)" : "var(--green)")">@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
                 <small>@NoSpendMessage</small>
             </button>
             <button class="dashboard-module" @onclick='() => Nav.NavigateTo("budget")'>
                 <span>Safe To Spend</span>
-                <strong>@State.SafeToSpendAmount.ToString("C")</strong>
+                <strong style="color:@(State.SafeToSpendAmount > 0 ? "var(--green)" : "var(--red)")">@State.SafeToSpendAmount.ToString("C")</strong>
                 <small>@SafeSpendMessage</small>
             </button>
         </div>
@@ -260,7 +260,7 @@ else
     private decimal PayCycleNet => PayCycleIncome - PayCycleSpend;
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
-    private string NoSpendQuickActionClass => $"quick-action{(State.NoSpendMode ? " active" : "")}{(_noSpendPulse ? " just-toggled" : "")}";
+    private string NoSpendQuickActionClass => $"quick-action no-spend-action{(State.NoSpendMode ? " is-on" : "")}";
 
     private string SafeSpendPercentCss
     {
@@ -443,16 +443,9 @@ else
         }
     }
 
-    private bool _noSpendPulse;
-
     private async Task ToggleNoSpendModeAsync()
     {
         await State.SetNoSpendModeAsync(!State.NoSpendMode);
-        _noSpendPulse = true;
-        StateHasChanged();
-        await Task.Delay(500);
-        _noSpendPulse = false;
-        StateHasChanged();
     }
 
     private Task OnTxnSaved()

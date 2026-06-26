@@ -18,6 +18,9 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<Trip> Trips { get; private set; } = new();
     // Phone-only: transactions marked as lent (excluded from spending until repaid)
     public List<LentTransaction> LentTransactions { get; private set; } = new();
+    // Phone-only: virtual prepaid cards (no real payment rails exist in this app)
+    public List<PrepaidCard> PrepaidCards { get; private set; } = new();
+    public List<CardActivity> CardActivity { get; private set; } = new();
     private HashSet<int> _unrepaidLentIds = new();
     private HashSet<int> _matchedInternalMovementIds = new();
 
@@ -226,6 +229,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         AppSettings = await db.GetAppSettingsAsync();
         Trips = await db.GetTripsAsync();
         LentTransactions = await db.GetLentTransactionsAsync();
+        PrepaidCards = await db.GetPrepaidCardsAsync();
+        CardActivity = await db.GetCardActivityAsync();
         NormaliseLentRepayments();
         await RemoveInvalidLentTransactionsAsync();
         _unrepaidLentIds = LentTransactions.Where(IsLentOutstanding).Select(l => l.Id).ToHashSet();
@@ -321,6 +326,61 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         await db.SetLentTransactionAsync(lent);
         OnChange?.Invoke();
+    }
+
+    // ── Prepaid cards (phone-only virtual wallet) ──────────────────────────────
+    public List<CardActivity> GetCardActivity(int cardId) =>
+        CardActivity.Where(a => a.CardId == cardId).OrderByDescending(a => a.Date).ThenByDescending(a => a.Id).ToList();
+
+    public async Task AddPrepaidCardAsync(string name, string colorHex)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var nextId = (PrepaidCards.Count > 0 ? PrepaidCards.Max(c => c.Id) : 0) + 1;
+        var card = new PrepaidCard { Id = nextId, Name = name.Trim(), ColorHex = colorHex };
+        PrepaidCards.Add(card);
+        await db.SetPrepaidCardAsync(card);
+        OnChange?.Invoke();
+    }
+
+    public async Task TopUpCardAsync(int cardId, decimal amountDollars)
+    {
+        var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
+        if (card is null || amountDollars <= 0) return;
+        card.BalanceDollars += amountDollars;
+        await db.SetPrepaidCardAsync(card);
+        await LogCardActivityAsync(card.Id, "Loaded money", amountDollars);
+        OnChange?.Invoke();
+    }
+
+    public async Task<bool> SpendFromCardAsync(int cardId, string description, decimal amountDollars)
+    {
+        var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
+        if (card is null || amountDollars <= 0 || card.BalanceDollars < amountDollars) return false;
+        card.BalanceDollars -= amountDollars;
+        await db.SetPrepaidCardAsync(card);
+        await LogCardActivityAsync(card.Id, description, -amountDollars);
+        OnChange?.Invoke();
+        return true;
+    }
+
+    public async Task DeletePrepaidCardAsync(int cardId)
+    {
+        PrepaidCards.RemoveAll(c => c.Id == cardId);
+        await db.DeletePrepaidCardAsync(cardId);
+        foreach (var activity in CardActivity.Where(a => a.CardId == cardId).ToList())
+        {
+            CardActivity.Remove(activity);
+            await db.DeleteCardActivityAsync(activity.Id);
+        }
+        OnChange?.Invoke();
+    }
+
+    private async Task LogCardActivityAsync(int cardId, string description, decimal amountDollars)
+    {
+        var nextId = (CardActivity.Count > 0 ? CardActivity.Max(a => a.Id) : 0) + 1;
+        var activity = new CardActivity { Id = nextId, CardId = cardId, Description = description, AmountDollars = amountDollars, Date = DateTime.Today };
+        CardActivity.Add(activity);
+        await db.SetCardActivityAsync(activity);
     }
 
     private void NormaliseLentRepayments()
@@ -2510,63 +2570,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         account.TargetDate = null;
         account.TargetStartDate = null;
         account.TargetStartingBalanceCents = null;
-        await db.PutAsync("accounts", account);
-        QueueUpdatedAccount(account);
-        Compute();
-        OnChange?.Invoke();
-        ScheduleSyncSoon();
-    }
-
-    // ── Loaded-balance envelopes (self-imposed spending caps) ─────────────────
-    public decimal GetEnvelopeSpentDollars(Account account) =>
-        account.LoadedStartDate is null
-            ? 0
-            : Math.Abs(Transactions
-                .Where(t => t.AccountId == account.Id && t.AmountCents < 0 && t.Date >= account.LoadedStartDate.Value)
-                .Sum(t => t.AmountDollars));
-
-    public decimal GetEnvelopeRemainingDollars(Account account) =>
-        (account.LoadedBalanceDollars ?? 0) - GetEnvelopeSpentDollars(account);
-
-    public bool IsAccountSpendingLocked(int accountId, decimal expenseAmountDollars)
-    {
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null || !account.LockSpendingWhenEmpty) return false;
-        return GetEnvelopeRemainingDollars(account) - expenseAmountDollars < 0;
-    }
-
-    public async Task LoadMoneyIntoAccountAsync(int accountId, decimal amountDollars)
-    {
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null || amountDollars <= 0) return;
-        account.LoadedStartDate ??= DateTime.Today;
-        account.LoadedBalanceDollars = (account.LoadedBalanceDollars ?? 0) + amountDollars;
-        await db.PutAsync("accounts", account);
-        QueueUpdatedAccount(account);
-        Compute();
-        OnChange?.Invoke();
-        ScheduleSyncSoon();
-    }
-
-    public async Task SetLockSpendingWhenEmptyAsync(int accountId, bool enabled)
-    {
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null) return;
-        account.LockSpendingWhenEmpty = enabled;
-        await db.PutAsync("accounts", account);
-        QueueUpdatedAccount(account);
-        Compute();
-        OnChange?.Invoke();
-        ScheduleSyncSoon();
-    }
-
-    public async Task ClearLoadedBalanceAsync(int accountId)
-    {
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is null) return;
-        account.LoadedBalanceCents = null;
-        account.LoadedStartDate = null;
-        account.LockSpendingWhenEmpty = false;
         await db.PutAsync("accounts", account);
         QueueUpdatedAccount(account);
         Compute();

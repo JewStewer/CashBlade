@@ -36,6 +36,40 @@
     </div>
 }
 
+<!-- Prepaid cards -->
+<div class="section-header" style="margin-top:14px">
+    <span class="section-title">Prepaid Cards</span>
+    <div style="display:flex;align-items:center;gap:10px">
+        @if (State.PrepaidCards.Any())
+        {
+            <span style="font-size:13px;color:var(--teal-light)">@(State.PrepaidCards.Sum(c => c.BalanceDollars).ToString("C"))</span>
+        }
+        <button class="btn btn-secondary btn-sm" @onclick="() => _showAddCard = true">+ Add</button>
+    </div>
+</div>
+@if (State.PrepaidCards.Any())
+{
+    <div class="prepaid-card-strip">
+        @foreach (var card in State.PrepaidCards)
+        {
+            <button class="prepaid-card-visual prepaid-card-mini" style="background:linear-gradient(135deg, @card.ColorHex, color-mix(in srgb, @card.ColorHex, black 45%))" @onclick="() => _cardDraft = card">
+                <div class="prepaid-card-top">
+                    <span>Evergrove</span>
+                    <span>Prepaid</span>
+                </div>
+                <div class="prepaid-card-balance">@card.BalanceDollars.ToString("C")</div>
+                <div class="prepaid-card-bottom">@card.Name</div>
+            </button>
+        }
+    </div>
+}
+else
+{
+    <div class="card-list" style="margin-top:0;padding:20px;text-align:center;color:var(--text3);font-size:13px">
+        No prepaid cards yet — load money onto a virtual card to ring-fence spending.
+    </div>
+}
+
 @if (!State.Accounts.Any())
 {
     <div class="empty-state" style="margin-top:40px">
@@ -151,18 +185,13 @@ else
                                     }
                                 </div>
                             }
-                            <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+                            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
                                 <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("transactions")'>Transactions</button>
                                 <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("bills")'>Bills</button>
-                                <button class="btn btn-secondary btn-sm" @onclick="() => _loadMoneyAccount = acct">Load Money</button>
                             </div>
                         </div>
                     }
-                    @{
-                        var envelopeRemaining = acct.LoadedBalanceCents is not null ? State.GetEnvelopeRemainingDollars(acct) : (decimal?)null;
-                        var envelopeLocked = acct.LockSpendingWhenEmpty && envelopeRemaining is not null && envelopeRemaining <= 0;
-                    }
-                    @if (isPayAcct || acctAfterBills < 0 || acct.TargetCents is not null || envelopeRemaining is not null)
+                    @if (isPayAcct || acctAfterBills < 0 || acct.TargetCents is not null)
                     {
                         <div class="attention-row">
                             @if (isPayAcct)
@@ -176,12 +205,6 @@ else
                             @if (acct.TargetCents is not null)
                             {
                                 <span class="attention-chip tone-green">Goal tracked</span>
-                            }
-                            @if (envelopeRemaining is not null)
-                            {
-                                <button class="attention-chip @(envelopeLocked ? "tone-red" : "tone-green")" @onclick="() => _loadMoneyAccount = acct">
-                                    @(envelopeLocked ? "Locked — spending maxed" : $"{envelopeRemaining:C} left to spend")
-                                </button>
                             }
                         </div>
                     }
@@ -197,18 +220,6 @@ else
                             {
                                 <span>by @acct.TargetDate.Value.ToString("dd MMM yy")</span>
                             }
-                        </div>
-                    }
-                    @if (acct.LoadedBalanceCents is not null)
-                    {
-                        var loaded = acct.LoadedBalanceDollars ?? 0;
-                        var spent = State.GetEnvelopeSpentDollars(acct);
-                        var envProgress = loaded > 0 ? Math.Clamp(spent / loaded, 0, 1) : 0;
-                        <div class="progress-bar" style="margin-top:8px">
-                            <div class="progress-fill" style="width:@((int)(envProgress * 100))%;background:@(envelopeLocked ? "var(--red)" : "var(--green)")"></div>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
-                            <span>@spent.ToString("C") spent of @loaded.ToString("C") loaded</span>
                         </div>
                     }
                 </div>
@@ -445,18 +456,19 @@ else
         OnSaved="() => _accountGoalDraft = null" />
 }
 
-@if (_loadMoneyAccount is not null)
+@if (_cardDraft is not null || _showAddCard)
 {
-    <LoadMoneyModal Account="@_loadMoneyAccount"
-        OnClose="() => _loadMoneyAccount = null"
-        OnSaved="() => _loadMoneyAccount = null" />
+    <PrepaidCardModal Card="@_cardDraft"
+        OnClose="() => { _cardDraft = null; _showAddCard = false; }"
+        OnSaved="() => { _cardDraft = null; _showAddCard = false; }" />
 }
 
 @code {
     private Debt? _debtDraft;
     private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
-    private Account? _loadMoneyAccount;
+    private PrepaidCard? _cardDraft;
+    private bool _showAddCard;
     private int _expandedAccountId;
     private string? _expandedGoalGroupName;
 

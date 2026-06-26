@@ -295,14 +295,24 @@ button, a, input, select, textarea, [role="button"] {
     line-height: 1.2;
 }
 
-.quick-action.active {
-    border-color: rgba(245,158,11,0.55);
-    background: rgba(245,158,11,0.12);
+.quick-action.tone-spend span { background: rgba(52,211,153,0.16); color: var(--green); }
+.quick-action.tone-budget span { background: rgba(59,130,246,0.16); color: var(--blue); }
+.quick-action.tone-bill span { background: rgba(245,158,11,0.16); color: var(--amber); }
+.quick-action.tone-tools span { background: rgba(124,58,237,0.16); color: var(--purple); }
+
+.quick-action.no-spend-action span {
+    background: rgba(52,211,153,0.16);
+    color: var(--green);
 }
 
-.quick-action.active span {
-    background: rgba(245,158,11,0.18);
-    color: var(--amber);
+.quick-action.no-spend-action.is-on {
+    border-color: rgba(248,113,113,0.55);
+    background: rgba(248,113,113,0.12);
+}
+
+.quick-action.no-spend-action.is-on span {
+    background: rgba(248,113,113,0.18);
+    color: var(--red);
 }
 
 .dashboard-shell {
@@ -529,35 +539,14 @@ button.dashboard-module:active {
     margin: 7px 0 0;
 }
 
+.no-spend-module {
+    border-color: rgba(52,211,153,0.35);
+    background: rgba(52,211,153,0.08);
+}
+
 .no-spend-module.is-on {
-    border-color: rgba(245,158,11,0.5);
-    background: rgba(245,158,11,0.12);
-}
-
-@keyframes module-pulse {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245,158,11,0); }
-    35% { transform: scale(0.96); }
-    65% { transform: scale(1.025); box-shadow: 0 0 0 7px rgba(245,158,11,0.12); }
-    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245,158,11,0); }
-}
-
-.no-spend-module.just-toggled {
-    animation: module-pulse 0.5s ease;
-}
-
-@keyframes icon-burst {
-    0% { transform: scale(1) rotate(0deg); }
-    40% { transform: scale(1.3) rotate(-10deg); }
-    70% { transform: scale(0.9) rotate(5deg); }
-    100% { transform: scale(1) rotate(0deg); }
-}
-
-.quick-action span.icon-burst {
-    animation: icon-burst 0.5s ease;
-}
-
-.quick-action.just-toggled {
-    animation: module-pulse 0.5s ease;
+    border-color: rgba(248,113,113,0.5);
+    background: rgba(248,113,113,0.12);
 }
 
 .reimburse-module {
@@ -715,6 +704,73 @@ button.dashboard-module:active {
 }
 
 .card-list .list-row:last-child { border-bottom: none; }
+
+/* ── Prepaid card visual (manage modal + accounts list strip) ── */
+.prepaid-card-visual {
+    border: none;
+    border-radius: 14px;
+    padding: 14px;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 110px;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.25);
+    text-align: left;
+    cursor: pointer;
+}
+
+.prepaid-card-strip {
+    display: flex;
+    gap: 10px;
+    padding: 2px 16px 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.prepaid-card-strip::-webkit-scrollbar { display: none; }
+
+.prepaid-card-mini {
+    min-width: 160px;
+    flex-shrink: 0;
+}
+
+.prepaid-card-top {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.85;
+}
+
+.prepaid-card-balance {
+    font-size: 22px;
+    font-weight: 800;
+    margin: 10px 0 2px;
+}
+
+.prepaid-card-bottom {
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.card-swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.card-swatch.is-selected {
+    border-color: var(--text);
+    transform: scale(1.15);
+}
 
 /* ── List rows ── */
 .list-row {

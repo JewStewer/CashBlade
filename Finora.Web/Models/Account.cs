@@ -23,17 +23,4 @@ public class Account
         get => TargetStartingBalanceCents is null ? null : TargetStartingBalanceCents / 100m;
         set => TargetStartingBalanceCents = value is null ? null : (int)Math.Round(value.Value * 100m);
     }
-
-    // Cumulative amount loaded into this account as a spendable envelope.
-    // Spending against it is measured from LoadedStartDate so existing
-    // transaction history isn't counted as "already spent" the moment the
-    // feature is turned on.
-    public int? LoadedBalanceCents { get; set; }
-    public decimal? LoadedBalanceDollars
-    {
-        get => LoadedBalanceCents is null ? null : LoadedBalanceCents / 100m;
-        set => LoadedBalanceCents = value is null ? null : (int)Math.Round(value.Value * 100m);
-    }
-    public DateTime? LoadedStartDate { get; set; }
-    public bool LockSpendingWhenEmpty { get; set; }
 }
