@@ -53,6 +53,15 @@
             @if (!confirmingDelete)
             {
                 <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:10px">
+                    <div>
+                        <label class="form-label">From account</label>
+                        <select class="form-input" @bind="topUpAccountId">
+                            @foreach (var account in State.Accounts)
+                            {
+                                <option value="@account.Id">@account.Name (@State.GetAccountBalance(account.Id).ToString("C"))</option>
+                            }
+                        </select>
+                    </div>
                     <div style="display:flex;gap:8px;align-items:flex-end">
                         <div style="flex:1">
                             <label class="form-label">Load money ($)</label>
@@ -127,6 +136,7 @@
 
     private string name = string.Empty;
     private string colorHex = Swatches[0];
+    private int topUpAccountId;
     private decimal topUpAmount;
     private decimal spendAmount;
     private string spendDescription = string.Empty;
@@ -140,6 +150,7 @@
     {
         name = string.Empty;
         colorHex = Swatches[0];
+        topUpAccountId = State.Accounts.FirstOrDefault()?.Id ?? 0;
         topUpAmount = 0;
         spendAmount = 0;
         spendDescription = string.Empty;
@@ -163,11 +174,14 @@
         error = string.Empty;
         if (Card is null) return;
         if (topUpAmount <= 0) { error = "Enter an amount to load."; return; }
+        if (topUpAccountId <= 0) { error = "Choose an account to load from."; return; }
+        if (topUpAmount > State.GetAccountBalance(topUpAccountId)) { error = "Not enough money in that account."; return; }
 
         saving = true;
-        await State.TopUpCardAsync(Card.Id, topUpAmount);
-        topUpAmount = 0;
+        var ok = await State.TopUpCardAsync(Card.Id, topUpAccountId, topUpAmount);
         saving = false;
+        if (!ok) { error = "Not enough money in that account."; return; }
+        topUpAmount = 0;
         StateHasChanged();
     }
 

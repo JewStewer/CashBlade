@@ -342,14 +342,39 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
     }
 
-    public async Task TopUpCardAsync(int cardId, decimal amountDollars)
+    // Loading a card is a real transfer: money leaves the chosen account (a normal,
+    // sync-safe Transaction tagged CategoryName="Transfer" so it's excluded from
+    // discretionary/budget totals) and is credited to the card's phone-only balance.
+    public async Task<bool> TopUpCardAsync(int cardId, int accountId, decimal amountDollars)
     {
         var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        if (card is null || amountDollars <= 0) return;
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (card is null || account is null || amountDollars <= 0) return false;
+        if (amountDollars > GetAccountBalance(accountId)) return false;
+
+        var minId = Transactions.Count > 0 ? Transactions.Min(x => x.Id) : 0;
+        var transfer = new Transaction
+        {
+            Id = Math.Min(minId - 1, -1),
+            Date = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.Day),
+            Description = $"Transfer to {card.Name} card",
+            AmountCents = -(int)Math.Round(amountDollars * 100m),
+            AccountId = account.Id,
+            AccountName = account.Name,
+            CategoryName = "Transfer",
+        };
+        Transactions.Add(transfer);
+        _pendingNewTransactions.Add(transfer);
+        await db.PutAsync("transactions", transfer);
+
         card.BalanceDollars += amountDollars;
         await db.SetPrepaidCardAsync(card);
-        await LogCardActivityAsync(card.Id, "Loaded money", amountDollars);
+        await LogCardActivityAsync(card.Id, $"Loaded from {account.Name}", amountDollars);
+
+        Compute();
         OnChange?.Invoke();
+        ScheduleSyncSoon();
+        return true;
     }
 
     public async Task<bool> SpendFromCardAsync(int cardId, string description, decimal amountDollars)

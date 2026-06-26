@@ -537,6 +537,7 @@ button.dashboard-module:active {
     font-size: 12px;
     line-height: 1.35;
     margin: 7px 0 0;
+    min-height: 33px;
 }
 
 .no-spend-module {
@@ -1404,6 +1405,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     font-size: 12px;
     line-height: 1.35;
     margin-top: 6px;
+    min-height: 33px;
 }
 
 .tone-green { --tone: var(--green); --tone-bg: rgba(52,211,153,0.13); }

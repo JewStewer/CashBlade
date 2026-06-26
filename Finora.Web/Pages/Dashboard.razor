@@ -288,8 +288,8 @@ else
     {
         get
         {
-            if (State.NoSpendMode) return $"Discretionary forecast is paused; today's spend is {State.GetTodaySpending():C}.";
-            if (State.BudgetSafeToSpendAmount <= 0) return "Switch on to hold safe-to-spend at $0 and quiet discretionary planning.";
+            if (State.NoSpendMode) return $"Discretionary forecast paused. Today's spend: {State.GetTodaySpending():C}.";
+            if (State.BudgetSafeToSpendAmount <= 0) return "Switch on to hold safe-to-spend at $0.";
             return $"{(State.SafeToSpendAmount / Math.Max(DaysToPayday, 1)):C}/day keeps this cycle steady.";
         }
     }
@@ -319,7 +319,7 @@ else
             var urgent = State.BillsDueBeforePayday.FirstOrDefault(b => b.EffectiveDueDate.Date <= DateTime.Today.AddDays(1));
             if (urgent is not null) return $"{urgent.Name} is due {DueLabel(urgent.EffectiveDueDate)}. Check it off or move money before it lands.";
             if (Forecast.AfterBills < 0) return $"You are forecast to be {Math.Abs(Forecast.AfterBills):C} short before payday.";
-            if (State.NoSpendMode) return "Stick to bills and essentials today. Forecasts assume no discretionary spending while this is on.";
+            if (State.NoSpendMode) return "Bills and essentials only — discretionary spending is paused.";
             if (State.SafeToSpendAmount <= 0) return "Your safe-to-spend buffer is gone for this pay cycle.";
             var days = Math.Max(DaysToPayday, 1);
             return $"{(State.SafeToSpendAmount / days):C} per day keeps you steady until payday.";
