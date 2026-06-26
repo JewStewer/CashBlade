@@ -6,11 +6,23 @@
 
         @if (Card is null)
         {
-            <div class="modal-title">New Prepaid Card</div>
+            <div class="modal-title">New Card</div>
             <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:12px">
                 <div>
                     <label class="form-label">Card Name</label>
-                    <input class="form-input" @bind="name" @bind:event="oninput" placeholder="e.g. Spending Card" autofocus />
+                    <input class="form-input" @bind="name" @bind:event="oninput" placeholder="e.g. Coffee Card" autofocus />
+                </div>
+                <div>
+                    <label class="form-label">Linked account</label>
+                    <select class="form-input" @bind="selectedAccountId">
+                        @foreach (var account in State.Accounts)
+                        {
+                            <option value="@account.Id">@account.Name (@State.GetAccountBalance(account.Id).ToString("C"))</option>
+                        }
+                    </select>
+                    <div style="font-size:12px;color:var(--text2);margin-top:6px">
+                        Pick the real account this card mirrors — ideally one with its own real card or Apple Pay support (like an Up Saver). Balance and activity always come straight from that account.
+                    </div>
                 </div>
                 <div>
                     <label class="form-label">Card Colour</label>
@@ -43,9 +55,9 @@
                 <div class="prepaid-card-visual" style="background:linear-gradient(135deg, @Card.ColorHex, color-mix(in srgb, @Card.ColorHex, black 45%))">
                     <div class="prepaid-card-top">
                         <span>Evergrove</span>
-                        <span>Prepaid</span>
+                        <span>@LinkedAccountName</span>
                     </div>
-                    <div class="prepaid-card-balance">@Card.BalanceDollars.ToString("C")</div>
+                    <div class="prepaid-card-balance">@State.GetCardBalance(Card).ToString("C")</div>
                     <div class="prepaid-card-bottom">@Card.Name</div>
                 </div>
             </div>
@@ -53,44 +65,29 @@
             @if (!confirmingDelete)
             {
                 <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:10px">
+                    <div style="font-size:12px;color:var(--text2)">
+                        This mirrors <strong style="color:var(--text)">@LinkedAccountName</strong> in real time. To add money, transfer into that account from your bank or the Up app. Spend with the real card linked to it (Apple Pay etc.) — it shows up here as soon as it syncs.
+                    </div>
+
                     <div>
-                        <label class="form-label">From account</label>
-                        <select class="form-input" @bind="topUpAccountId">
+                        <label class="form-label">Linked account</label>
+                        <select class="form-input" @bind="selectedAccountId" @bind:after="Relink">
                             @foreach (var account in State.Accounts)
                             {
                                 <option value="@account.Id">@account.Name (@State.GetAccountBalance(account.Id).ToString("C"))</option>
                             }
                         </select>
                     </div>
-                    <div style="display:flex;gap:8px;align-items:flex-end">
-                        <div style="flex:1">
-                            <label class="form-label">Load money ($)</label>
-                            <input class="form-input" type="number" step="0.01" @bind="topUpAmount" @bind:event="oninput" placeholder="0.00" />
-                        </div>
-                        <button class="btn btn-secondary btn-sm" @onclick="TopUp" disabled="@saving">Load</button>
-                    </div>
-
-                    <div style="display:flex;gap:8px">
-                        <div style="flex:1">
-                            <label class="form-label">Spend — what for?</label>
-                            <input class="form-input" @bind="spendDescription" placeholder="e.g. Coffee" />
-                        </div>
-                        <div style="width:100px">
-                            <label class="form-label">Amount ($)</label>
-                            <input class="form-input" type="number" step="0.01" @bind="spendAmount" @bind:event="oninput" placeholder="0.00" />
-                        </div>
-                    </div>
-                    <button class="btn btn-secondary" @onclick="Spend" disabled="@saving">Spend from card</button>
 
                     @if (Activity.Any())
                     {
                         <div style="margin-top:4px">
                             <div class="stat-label" style="margin-bottom:6px">Recent activity</div>
-                            @foreach (var a in Activity.Take(6))
+                            @foreach (var t in Activity.Take(6))
                             {
                                 <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
-                                    <span style="color:var(--text2)">@a.Description · @a.Date.ToString("dd MMM")</span>
-                                    <span style="font-weight:600;color:@(a.AmountCents >= 0 ? "var(--green)" : "var(--red)")">@a.AmountDollars.ToString("C")</span>
+                                    <span style="color:var(--text2)">@t.Description · @t.Date.ToString("dd MMM")</span>
+                                    <span style="font-weight:600;color:@(t.AmountCents >= 0 ? "var(--green)" : "var(--red)")">@t.AmountDollars.ToString("C")</span>
                                 </div>
                             }
                         </div>
@@ -98,28 +95,23 @@
                 </div>
             }
 
-            @if (!string.IsNullOrEmpty(error))
-            {
-                <div style="padding:6px 16px;color:var(--red);font-size:13px">@error</div>
-            }
-
             @if (confirmingDelete)
             {
                 <div style="margin:14px 16px 0;padding:10px;border:1px solid var(--red);border-radius:8px;background:rgba(248,113,113,0.08)">
-                    <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Delete this card?</div>
-                    <div style="font-size:12px;color:var(--text2)">Any remaining loaded balance and activity history will be lost. This can't be undone.</div>
+                    <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Remove this card?</div>
+                    <div style="font-size:12px;color:var(--text2)">This only removes the card label — @LinkedAccountName and its money are unaffected.</div>
                 </div>
                 <div class="modal-actions">
                     <button class="btn btn-secondary" style="flex:1" @onclick="() => confirmingDelete = false" disabled="@saving">Keep</button>
                     <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
-                        @(saving ? "Deleting…" : "Delete")
+                        @(saving ? "Removing…" : "Remove")
                     </button>
                 </div>
             }
             else
             {
                 <div class="modal-actions">
-                    <button class="btn btn-danger" @onclick="() => confirmingDelete = true" disabled="@saving">Delete</button>
+                    <button class="btn btn-danger" @onclick="() => confirmingDelete = true" disabled="@saving">Remove</button>
                     <button class="btn btn-secondary" style="flex:1" @onclick="Close">Close</button>
                 </div>
             }
@@ -136,24 +128,19 @@
 
     private string name = string.Empty;
     private string colorHex = Swatches[0];
-    private int topUpAccountId;
-    private decimal topUpAmount;
-    private decimal spendAmount;
-    private string spendDescription = string.Empty;
+    private int selectedAccountId;
     private string error = string.Empty;
     private bool saving;
     private bool confirmingDelete;
 
-    private List<CardActivity> Activity => Card is null ? new() : State.GetCardActivity(Card.Id);
+    private List<Transaction> Activity => Card is null ? new() : State.GetCardTransactions(Card);
+    private string LinkedAccountName => Card is null ? "" : State.Accounts.FirstOrDefault(a => a.Id == Card.AccountId)?.Name ?? "No account linked";
 
     protected override void OnParametersSet()
     {
         name = string.Empty;
         colorHex = Swatches[0];
-        topUpAccountId = State.Accounts.FirstOrDefault()?.Id ?? 0;
-        topUpAmount = 0;
-        spendAmount = 0;
-        spendDescription = string.Empty;
+        selectedAccountId = Card?.AccountId ?? State.Accounts.FirstOrDefault()?.Id ?? 0;
         error = string.Empty;
         confirmingDelete = false;
     }
@@ -162,43 +149,18 @@
     {
         error = string.Empty;
         if (string.IsNullOrWhiteSpace(name)) { error = "Give the card a name."; return; }
+        if (selectedAccountId <= 0) { error = "Choose an account to link."; return; }
 
         saving = true;
-        await State.AddPrepaidCardAsync(name, colorHex);
+        await State.AddPrepaidCardAsync(name, colorHex, selectedAccountId);
         saving = false;
         await OnSaved.InvokeAsync();
     }
 
-    private async Task TopUp()
+    private async Task Relink()
     {
-        error = string.Empty;
-        if (Card is null) return;
-        if (topUpAmount <= 0) { error = "Enter an amount to load."; return; }
-        if (topUpAccountId <= 0) { error = "Choose an account to load from."; return; }
-        if (topUpAmount > State.GetAccountBalance(topUpAccountId)) { error = "Not enough money in that account."; return; }
-
-        saving = true;
-        var ok = await State.TopUpCardAsync(Card.Id, topUpAccountId, topUpAmount);
-        saving = false;
-        if (!ok) { error = "Not enough money in that account."; return; }
-        topUpAmount = 0;
-        StateHasChanged();
-    }
-
-    private async Task Spend()
-    {
-        error = string.Empty;
-        if (Card is null) return;
-        if (string.IsNullOrWhiteSpace(spendDescription)) { error = "What's this spend for?"; return; }
-        if (spendAmount <= 0) { error = "Enter a positive amount."; return; }
-        if (spendAmount > Card.BalanceDollars) { error = "Not enough loaded on this card — load more money first."; return; }
-
-        saving = true;
-        var ok = await State.SpendFromCardAsync(Card.Id, spendDescription.Trim(), spendAmount);
-        saving = false;
-        if (!ok) { error = "Not enough loaded on this card — load more money first."; return; }
-        spendAmount = 0;
-        spendDescription = string.Empty;
+        if (Card is null || selectedAccountId <= 0 || selectedAccountId == Card.AccountId) return;
+        await State.RelinkPrepaidCardAccountAsync(Card.Id, selectedAccountId);
         StateHasChanged();
     }
 

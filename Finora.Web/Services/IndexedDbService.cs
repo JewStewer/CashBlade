@@ -222,7 +222,7 @@ public class IndexedDbService(IJSRuntime js)
     public Task DeleteLentTransactionAsync(int id) =>
         DeleteAsync("lentTxns", id);
 
-    // ── Prepaid cards (phone-only, not synced — no real payment rails exist) ──
+    // ── Prepaid cards (phone-only label over a real Account; no separate ledger) ──
     public Task<List<PrepaidCard>> GetPrepaidCardsAsync() =>
         GetAllAsync<PrepaidCard>("prepaidCards");
 
@@ -231,15 +231,6 @@ public class IndexedDbService(IJSRuntime js)
 
     public Task DeletePrepaidCardAsync(int id) =>
         DeleteAsync("prepaidCards", id);
-
-    public Task<List<CardActivity>> GetCardActivityAsync() =>
-        GetAllAsync<CardActivity>("cardActivity");
-
-    public Task SetCardActivityAsync(CardActivity activity) =>
-        PutAsync("cardActivity", activity);
-
-    public Task DeleteCardActivityAsync(int id) =>
-        DeleteAsync("cardActivity", id);
 
     // ── Persistent bill overrides (survive clearAll, cleared only on push success) ──
     public Task<List<PendingBillOverride>> GetPendingBillOverridesAsync() =>

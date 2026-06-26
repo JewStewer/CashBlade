@@ -18,9 +18,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<Trip> Trips { get; private set; } = new();
     // Phone-only: transactions marked as lent (excluded from spending until repaid)
     public List<LentTransaction> LentTransactions { get; private set; } = new();
-    // Phone-only: virtual prepaid cards (no real payment rails exist in this app)
+    // Phone-only: card labels over real Accounts (balance/activity always come from the real Account)
     public List<PrepaidCard> PrepaidCards { get; private set; } = new();
-    public List<CardActivity> CardActivity { get; private set; } = new();
     private HashSet<int> _unrepaidLentIds = new();
     private HashSet<int> _matchedInternalMovementIds = new();
 
@@ -230,7 +229,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         Trips = await db.GetTripsAsync();
         LentTransactions = await db.GetLentTransactionsAsync();
         PrepaidCards = await db.GetPrepaidCardsAsync();
-        CardActivity = await db.GetCardActivityAsync();
         NormaliseLentRepayments();
         await RemoveInvalidLentTransactionsAsync();
         _unrepaidLentIds = LentTransactions.Where(IsLentOutstanding).Select(l => l.Id).ToHashSet();
@@ -328,84 +326,42 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
     }
 
-    // ── Prepaid cards (phone-only virtual wallet) ──────────────────────────────
-    public List<CardActivity> GetCardActivity(int cardId) =>
-        CardActivity.Where(a => a.CardId == cardId).OrderByDescending(a => a.Date).ThenByDescending(a => a.Id).ToList();
+    // ── Prepaid cards (a card label over a real Account — no separate ledger) ──
+    // Balance and activity are never tracked here; they always come straight from
+    // the real, synced Account this card points at. Loading money means actually
+    // transferring into that account (in your bank/Up app); spending means using
+    // the real card linked to it. Both flow back in through the normal sync.
+    public decimal GetCardBalance(PrepaidCard card) => GetAccountBalance(card.AccountId);
 
-    public async Task AddPrepaidCardAsync(string name, string colorHex)
+    public List<Transaction> GetCardTransactions(PrepaidCard card) =>
+        Transactions.Where(t => t.AccountId == card.AccountId)
+            .OrderByDescending(t => t.Date).ThenByDescending(t => t.Id).ToList();
+
+    public async Task AddPrepaidCardAsync(string name, string colorHex, int accountId)
     {
         if (string.IsNullOrWhiteSpace(name)) return;
+        if (!Accounts.Any(a => a.Id == accountId)) return;
         var nextId = (PrepaidCards.Count > 0 ? PrepaidCards.Max(c => c.Id) : 0) + 1;
-        var card = new PrepaidCard { Id = nextId, Name = name.Trim(), ColorHex = colorHex };
+        var card = new PrepaidCard { Id = nextId, Name = name.Trim(), ColorHex = colorHex, AccountId = accountId };
         PrepaidCards.Add(card);
         await db.SetPrepaidCardAsync(card);
         OnChange?.Invoke();
     }
 
-    // Loading a card is a real transfer: money leaves the chosen account (a normal,
-    // sync-safe Transaction tagged CategoryName="Transfer" so it's excluded from
-    // discretionary/budget totals) and is credited to the card's phone-only balance.
-    public async Task<bool> TopUpCardAsync(int cardId, int accountId, decimal amountDollars)
+    public async Task RelinkPrepaidCardAccountAsync(int cardId, int accountId)
     {
         var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (card is null || account is null || amountDollars <= 0) return false;
-        if (amountDollars > GetAccountBalance(accountId)) return false;
-
-        var minId = Transactions.Count > 0 ? Transactions.Min(x => x.Id) : 0;
-        var transfer = new Transaction
-        {
-            Id = Math.Min(minId - 1, -1),
-            Date = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.Day),
-            Description = $"Transfer to {card.Name} card",
-            AmountCents = -(int)Math.Round(amountDollars * 100m),
-            AccountId = account.Id,
-            AccountName = account.Name,
-            CategoryName = "Transfer",
-        };
-        Transactions.Add(transfer);
-        _pendingNewTransactions.Add(transfer);
-        await db.PutAsync("transactions", transfer);
-
-        card.BalanceDollars += amountDollars;
+        if (card is null || !Accounts.Any(a => a.Id == accountId)) return;
+        card.AccountId = accountId;
         await db.SetPrepaidCardAsync(card);
-        await LogCardActivityAsync(card.Id, $"Loaded from {account.Name}", amountDollars);
-
-        Compute();
         OnChange?.Invoke();
-        ScheduleSyncSoon();
-        return true;
-    }
-
-    public async Task<bool> SpendFromCardAsync(int cardId, string description, decimal amountDollars)
-    {
-        var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        if (card is null || amountDollars <= 0 || card.BalanceDollars < amountDollars) return false;
-        card.BalanceDollars -= amountDollars;
-        await db.SetPrepaidCardAsync(card);
-        await LogCardActivityAsync(card.Id, description, -amountDollars);
-        OnChange?.Invoke();
-        return true;
     }
 
     public async Task DeletePrepaidCardAsync(int cardId)
     {
         PrepaidCards.RemoveAll(c => c.Id == cardId);
         await db.DeletePrepaidCardAsync(cardId);
-        foreach (var activity in CardActivity.Where(a => a.CardId == cardId).ToList())
-        {
-            CardActivity.Remove(activity);
-            await db.DeleteCardActivityAsync(activity.Id);
-        }
         OnChange?.Invoke();
-    }
-
-    private async Task LogCardActivityAsync(int cardId, string description, decimal amountDollars)
-    {
-        var nextId = (CardActivity.Count > 0 ? CardActivity.Max(a => a.Id) : 0) + 1;
-        var activity = new CardActivity { Id = nextId, CardId = cardId, Description = description, AmountDollars = amountDollars, Date = DateTime.Today };
-        CardActivity.Add(activity);
-        await db.SetCardActivityAsync(activity);
     }
 
     private void NormaliseLentRepayments()
