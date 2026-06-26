@@ -41,30 +41,11 @@
         document.addEventListener('touchend', () => { financeBladeTouchActive = false; }, { passive: true });
         document.addEventListener('touchcancel', () => { financeBladeTouchActive = false; }, { passive: true });
 
-        // WKWebView swallows the click after a tap that lands while a
-        // -webkit-overflow-scrolling:touch container is still decelerating
-        // from a previous scroll/fling — the tap is consumed to stop the
-        // momentum instead of firing as a normal tap (a long-documented
-        // WebKit quirk). Buttons partway down a scrollable page (e.g. "+ Add"
-        // below the fold) are the ones users actually hit this on, since
-        // reaching them requires a scroll first. Killing the in-flight
-        // momentum synchronously on touchstart — before WebKit decides this
-        // touch is "stopping a scroll" — converts it into a plain tap whose
-        // click fires normally.
-        document.addEventListener('touchstart', event => {
-            const scrollEl = event.target.closest?.('.page-content, .modal-sheet');
-            if (!scrollEl) return;
-            scrollEl.style.overflowY = 'hidden';
-            void scrollEl.offsetHeight;
-            scrollEl.style.overflowY = '';
-        }, { passive: true });
-
         window.financeBlade = {
             repairScroll: () => {
                 const page = document.querySelector('.page-content');
                 if (!page) return;
                 page.style.overflowY = 'auto';
-                page.style.webkitOverflowScrolling = 'touch';
                 page.style.touchAction = 'pan-x pan-y';
                 // Force WebKit to re-evaluate the scrollable layer without
                 // changing the user's position.

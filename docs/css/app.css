@@ -127,7 +127,6 @@ button, a, input, select, textarea, [role="button"] {
     overflow-y: auto;
     overflow-x: hidden;
     overflow-anchor: none;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     touch-action: pan-x pan-y;
     position: relative;
@@ -1137,7 +1136,6 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     width: 100%;
     max-height: calc(100dvh - var(--safe-top) - 8px);
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     /* Reserve room so the last form field can scroll clear of the fixed
        .modal-actions bar overlaid on top of it (see below). */
@@ -1500,7 +1498,6 @@ select.form-input { appearance: none; -webkit-appearance: none; }
        scrollable region in this app (.page-content, .modal-sheet) allows
        both axes for exactly this reason, even when only one axis scrolls. */
     touch-action: pan-x pan-y;
-    -webkit-overflow-scrolling: touch;
     padding-bottom: 2px;
     scrollbar-width: none;
 }
