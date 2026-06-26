@@ -2535,8 +2535,46 @@ public class AppState(IndexedDbService db, SyncService sync)
     private void QueueUpdatedTrip(Trip t)
     {
         _pendingUpdatedTrips.RemoveAll(x => x.Id == t.Id);
-        _pendingUpdatedTrips.Add(t);
+        // Snapshot a clone, not the live object — t keeps mutating in place as the
+        // user makes further edits, and an in-flight push payload (built earlier from
+        // this same list) must not silently pick up changes made after it was sent.
+        _pendingUpdatedTrips.Add(CloneTrip(t));
     }
+
+    private static Trip CloneTrip(Trip t) => new()
+    {
+        Id = t.Id,
+        Name = t.Name,
+        Destination = t.Destination,
+        Notes = t.Notes,
+        StartDate = t.StartDate,
+        EndDate = t.EndDate,
+        SavingsAccountId = t.SavingsAccountId,
+        WeeklyContributionCents = t.WeeklyContributionCents,
+        Itinerary = t.Itinerary.Select(i => new TripItineraryItem
+        {
+            Date = i.Date,
+            Time = i.Time,
+            EndTime = i.EndTime,
+            Title = i.Title,
+            Notes = i.Notes,
+            AmountCents = i.AmountCents
+        }).ToList(),
+        Checklist = t.Checklist.Select(c => new TripChecklistItem
+        {
+            Text = c.Text,
+            Done = c.Done,
+            DueDate = c.DueDate
+        }).ToList(),
+        BudgetItems = t.BudgetItems.Select(b => new TripBudgetItem
+        {
+            Category = b.Category,
+            PlannedCents = b.PlannedCents,
+            ActualCents = b.ActualCents,
+            Paid = b.Paid,
+            Notes = b.Notes
+        }).ToList()
+    };
 
     // Mirrors WPF's DebtPaymentMatcher.ApplyBillDebtPaymentStatus: when a bill
     // linked to a debt (by DebtId, or by fuzzy name match as a fallback) is
@@ -3338,7 +3376,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
                     _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
                     _pendingNewTrips.RemoveRange(0, push.NewTrips.Count);
-                    _pendingUpdatedTrips.RemoveRange(0, push.UpdatedTrips.Count);
+                    // Reference-based removal: if QueueUpdatedTrip queued a newer clone for this
+                    // trip while the push above was in flight, that clone is a different object
+                    // and must survive so the edit isn't lost — count-based removal would have
+                    // dropped it here even though it was never actually sent.
+                    foreach (var t in push.UpdatedTrips) _pendingUpdatedTrips.Remove(t);
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
             }

@@ -802,7 +802,13 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.BudgetItems[index].Paid = !trip.BudgetItems[index].Paid;
+        var item = trip.BudgetItems[index];
+        item.Paid = !item.Paid;
+        // Untick clears the recorded actual amount too — otherwise the row's "paid"
+        // badge and the funded/remaining totals keep counting it (ActualDollars > 0
+        // takes priority over Paid in the display logic) until the user reopens Edit
+        // and re-saves, which is what made unticking look like it needed an extra step.
+        if (!item.Paid) item.ActualDollars = 0;
         await State.UpdateTripAsync(trip);
     }
 
