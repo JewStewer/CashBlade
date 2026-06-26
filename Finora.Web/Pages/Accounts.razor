@@ -197,11 +197,14 @@ else
 
 <!-- Debts section -->
 <div class="section-header" style="margin-top:14px">
-    <span class="section-title">Debts</span>
-    <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:13px;color:var(--red);display:@(State.Debts.Any() ? "inline" : "none")">@State.DebtTotal.ToString("C")</span>
-        <button class="btn btn-secondary btn-sm" @onclick='() => _debtDraft = new Debt { PaymentPeriod = "Weekly" }'>+ Add</button>
-    </div>
+    <span class="section-title">
+        Debts
+        @if (State.Debts.Any())
+        {
+            <span style="margin-left:8px;text-transform:none;font-weight:600;font-size:13px;color:var(--red)">@State.DebtTotal.ToString("C")</span>
+        }
+    </span>
+    <button class="btn btn-secondary btn-sm" @onclick='() => _debtDraft = new Debt { PaymentPeriod = "Weekly" }'>+ Add</button>
 </div>
 @if (State.Debts.Any())
 {
@@ -246,11 +249,14 @@ else
 
 <!-- Savings goals -->
 <div class="section-header" style="margin-top:14px">
-    <span class="section-title">Savings Goals</span>
-    <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:13px;color:var(--purple);display:@(State.SavingsGoals.Any() ? "inline" : "none")">@(State.SavingsGoals.Sum(g => g.CurrentDollars).ToString("C"))</span>
-        <button class="btn btn-secondary btn-sm" @onclick='() => _goalDraft = new SavingsGoal()'>+ Add</button>
-    </div>
+    <span class="section-title">
+        Savings Goals
+        @if (State.SavingsGoals.Any())
+        {
+            <span style="margin-left:8px;text-transform:none;font-weight:600;font-size:13px;color:var(--purple)">@(State.SavingsGoals.Sum(g => g.CurrentDollars).ToString("C"))</span>
+        }
+    </span>
+    <button class="btn btn-secondary btn-sm" @onclick='() => _goalDraft = new SavingsGoal()'>+ Add</button>
 </div>
 @if (State.SavingsGoals.Any())
 {

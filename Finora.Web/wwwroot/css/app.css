@@ -130,7 +130,6 @@ button, a, input, select, textarea, [role="button"] {
     overscroll-behavior-y: contain;
     touch-action: pan-x pan-y;
     position: relative;
-    transform: translateZ(0);
     /* Enough bottom padding to clear the fixed nav + home indicator */
     padding: 0 0 calc(var(--nav-height) + var(--safe-bottom) + 96px) 0;
     scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 96px);
