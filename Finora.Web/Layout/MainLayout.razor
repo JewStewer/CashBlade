@@ -164,14 +164,14 @@
         Nav.LocationChanged += OnLocationChanged;
     }
 
-    // State.OnChange fires from background work (sync, debounced pushes, the
-    // periodic timer) with no user gesture in the call stack — exactly the
-    // case WKWebView can fail to repaint for. Flag it so the next
-    // OnAfterRenderAsync nudges a reflow once the DOM has actually updated
-    // (e.g. the bottom-right "unsync'd" badge clearing after a background sync).
+    // State.OnChange fires for EVERY mutation, including ones made directly
+    // by a tap (ticking a checkbox, saving a row) which already have a user
+    // gesture in the call stack and repaint fine on their own. Don't nudge
+    // here — nudgeRepaint's forced scrollTop snap-back fights any scroll the
+    // user starts right after. Sync.OnSyncStateChanged (below) covers the
+    // actual background-without-a-gesture case this workaround is for.
     private void OnStateChanged()
     {
-        _pendingNudge = true;
         StateHasChanged();
     }
 
