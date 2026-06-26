@@ -7,9 +7,6 @@ const STORES = [
 ];
 // Stores that survive clearAll (phone-side overrides, lent money tracking)
 const PERSISTENT_STORES = ['pendingBillOverrides', 'billDeletes', 'debtDeletes', 'savingsGoalDeletes', 'lentTxns', 'transactionOverrides', 'transactionDeletes', 'tripDeletes', 'settingOverrides', 'prepaidCards', 'cardActivity'];
-// cardActivity is no longer written to (prepaid cards now mirror a real Account
-// directly) but stays listed so any existing store from older installs is left
-// alone rather than orphaned outside ALL_STORES handling.
 const ALL_STORES = [...STORES, ...PERSISTENT_STORES];
 
 let _db = null;

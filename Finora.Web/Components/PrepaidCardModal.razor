@@ -6,23 +6,11 @@
 
         @if (Card is null)
         {
-            <div class="modal-title">New Card</div>
+            <div class="modal-title">New Spending Limit</div>
             <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:12px">
                 <div>
-                    <label class="form-label">Card Name</label>
-                    <input class="form-input" @bind="name" @bind:event="oninput" placeholder="e.g. Coffee Card" autofocus />
-                </div>
-                <div>
-                    <label class="form-label">Linked account</label>
-                    <select class="form-input" @bind="selectedAccountId">
-                        @foreach (var account in State.Accounts)
-                        {
-                            <option value="@account.Id">@account.Name (@State.GetAccountBalance(account.Id).ToString("C"))</option>
-                        }
-                    </select>
-                    <div style="font-size:12px;color:var(--text2);margin-top:6px">
-                        Pick the real account this card mirrors — ideally one with its own real card or Apple Pay support (like an Up Saver). Balance and activity always come straight from that account.
-                    </div>
+                    <label class="form-label">Limit Name</label>
+                    <input class="form-input" @bind="name" @bind:event="oninput" placeholder="e.g. Coffee, Eating Out" autofocus />
                 </div>
                 <div>
                     <label class="form-label">Card Colour</label>
@@ -32,6 +20,9 @@
                             <button class="card-swatch @(colorHex == swatch ? "is-selected" : "")" style="background:@swatch" @onclick="() => colorHex = swatch"></button>
                         }
                     </div>
+                </div>
+                <div style="font-size:12px;color:var(--text2)">
+                    This is a self-imposed limit tracked only in Evergrove — it doesn't move real money or sync with your bank. Raise it, then log spends against it to keep yourself in check.
                 </div>
             </div>
 
@@ -43,7 +34,7 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
                 <button class="btn btn-primary" style="flex:1" @onclick="CreateCard" disabled="@saving">
-                    @(saving ? "Creating…" : "Create Card")
+                    @(saving ? "Creating…" : "Create Limit")
                 </button>
             </div>
         }
@@ -55,9 +46,9 @@
                 <div class="prepaid-card-visual" style="background:linear-gradient(135deg, @Card.ColorHex, color-mix(in srgb, @Card.ColorHex, black 45%))">
                     <div class="prepaid-card-top">
                         <span>Evergrove</span>
-                        <span>@LinkedAccountName</span>
+                        <span>Limit</span>
                     </div>
-                    <div class="prepaid-card-balance">@State.GetCardBalance(Card).ToString("C")</div>
+                    <div class="prepaid-card-balance">@Card.BalanceDollars.ToString("C")</div>
                     <div class="prepaid-card-bottom">@Card.Name</div>
                 </div>
             </div>
@@ -66,28 +57,44 @@
             {
                 <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:10px">
                     <div style="font-size:12px;color:var(--text2)">
-                        This mirrors <strong style="color:var(--text)">@LinkedAccountName</strong> in real time. To add money, transfer into that account from your bank or the Up app. Spend with the real card linked to it (Apple Pay etc.) — it shows up here as soon as it syncs.
+                        A self-imposed limit, not real money — it never touches your accounts or syncs with the bank. Log a spend here when you make a purchase to track it against your cap.
                     </div>
 
-                    <div>
-                        <label class="form-label">Linked account</label>
-                        <select class="form-input" @bind="selectedAccountId" @bind:after="Relink">
-                            @foreach (var account in State.Accounts)
-                            {
-                                <option value="@account.Id">@account.Name (@State.GetAccountBalance(account.Id).ToString("C"))</option>
-                            }
-                        </select>
+                    <div style="display:flex;gap:8px">
+                        <div style="flex:1">
+                            <label class="form-label">Raise limit</label>
+                            <input class="form-input" type="number" min="0" step="0.01" @bind="topUpAmount" placeholder="0.00" />
+                        </div>
+                        <button class="btn btn-secondary" style="align-self:flex-end" @onclick="TopUp" disabled="@saving">Add</button>
                     </div>
+
+                    <div style="display:flex;gap:8px">
+                        <div style="flex:1">
+                            <label class="form-label">Log spend — what for?</label>
+                            <input class="form-input" @bind="spendDescription" @bind:event="oninput" placeholder="e.g. Coffee" />
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <div style="flex:1">
+                            <input class="form-input" type="number" min="0" step="0.01" @bind="spendAmount" placeholder="0.00" />
+                        </div>
+                        <button class="btn btn-secondary" @onclick="Spend" disabled="@saving">Log spend</button>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(error))
+                    {
+                        <div style="color:var(--red);font-size:13px">@error</div>
+                    }
 
                     @if (Activity.Any())
                     {
                         <div style="margin-top:4px">
                             <div class="stat-label" style="margin-bottom:6px">Recent activity</div>
-                            @foreach (var t in Activity.Take(6))
+                            @foreach (var a in Activity.Take(6))
                             {
                                 <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
-                                    <span style="color:var(--text2)">@t.Description · @t.Date.ToString("dd MMM")</span>
-                                    <span style="font-weight:600;color:@(t.AmountCents >= 0 ? "var(--green)" : "var(--red)")">@t.AmountDollars.ToString("C")</span>
+                                    <span style="color:var(--text2)">@a.Description · @a.Date.ToString("dd MMM")</span>
+                                    <span style="font-weight:600;color:@(a.AmountCents >= 0 ? "var(--green)" : "var(--red)")">@a.AmountDollars.ToString("C")</span>
                                 </div>
                             }
                         </div>
@@ -98,8 +105,8 @@
             @if (confirmingDelete)
             {
                 <div style="margin:14px 16px 0;padding:10px;border:1px solid var(--red);border-radius:8px;background:rgba(248,113,113,0.08)">
-                    <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Remove this card?</div>
-                    <div style="font-size:12px;color:var(--text2)">This only removes the card label — @LinkedAccountName and its money are unaffected.</div>
+                    <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Remove this limit?</div>
+                    <div style="font-size:12px;color:var(--text2)">This only deletes the tracker — no real money or accounts are affected.</div>
                 </div>
                 <div class="modal-actions">
                     <button class="btn btn-secondary" style="flex:1" @onclick="() => confirmingDelete = false" disabled="@saving">Keep</button>
@@ -128,19 +135,22 @@
 
     private string name = string.Empty;
     private string colorHex = Swatches[0];
-    private int selectedAccountId;
+    private decimal? topUpAmount;
+    private string spendDescription = string.Empty;
+    private decimal? spendAmount;
     private string error = string.Empty;
     private bool saving;
     private bool confirmingDelete;
 
-    private List<Transaction> Activity => Card is null ? new() : State.GetCardTransactions(Card);
-    private string LinkedAccountName => Card is null ? "" : State.Accounts.FirstOrDefault(a => a.Id == Card.AccountId)?.Name ?? "No account linked";
+    private List<CardActivity> Activity => Card is null ? new() : State.GetCardActivity(Card.Id);
 
     protected override void OnParametersSet()
     {
         name = string.Empty;
         colorHex = Swatches[0];
-        selectedAccountId = Card?.AccountId ?? State.Accounts.FirstOrDefault()?.Id ?? 0;
+        topUpAmount = null;
+        spendDescription = string.Empty;
+        spendAmount = null;
         error = string.Empty;
         confirmingDelete = false;
     }
@@ -148,19 +158,31 @@
     private async Task CreateCard()
     {
         error = string.Empty;
-        if (string.IsNullOrWhiteSpace(name)) { error = "Give the card a name."; return; }
-        if (selectedAccountId <= 0) { error = "Choose an account to link."; return; }
+        if (string.IsNullOrWhiteSpace(name)) { error = "Give the limit a name."; return; }
 
         saving = true;
-        await State.AddPrepaidCardAsync(name, colorHex, selectedAccountId);
+        await State.AddPrepaidCardAsync(name, colorHex);
         saving = false;
         await OnSaved.InvokeAsync();
     }
 
-    private async Task Relink()
+    private async Task TopUp()
     {
-        if (Card is null || selectedAccountId <= 0 || selectedAccountId == Card.AccountId) return;
-        await State.RelinkPrepaidCardAccountAsync(Card.Id, selectedAccountId);
+        error = string.Empty;
+        if (Card is null || topUpAmount is null || topUpAmount <= 0) return;
+        await State.TopUpCardAsync(Card.Id, topUpAmount.Value);
+        topUpAmount = null;
+        StateHasChanged();
+    }
+
+    private async Task Spend()
+    {
+        error = string.Empty;
+        if (Card is null || spendAmount is null || spendAmount <= 0) return;
+        if (spendAmount > Card.BalanceDollars) { error = "That's more than what's left on this limit."; return; }
+        await State.SpendFromCardAsync(Card.Id, spendDescription, spendAmount.Value);
+        spendDescription = string.Empty;
+        spendAmount = null;
         StateHasChanged();
     }
 

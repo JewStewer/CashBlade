@@ -18,8 +18,9 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<Trip> Trips { get; private set; } = new();
     // Phone-only: transactions marked as lent (excluded from spending until repaid)
     public List<LentTransaction> LentTransactions { get; private set; } = new();
-    // Phone-only: card labels over real Accounts (balance/activity always come from the real Account)
+    // Phone-only: self-imposed spending limits (never synced, never real money)
     public List<PrepaidCard> PrepaidCards { get; private set; } = new();
+    public List<CardActivity> CardActivity { get; private set; } = new();
     private HashSet<int> _unrepaidLentIds = new();
     private HashSet<int> _matchedInternalMovementIds = new();
 
@@ -229,6 +230,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Trips = await db.GetTripsAsync();
         LentTransactions = await db.GetLentTransactionsAsync();
         PrepaidCards = await db.GetPrepaidCardsAsync();
+        CardActivity = await db.GetCardActivityAsync();
         NormaliseLentRepayments();
         await RemoveInvalidLentTransactionsAsync();
         _unrepaidLentIds = LentTransactions.Where(IsLentOutstanding).Select(l => l.Id).ToHashSet();
@@ -326,34 +328,52 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
     }
 
-    // ── Prepaid cards (a card label over a real Account — no separate ledger) ──
-    // Balance and activity are never tracked here; they always come straight from
-    // the real, synced Account this card points at. Loading money means actually
-    // transferring into that account (in your bank/Up app); spending means using
-    // the real card linked to it. Both flow back in through the normal sync.
-    public decimal GetCardBalance(PrepaidCard card) => GetAccountBalance(card.AccountId);
+    // ── Prepaid cards (self-imposed spending limits — phone-only, never real money) ──
+    // These never touch a real Account or create a real Transaction. They exist
+    // purely so you can cap discretionary spending the way Up's own accounts don't
+    // let you. Raising the limit or logging a spend here stays off the synced
+    // ledger entirely, so nothing double-counts once the real purchase lands from Up.
+    public List<CardActivity> GetCardActivity(int cardId) =>
+        CardActivity.Where(a => a.CardId == cardId)
+            .OrderByDescending(a => a.Date).ThenByDescending(a => a.Id).ToList();
 
-    public List<Transaction> GetCardTransactions(PrepaidCard card) =>
-        Transactions.Where(t => t.AccountId == card.AccountId)
-            .OrderByDescending(t => t.Date).ThenByDescending(t => t.Id).ToList();
-
-    public async Task AddPrepaidCardAsync(string name, string colorHex, int accountId)
+    public async Task AddPrepaidCardAsync(string name, string colorHex)
     {
         if (string.IsNullOrWhiteSpace(name)) return;
-        if (!Accounts.Any(a => a.Id == accountId)) return;
         var nextId = (PrepaidCards.Count > 0 ? PrepaidCards.Max(c => c.Id) : 0) + 1;
-        var card = new PrepaidCard { Id = nextId, Name = name.Trim(), ColorHex = colorHex, AccountId = accountId };
+        var card = new PrepaidCard { Id = nextId, Name = name.Trim(), ColorHex = colorHex, BalanceCents = 0 };
         PrepaidCards.Add(card);
         await db.SetPrepaidCardAsync(card);
         OnChange?.Invoke();
     }
 
-    public async Task RelinkPrepaidCardAccountAsync(int cardId, int accountId)
+    public async Task TopUpCardAsync(int cardId, decimal amountDollars)
     {
         var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        if (card is null || !Accounts.Any(a => a.Id == accountId)) return;
-        card.AccountId = accountId;
+        if (card is null || amountDollars <= 0) return;
+        var cents = (int)Math.Round(amountDollars * 100);
+        card.BalanceCents += cents;
         await db.SetPrepaidCardAsync(card);
+        await LogCardActivityAsync(card.Id, "Limit raised", cents);
+    }
+
+    public async Task SpendFromCardAsync(int cardId, string description, decimal amountDollars)
+    {
+        var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
+        if (card is null || amountDollars <= 0) return;
+        var cents = (int)Math.Round(amountDollars * 100);
+        if (cents > card.BalanceCents) return;
+        card.BalanceCents -= cents;
+        await db.SetPrepaidCardAsync(card);
+        await LogCardActivityAsync(card.Id, string.IsNullOrWhiteSpace(description) ? "Spend" : description.Trim(), -cents);
+    }
+
+    private async Task LogCardActivityAsync(int cardId, string description, int amountCents)
+    {
+        var nextId = (CardActivity.Count > 0 ? CardActivity.Max(a => a.Id) : 0) + 1;
+        var entry = new CardActivity { Id = nextId, CardId = cardId, Description = description, AmountCents = amountCents, Date = DateTime.Now };
+        CardActivity.Add(entry);
+        await db.SetCardActivityAsync(entry);
         OnChange?.Invoke();
     }
 
@@ -361,6 +381,12 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         PrepaidCards.RemoveAll(c => c.Id == cardId);
         await db.DeletePrepaidCardAsync(cardId);
+        var toRemove = CardActivity.Where(a => a.CardId == cardId).ToList();
+        foreach (var a in toRemove)
+        {
+            CardActivity.Remove(a);
+            await db.DeleteCardActivityAsync(a.Id);
+        }
         OnChange?.Invoke();
     }
 
