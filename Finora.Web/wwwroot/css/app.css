@@ -165,11 +165,12 @@ button, a, input, select, textarea, [role="button"] {
     font-size: 10px;
     font-weight: 500;
     padding: 4px 0;
-    transition: color 0.15s;
+    transition: color 0.15s, transform 0.15s ease;
     -webkit-tap-highlight-color: transparent;
 }
 
 .nav-item.active { color: var(--teal-light); }
+.nav-item:active { transform: scale(0.92); }
 .nav-item svg { width: 22px; height: 22px; }
 
 /* ── Cards ── */
@@ -717,7 +718,10 @@ button.dashboard-module:active {
     gap: 12px;
     border-bottom: 1px solid var(--border);
     overflow-anchor: none;
+    transition: background 0.15s ease;
 }
+
+.list-row:active { background: rgba(255,255,255,0.05); }
 
 .list-row:last-child { border-bottom: none; }
 
