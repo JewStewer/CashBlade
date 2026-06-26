@@ -57,15 +57,25 @@
             {
                 <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:10px">
                     <div style="font-size:12px;color:var(--text2)">
-                        A self-imposed limit, not real money — it never touches your accounts or syncs with the bank. Log a spend here when you make a purchase to track it against your cap.
+                        Loading money here moves it out of the account below (a real transfer) and earmarks it against this limit. Log a spend when you make a purchase to track it against the cap — that part stays in-app only and never touches the account again.
+                    </div>
+
+                    <div>
+                        <label class="form-label">Load from</label>
+                        <select class="form-input" @bind="topUpAccountId">
+                            @foreach (var account in State.Accounts)
+                            {
+                                <option value="@account.Id">@account.Name (@State.GetAccountBalance(account.Id).ToString("C"))</option>
+                            }
+                        </select>
                     </div>
 
                     <div style="display:flex;gap:8px">
                         <div style="flex:1">
-                            <label class="form-label">Raise limit</label>
+                            <label class="form-label">Amount to load</label>
                             <input class="form-input" type="number" min="0" step="0.01" @bind="topUpAmount" placeholder="0.00" />
                         </div>
-                        <button class="btn btn-secondary" style="align-self:flex-end" @onclick="TopUp" disabled="@saving">Add</button>
+                        <button class="btn btn-secondary" style="align-self:flex-end" @onclick="TopUp" disabled="@saving">Load</button>
                     </div>
 
                     <div style="display:flex;gap:8px">
@@ -135,6 +145,7 @@
 
     private string name = string.Empty;
     private string colorHex = Swatches[0];
+    private int topUpAccountId;
     private decimal? topUpAmount;
     private string spendDescription = string.Empty;
     private decimal? spendAmount;
@@ -148,6 +159,7 @@
     {
         name = string.Empty;
         colorHex = Swatches[0];
+        topUpAccountId = State.Accounts.FirstOrDefault()?.Id ?? 0;
         topUpAmount = null;
         spendDescription = string.Empty;
         spendAmount = null;
@@ -169,8 +181,9 @@
     private async Task TopUp()
     {
         error = string.Empty;
-        if (Card is null || topUpAmount is null || topUpAmount <= 0) return;
-        await State.TopUpCardAsync(Card.Id, topUpAmount.Value);
+        if (Card is null || topUpAccountId <= 0 || topUpAmount is null || topUpAmount <= 0) return;
+        var ok = await State.TopUpCardAsync(Card.Id, topUpAccountId, topUpAmount.Value);
+        if (!ok) { error = "That account doesn't have enough balance to load that much."; return; }
         topUpAmount = null;
         StateHasChanged();
     }

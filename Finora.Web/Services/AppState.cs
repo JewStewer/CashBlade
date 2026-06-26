@@ -328,11 +328,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
     }
 
-    // ── Prepaid cards (self-imposed spending limits — phone-only, never real money) ──
-    // These never touch a real Account or create a real Transaction. They exist
-    // purely so you can cap discretionary spending the way Up's own accounts don't
-    // let you. Raising the limit or logging a spend here stays off the synced
-    // ledger entirely, so nothing double-counts once the real purchase lands from Up.
+    // ── Prepaid cards (self-imposed spending limits, loaded from a real Account) ──
+    // Loading money is a real transfer: it debits the chosen account via a normal,
+    // sync-safe Transaction (CategoryName="Transfer", excluded from discretionary
+    // totals) and credits the card's phone-only balance. Spending against the limit
+    // stays a phone-only log entry — never a real Transaction — so nothing
+    // double-counts once the real purchase lands from Up on the next sync.
     public List<CardActivity> GetCardActivity(int cardId) =>
         CardActivity.Where(a => a.CardId == cardId)
             .OrderByDescending(a => a.Date).ThenByDescending(a => a.Id).ToList();
@@ -347,25 +348,49 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
     }
 
-    public async Task TopUpCardAsync(int cardId, decimal amountDollars)
+    public async Task<bool> TopUpCardAsync(int cardId, int accountId, decimal amountDollars)
     {
         var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        if (card is null || amountDollars <= 0) return;
-        var cents = (int)Math.Round(amountDollars * 100);
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (card is null || account is null || amountDollars <= 0) return false;
+        if (amountDollars > GetAccountBalance(accountId)) return false;
+
+        var cents = (int)Math.Round(amountDollars * 100m);
+        var minId = Transactions.Count > 0 ? Transactions.Min(x => x.Id) : 0;
+        var transfer = new Transaction
+        {
+            Id = Math.Min(minId - 1, -1),
+            Date = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.Day),
+            Description = $"Transfer to {card.Name} limit",
+            AmountCents = -cents,
+            AccountId = account.Id,
+            AccountName = account.Name,
+            CategoryName = "Transfer",
+        };
+        Transactions.Add(transfer);
+        _pendingNewTransactions.Add(transfer);
+        await db.PutAsync("transactions", transfer);
+
         card.BalanceCents += cents;
         await db.SetPrepaidCardAsync(card);
-        await LogCardActivityAsync(card.Id, "Limit raised", cents);
+        await LogCardActivityAsync(card.Id, $"Loaded from {account.Name}", cents);
+
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+        return true;
     }
 
-    public async Task SpendFromCardAsync(int cardId, string description, decimal amountDollars)
+    public async Task<bool> SpendFromCardAsync(int cardId, string description, decimal amountDollars)
     {
         var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        if (card is null || amountDollars <= 0) return;
+        if (card is null || amountDollars <= 0) return false;
         var cents = (int)Math.Round(amountDollars * 100);
-        if (cents > card.BalanceCents) return;
+        if (cents > card.BalanceCents) return false;
         card.BalanceCents -= cents;
         await db.SetPrepaidCardAsync(card);
         await LogCardActivityAsync(card.Id, string.IsNullOrWhiteSpace(description) ? "Spend" : description.Trim(), -cents);
+        return true;
     }
 
     private async Task LogCardActivityAsync(int cardId, string description, int amountCents)
