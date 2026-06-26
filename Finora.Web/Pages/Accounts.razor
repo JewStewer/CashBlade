@@ -36,13 +36,13 @@
     </div>
 }
 
-<!-- Spending limits -->
+<!-- Cards -->
 <div class="section-header" style="margin-top:14px">
-    <span class="section-title">Spending Limits</span>
+    <span class="section-title">Cards</span>
     <div style="display:flex;align-items:center;gap:10px">
         @if (State.PrepaidCards.Any())
         {
-            <span style="font-size:13px;color:var(--teal-light)">@(State.PrepaidCards.Sum(c => c.BalanceDollars).ToString("C"))</span>
+            <span style="font-size:13px;color:var(--teal-light)">@(State.PrepaidCards.Sum(c => State.GetCardBalance(c)).ToString("C"))</span>
         }
         <button class="btn btn-secondary btn-sm" @onclick="() => _showAddCard = true">+ Add</button>
     </div>
@@ -55,9 +55,9 @@
             <button class="prepaid-card-visual prepaid-card-mini" style="background:linear-gradient(135deg, @card.ColorHex, color-mix(in srgb, @card.ColorHex, black 45%))" @onclick="() => _cardDraft = card">
                 <div class="prepaid-card-top">
                     <span>Evergrove</span>
-                    <span>Limit</span>
+                    <span>@(State.Accounts.FirstOrDefault(a => a.Id == card.AccountId)?.Name ?? "Unlinked")</span>
                 </div>
-                <div class="prepaid-card-balance">@card.BalanceDollars.ToString("C")</div>
+                <div class="prepaid-card-balance">@State.GetCardBalance(card).ToString("C")</div>
                 <div class="prepaid-card-bottom">@card.Name</div>
             </button>
         }
@@ -66,7 +66,7 @@
 else
 {
     <div class="card-list" style="margin-top:0;padding:20px;text-align:center;color:var(--text3);font-size:13px">
-        No spending limits yet — add one to cap discretionary spending Up doesn't let you cap itself.
+        No cards yet — link one to a dedicated account (with its own card/Apple Pay) to get a real decline once it runs out.
     </div>
 }
 
