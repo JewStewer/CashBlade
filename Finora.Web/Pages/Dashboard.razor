@@ -105,7 +105,7 @@ else
                 <strong style="color:@(State.NoSpendMode ? "var(--red)" : "var(--green)")">@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
                 <small>@NoSpendMessage</small>
             </button>
-            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("budget")'>
+            <button class="dashboard-module safe-spend-module" @onclick='() => Nav.NavigateTo("budget")'>
                 <span>Safe To Spend</span>
                 <strong style="color:@(State.SafeToSpendAmount > 0 ? "var(--green)" : "var(--red)")">@State.SafeToSpendAmount.ToString("C")</strong>
                 <small>@SafeSpendMessage</small>

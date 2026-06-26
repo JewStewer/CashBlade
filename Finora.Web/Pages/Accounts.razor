@@ -214,7 +214,8 @@ else
             var paidOff = Math.Max(debt.OriginalBalanceDollars - debt.BalanceDollars, 0);
             var progress = debt.OriginalBalanceDollars > 0 ? Math.Clamp(paidOff / debt.OriginalBalanceDollars, 0, 1) : 0;
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _debtDraft = debt">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:rgba(248,113,113,0.15);color:var(--red)"><Icon Name="credit-card" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@debt.Name</div>
                         <div style="font-size:12px;color:var(--text3)">@debt.MinimumPaymentDollars.ToString("C") @debt.PaymentPeriod.ToLowerInvariant()</div>
@@ -265,7 +266,8 @@ else
         {
             var isGroupExpanded = string.Equals(_expandedGoalGroupName, group.Name, StringComparison.OrdinalIgnoreCase);
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => ToggleGoalGroup(group.Name)">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:rgba(124,58,237,0.15);color:var(--purple)"><Icon Name="sprout" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@group.Name</div>
                         <div style="font-size:12px;color:var(--text3)">@group.Goals.Count goals combined</div>
@@ -313,7 +315,8 @@ else
         {
             var progress = goal.TargetDollars > 0 ? Math.Clamp(goal.CurrentDollars / goal.TargetDollars, 0, 1) : 0;
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _goalDraft = goal">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:rgba(124,58,237,0.15);color:var(--purple)"><Icon Name="sprout" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@goal.Name</div>
                         @if (goal.WeeklyContributionDollars > 0)
@@ -372,7 +375,8 @@ else
             var progress = target > 0 ? Math.Clamp(current / target, 0, 1) : 0;
             var weekly = GoalMath.WeeklyRequired(target, current, acct.TargetDate);
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _accountGoalDraft = acct">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:color-mix(in srgb, @acct.ColorHex 18%, transparent);color:@acct.ColorHex"><Icon Name="star" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@acct.Name</div>
                         @if (weekly > 0)

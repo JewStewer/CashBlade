@@ -46,7 +46,7 @@
         </div>
     }
 
-    <main class="page-content">
+    <main class="page-content @PageAccentClass">
         @if (State.AppLockEnabled && !State.IsUnlocked)
         {
             <LockScreen />
@@ -150,6 +150,15 @@
     private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
     private bool IsTransactionsRoute => CurrentPath.Equals("transactions", StringComparison.OrdinalIgnoreCase);
     private bool IsBillsRoute => CurrentPath.Equals("bills", StringComparison.OrdinalIgnoreCase);
+
+    private string PageAccentClass => CurrentPath.ToLowerInvariant() switch
+    {
+        "budget" => "page-accent-budget",
+        "bills" => "page-accent-bills",
+        "accounts" => "page-accent-accounts",
+        "tools" => "page-accent-tools",
+        _ => ""
+    };
 
     private void OnFabClick()
     {
