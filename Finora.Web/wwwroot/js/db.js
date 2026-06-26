@@ -70,7 +70,18 @@ async function ensureStore(store) {
             resolve(_db);
         };
         req.onerror = e => reject(e.target.error);
-        req.onblocked = () => reject(new Error('Database upgrade blocked. Close other Evergrove tabs and reopen the app.'));
+
+        // Another open connection (e.g. a backgrounded/suspended tab) hasn't
+        // closed yet. That connection's own onversionchange handler may still
+        // close it shortly — onblocked isn't final, so give it a grace window
+        // before giving up instead of failing immediately.
+        let blocked = false;
+        req.onblocked = () => {
+            blocked = true;
+            setTimeout(() => {
+                if (blocked) reject(new Error('Database upgrade blocked. Close other Evergrove tabs and reopen the app.'));
+            }, 4000);
+        };
     });
 }
 
