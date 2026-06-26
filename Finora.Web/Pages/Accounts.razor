@@ -36,40 +36,6 @@
     </div>
 }
 
-<!-- Spending limits -->
-<div class="section-header" style="margin-top:14px">
-    <span class="section-title">Spending Limits</span>
-    <div style="display:flex;align-items:center;gap:10px">
-        @if (State.PrepaidCards.Any())
-        {
-            <span style="font-size:13px;color:var(--teal-light)">@(State.PrepaidCards.Sum(c => c.BalanceDollars).ToString("C"))</span>
-        }
-        <button class="btn btn-secondary btn-sm" @onclick="() => _showAddCard = true">+ Add</button>
-    </div>
-</div>
-@if (State.PrepaidCards.Any())
-{
-    <div class="prepaid-card-strip">
-        @foreach (var card in State.PrepaidCards)
-        {
-            <button class="prepaid-card-visual prepaid-card-mini" style="background:linear-gradient(135deg, @card.ColorHex, color-mix(in srgb, @card.ColorHex, black 45%))" @onclick="() => _cardDraft = card">
-                <div class="prepaid-card-top">
-                    <span>Evergrove</span>
-                    <span>Limit</span>
-                </div>
-                <div class="prepaid-card-balance">@card.BalanceDollars.ToString("C")</div>
-                <div class="prepaid-card-bottom">@card.Name</div>
-            </button>
-        }
-    </div>
-}
-else
-{
-    <div class="card-list" style="margin-top:0;padding:20px;text-align:center;color:var(--text3);font-size:13px">
-        No spending limits yet — add one to cap discretionary spending Up doesn't let you cap itself.
-    </div>
-}
-
 @if (!State.Accounts.Any())
 {
     <div class="empty-state" style="margin-top:40px">
@@ -456,19 +422,10 @@ else
         OnSaved="() => _accountGoalDraft = null" />
 }
 
-@if (_cardDraft is not null || _showAddCard)
-{
-    <PrepaidCardModal Card="@_cardDraft"
-        OnClose="() => { _cardDraft = null; _showAddCard = false; }"
-        OnSaved="() => { _cardDraft = null; _showAddCard = false; }" />
-}
-
 @code {
     private Debt? _debtDraft;
     private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
-    private PrepaidCard? _cardDraft;
-    private bool _showAddCard;
     private int _expandedAccountId;
     private string? _expandedGoalGroupName;
 

@@ -19,8 +19,6 @@ public class AppState(IndexedDbService db, SyncService sync)
     // Phone-only: transactions marked as lent (excluded from spending until repaid)
     public List<LentTransaction> LentTransactions { get; private set; } = new();
     // Phone-only: self-imposed spending limits (never synced, never real money)
-    public List<PrepaidCard> PrepaidCards { get; private set; } = new();
-    public List<CardActivity> CardActivity { get; private set; } = new();
     private HashSet<int> _unrepaidLentIds = new();
     private HashSet<int> _matchedInternalMovementIds = new();
 
@@ -229,8 +227,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         AppSettings = await db.GetAppSettingsAsync();
         Trips = await db.GetTripsAsync();
         LentTransactions = await db.GetLentTransactionsAsync();
-        PrepaidCards = await db.GetPrepaidCardsAsync();
-        CardActivity = await db.GetCardActivityAsync();
         NormaliseLentRepayments();
         await RemoveInvalidLentTransactionsAsync();
         _unrepaidLentIds = LentTransactions.Where(IsLentOutstanding).Select(l => l.Id).ToHashSet();
@@ -325,93 +321,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         else _unrepaidLentIds.Add(txnId);
 
         await db.SetLentTransactionAsync(lent);
-        OnChange?.Invoke();
-    }
-
-    // ── Prepaid cards (self-imposed spending limits, loaded from a real Account) ──
-    // Loading money is a real transfer: it debits the chosen account via a normal,
-    // sync-safe Transaction (CategoryName="Transfer", excluded from discretionary
-    // totals) and credits the card's phone-only balance. Spending against the limit
-    // stays a phone-only log entry — never a real Transaction — so nothing
-    // double-counts once the real purchase lands from Up on the next sync.
-    public List<CardActivity> GetCardActivity(int cardId) =>
-        CardActivity.Where(a => a.CardId == cardId)
-            .OrderByDescending(a => a.Date).ThenByDescending(a => a.Id).ToList();
-
-    public async Task AddPrepaidCardAsync(string name, string colorHex)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return;
-        var nextId = (PrepaidCards.Count > 0 ? PrepaidCards.Max(c => c.Id) : 0) + 1;
-        var card = new PrepaidCard { Id = nextId, Name = name.Trim(), ColorHex = colorHex, BalanceCents = 0 };
-        PrepaidCards.Add(card);
-        await db.SetPrepaidCardAsync(card);
-        OnChange?.Invoke();
-    }
-
-    public async Task<bool> TopUpCardAsync(int cardId, int accountId, decimal amountDollars)
-    {
-        var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (card is null || account is null || amountDollars <= 0) return false;
-        if (amountDollars > GetAccountBalance(accountId)) return false;
-
-        var cents = (int)Math.Round(amountDollars * 100m);
-        var minId = Transactions.Count > 0 ? Transactions.Min(x => x.Id) : 0;
-        var transfer = new Transaction
-        {
-            Id = Math.Min(minId - 1, -1),
-            Date = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.Day),
-            Description = $"Transfer to {card.Name} limit",
-            AmountCents = -cents,
-            AccountId = account.Id,
-            AccountName = account.Name,
-            CategoryName = "Transfer",
-        };
-        Transactions.Add(transfer);
-        _pendingNewTransactions.Add(transfer);
-        await db.PutAsync("transactions", transfer);
-
-        card.BalanceCents += cents;
-        await db.SetPrepaidCardAsync(card);
-        await LogCardActivityAsync(card.Id, $"Loaded from {account.Name}", cents);
-
-        Compute();
-        OnChange?.Invoke();
-        ScheduleSyncSoon();
-        return true;
-    }
-
-    public async Task<bool> SpendFromCardAsync(int cardId, string description, decimal amountDollars)
-    {
-        var card = PrepaidCards.FirstOrDefault(c => c.Id == cardId);
-        if (card is null || amountDollars <= 0) return false;
-        var cents = (int)Math.Round(amountDollars * 100);
-        if (cents > card.BalanceCents) return false;
-        card.BalanceCents -= cents;
-        await db.SetPrepaidCardAsync(card);
-        await LogCardActivityAsync(card.Id, string.IsNullOrWhiteSpace(description) ? "Spend" : description.Trim(), -cents);
-        return true;
-    }
-
-    private async Task LogCardActivityAsync(int cardId, string description, int amountCents)
-    {
-        var nextId = (CardActivity.Count > 0 ? CardActivity.Max(a => a.Id) : 0) + 1;
-        var entry = new CardActivity { Id = nextId, CardId = cardId, Description = description, AmountCents = amountCents, Date = DateTime.Now };
-        CardActivity.Add(entry);
-        await db.SetCardActivityAsync(entry);
-        OnChange?.Invoke();
-    }
-
-    public async Task DeletePrepaidCardAsync(int cardId)
-    {
-        PrepaidCards.RemoveAll(c => c.Id == cardId);
-        await db.DeletePrepaidCardAsync(cardId);
-        var toRemove = CardActivity.Where(a => a.CardId == cardId).ToList();
-        foreach (var a in toRemove)
-        {
-            CardActivity.Remove(a);
-            await db.DeleteCardActivityAsync(a.Id);
-        }
         OnChange?.Invoke();
     }
 
