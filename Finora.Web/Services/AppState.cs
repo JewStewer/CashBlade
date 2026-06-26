@@ -983,11 +983,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public (DateTime from, DateTime to) GetCurrentPeriod()
     {
         if (SummaryPeriod == "Weekly")
-        {
-            var mon = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek + (int)DayOfWeek.Monday);
-            if (DateTime.Today.DayOfWeek == DayOfWeek.Sunday) mon = mon.AddDays(-7);
-            return (mon, mon.AddDays(6));
-        }
+            return GetCurrentPayCycle();
         return (new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1),
                 new DateTime(DateTime.Today.Year, DateTime.Today.Month,
                     DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month)));
