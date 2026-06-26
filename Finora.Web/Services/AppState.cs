@@ -324,6 +324,33 @@ public class AppState(IndexedDbService db, SyncService sync)
         OnChange?.Invoke();
     }
 
+    // ── Stripe Issuing card (real money: "load" raises the card's spending
+    // cap, "spend" is a real card swipe that Stripe itself approves/declines).
+    // Evergrove never touches a Stripe secret key — these are just the IDs
+    // Stripe handed back; live card/activity state always comes from the
+    // backend in server/stripe-issuing.
+    public string? StripeApiBaseUrl => GetSetting("StripeApiBaseUrl");
+    public string? StripeCardholderId => GetSetting("StripeCardholderId");
+    public string? StripeCardId => GetSetting("StripeCardId");
+    public bool HasStripeCard => !string.IsNullOrWhiteSpace(StripeCardId);
+
+    public Task SaveStripeBackendUrlAsync(string baseUrl) =>
+        SaveSettingAsync("StripeApiBaseUrl", baseUrl.Trim());
+
+    public async Task SaveStripeCardAsync(string cardholderId, string cardId)
+    {
+        await SaveSettingAsync("StripeCardholderId", cardholderId);
+        await SaveSettingAsync("StripeCardId", cardId);
+        OnChange?.Invoke();
+    }
+
+    public async Task ClearStripeCardAsync()
+    {
+        await SaveSettingAsync("StripeCardholderId", string.Empty);
+        await SaveSettingAsync("StripeCardId", string.Empty);
+        OnChange?.Invoke();
+    }
+
     private void NormaliseLentRepayments()
     {
         foreach (var lent in LentTransactions)

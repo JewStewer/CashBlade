@@ -1,0 +1,254 @@
+@inject AppState State
+@inject StripeCardService Stripe
+
+<div class="modal-backdrop" @onclick="Close">
+    <div class="modal-sheet" @onclick:stopPropagation>
+        <div class="modal-handle"></div>
+
+        @if (!State.HasStripeCard)
+        {
+            <div class="modal-title">Set Up Your Card</div>
+            <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:12px;max-height:60vh;overflow-y:auto">
+                <div style="font-size:12px;color:var(--text2)">
+                    This creates a real Stripe Issuing virtual card. Loading funds raises its
+                    spending cap; spending is a real card transaction that Stripe itself
+                    approves or declines — nothing here is simulated.
+                </div>
+                <div>
+                    <label class="form-label">Backend URL</label>
+                    <input class="form-input" @bind="backendUrl" @bind:event="oninput" placeholder="https://your-deploy.vercel.app" />
+                </div>
+                <div>
+                    <label class="form-label">Your name</label>
+                    <input class="form-input" @bind="name" @bind:event="oninput" placeholder="Full name" />
+                </div>
+                <div>
+                    <label class="form-label">Email</label>
+                    <input class="form-input" @bind="email" @bind:event="oninput" placeholder="you@example.com" />
+                </div>
+                <div>
+                    <label class="form-label">Phone</label>
+                    <input class="form-input" @bind="phone" @bind:event="oninput" placeholder="+61400000000" />
+                </div>
+                <div>
+                    <label class="form-label">Address line 1</label>
+                    <input class="form-input" @bind="line1" @bind:event="oninput" placeholder="123 Example St" />
+                </div>
+                <div style="display:flex;gap:8px">
+                    <div style="flex:1">
+                        <label class="form-label">City</label>
+                        <input class="form-input" @bind="city" @bind:event="oninput" />
+                    </div>
+                    <div style="flex:1">
+                        <label class="form-label">State</label>
+                        <input class="form-input" @bind="state" @bind:event="oninput" />
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <div style="flex:1">
+                        <label class="form-label">Postal code</label>
+                        <input class="form-input" @bind="postalCode" @bind:event="oninput" />
+                    </div>
+                    <div style="flex:1">
+                        <label class="form-label">Country (2-letter)</label>
+                        <input class="form-input" @bind="country" @bind:event="oninput" placeholder="AU" maxlength="2" />
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label">Starting spending limit</label>
+                    <input class="form-input" type="number" min="0" step="0.01" @bind="limitAmount" placeholder="0.00" />
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(error))
+            {
+                <div style="padding:6px 16px;color:var(--red);font-size:13px">@error</div>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
+                <button class="btn btn-primary" style="flex:1" @onclick="CreateCard" disabled="@saving">
+                    @(saving ? "Creating…" : "Create Card")
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="modal-title">Your Card</div>
+
+            <div style="padding:14px 16px 0">
+                <div style="border-radius:14px;padding:14px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:110px;box-shadow:0 8px 18px rgba(0,0,0,0.25);background:linear-gradient(135deg, #14B8A6, color-mix(in srgb, #14B8A6, black 45%))">
+                    <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;opacity:0.85">
+                        <span>Evergrove</span>
+                        <span>@(card?.Status ?? "…")</span>
+                    </div>
+                    <div style="font-size:18px;font-weight:700;margin:10px 0 2px;letter-spacing:0.08em">•••• •••• •••• @(card?.Last4 ?? "····")</div>
+                    <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;opacity:0.9">
+                        <span>Limit @(card?.LimitDollars.ToString("C") ?? "—")</span>
+                        <span>@(card is null ? "" : $"{card.ExpMonth:00}/{card.ExpYear % 100:00}")</span>
+                    </div>
+                </div>
+            </div>
+
+            @if (!confirmingCancel)
+            {
+                <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:10px">
+                    <div style="font-size:12px;color:var(--text2)">
+                        Loading funds raises this card's spending cap at Stripe — make sure your
+                        Stripe balance actually covers it. Activity below is pulled live from
+                        Stripe and includes real declines.
+                    </div>
+
+                    <div style="display:flex;gap:8px">
+                        <div style="flex:1">
+                            <label class="form-label">Amount to load</label>
+                            <input class="form-input" type="number" min="0" step="0.01" @bind="loadAmount" placeholder="0.00" />
+                        </div>
+                        <button class="btn btn-secondary" style="align-self:flex-end" @onclick="LoadFunds" disabled="@saving">Load</button>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(error))
+                    {
+                        <div style="color:var(--red);font-size:13px">@error</div>
+                    }
+
+                    @if (loadingActivity)
+                    {
+                        <div style="font-size:12px;color:var(--text2)">Loading activity…</div>
+                    }
+                    else if (activity.Count > 0)
+                    {
+                        <div style="margin-top:4px">
+                            <div class="stat-label" style="margin-bottom:6px">Recent activity</div>
+                            @foreach (var a in activity.Take(8))
+                            {
+                                <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:5px">
+                                    <span style="color:var(--text2)">@a.Merchant · @a.CreatedAt.ToLocalTime().ToString("dd MMM")</span>
+                                    <span style="display:flex;align-items:center;gap:6px">
+                                        @if (!a.Approved)
+                                        {
+                                            <span style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase">Declined</span>
+                                        }
+                                        <span style="font-weight:600;color:@(a.Approved ? "var(--text)" : "var(--red)")">@a.AmountDollars.ToString("C")</span>
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="font-size:12px;color:var(--text2)">No card activity yet.</div>
+                    }
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-danger" @onclick="() => confirmingCancel = true" disabled="@saving">Cancel card</button>
+                    <button class="btn btn-secondary" style="flex:1" @onclick="Close">Close</button>
+                </div>
+            }
+            else
+            {
+                <div style="margin:14px 16px 0;padding:10px;border:1px solid var(--red);border-radius:8px;background:rgba(248,113,113,0.08)">
+                    <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Cancel this card?</div>
+                    <div style="font-size:12px;color:var(--text2)">This deactivates the real Stripe card — it can no longer be used for purchases.</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" style="flex:1" @onclick="() => confirmingCancel = false" disabled="@saving">Keep card</button>
+                    <button class="btn btn-danger" style="flex:1" @onclick="ConfirmCancel" disabled="@saving">
+                        @(saving ? "Cancelling…" : "Cancel card")
+                    </button>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string backendUrl = string.Empty;
+    private string name = string.Empty;
+    private string email = string.Empty;
+    private string phone = string.Empty;
+    private string line1 = string.Empty;
+    private string city = string.Empty;
+    private string state = string.Empty;
+    private string postalCode = string.Empty;
+    private string country = string.Empty;
+    private decimal? limitAmount;
+    private decimal? loadAmount;
+    private string error = string.Empty;
+    private bool saving;
+    private bool confirmingCancel;
+    private bool loadingActivity;
+
+    private IssuedCard? card;
+    private List<CardActivityEntry> activity = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        backendUrl = State.StripeApiBaseUrl ?? string.Empty;
+        if (State.HasStripeCard) await RefreshCardAsync();
+    }
+
+    private async Task RefreshCardAsync()
+    {
+        if (string.IsNullOrWhiteSpace(State.StripeApiBaseUrl) || string.IsNullOrWhiteSpace(State.StripeCardId)) return;
+        card = await Stripe.GetCardAsync(State.StripeApiBaseUrl, State.StripeCardId);
+        loadingActivity = true;
+        StateHasChanged();
+        activity = await Stripe.GetActivityAsync(State.StripeApiBaseUrl, State.StripeCardId);
+        loadingActivity = false;
+        StateHasChanged();
+    }
+
+    private async Task CreateCard()
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(backendUrl)) { error = "Enter your backend URL."; return; }
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email)) { error = "Name and email are required."; return; }
+        if (string.IsNullOrWhiteSpace(line1) || string.IsNullOrWhiteSpace(city) || string.IsNullOrWhiteSpace(postalCode) || string.IsNullOrWhiteSpace(country))
+        { error = "A full billing address is required by Stripe."; return; }
+
+        saving = true;
+        await State.SaveStripeBackendUrlAsync(backendUrl);
+
+        var cardholderId = await Stripe.CreateCardholderAsync(backendUrl, name, email, phone, line1, city, state, postalCode, country.ToUpperInvariant());
+        if (cardholderId is null) { error = Stripe.LastError ?? "Could not create cardholder."; saving = false; return; }
+
+        var limitCents = (int)Math.Round((limitAmount ?? 0) * 100m);
+        var created = await Stripe.CreateCardAsync(backendUrl, cardholderId, limitCents);
+        if (created is null) { error = Stripe.LastError ?? "Could not create card."; saving = false; return; }
+
+        await State.SaveStripeCardAsync(cardholderId, created.Id);
+        saving = false;
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task LoadFunds()
+    {
+        error = string.Empty;
+        if (card is null || loadAmount is null || loadAmount <= 0 || string.IsNullOrWhiteSpace(State.StripeApiBaseUrl) || string.IsNullOrWhiteSpace(State.StripeCardId)) return;
+        saving = true;
+        var amountCents = (int)Math.Round(loadAmount.Value * 100m);
+        var newLimit = await Stripe.TopUpAsync(State.StripeApiBaseUrl, State.StripeCardId, amountCents);
+        if (newLimit is null) { error = Stripe.LastError ?? "Could not load funds."; saving = false; return; }
+        card.LimitCents = newLimit.Value;
+        loadAmount = null;
+        saving = false;
+    }
+
+    private async Task ConfirmCancel()
+    {
+        if (string.IsNullOrWhiteSpace(State.StripeApiBaseUrl) || string.IsNullOrWhiteSpace(State.StripeCardId)) return;
+        saving = true;
+        var ok = await Stripe.CancelCardAsync(State.StripeApiBaseUrl, State.StripeCardId);
+        if (!ok) { error = Stripe.LastError ?? "Could not cancel card."; saving = false; confirmingCancel = false; return; }
+        await State.ClearStripeCardAsync();
+        saving = false;
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+}

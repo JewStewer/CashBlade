@@ -36,6 +36,14 @@
     </div>
 }
 
+<div class="section-header" style="margin-top:14px">
+    <span class="section-title">Card</span>
+    <button class="btn btn-secondary btn-sm" @onclick="() => _showCard = true">@(State.HasStripeCard ? "Manage" : "+ Add")</button>
+</div>
+<div class="card-list" style="margin-top:0;padding:14px 16px;font-size:13px;color:var(--text2)">
+    @(State.HasStripeCard ? "Real Stripe card linked — open Manage to load funds or view activity." : "No card yet — set one up to load money into the app and spend with it.")
+</div>
+
 @if (!State.Accounts.Any())
 {
     <div class="empty-state" style="margin-top:40px">
@@ -422,10 +430,16 @@ else
         OnSaved="() => _accountGoalDraft = null" />
 }
 
+@if (_showCard)
+{
+    <StripeCardModal OnClose="() => _showCard = false" OnSaved="() => _showCard = false" />
+}
+
 @code {
     private Debt? _debtDraft;
     private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
+    private bool _showCard;
     private int _expandedAccountId;
     private string? _expandedGoalGroupName;
 
