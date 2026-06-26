@@ -179,6 +179,7 @@ button, a, input, select, textarea, [role="button"] {
         linear-gradient(180deg, var(--surface), var(--bg) 160%);
     border-radius: 14px;
     border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22);
     padding: 14px;
 }
 
@@ -188,6 +189,7 @@ button, a, input, select, textarea, [role="button"] {
         linear-gradient(180deg, var(--surface), var(--bg) 160%);
     border-radius: 12px;
     border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
     padding: 10px 12px;
 }
 
@@ -700,6 +702,7 @@ button.dashboard-module:active {
         linear-gradient(180deg, var(--surface), var(--bg) 160%);
     border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 80%);
     border-radius: 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22);
     overflow: hidden;
     margin: 14px 16px 0;
 }
@@ -1071,6 +1074,7 @@ button.dashboard-module:active {
 }
 
 .btn:active { opacity: 0.75; transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; pointer-events: none; }
 .btn-primary { background: var(--teal); color: #fff; }
 .btn-secondary { background: var(--surface2); color: var(--text); }
 .btn-danger { background: rgba(248,113,113,0.15); color: var(--red); }
@@ -1125,6 +1129,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 .modal-sheet {
     background: var(--surface);
     border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 32px rgba(0,0,0,0.35);
     width: 100%;
     max-height: calc(100dvh - var(--safe-top) - 8px);
     overflow-y: auto;

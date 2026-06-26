@@ -41,6 +41,3 @@ netlify.toml
 .DS_Store
 Thumbs.db
 
-# Node (Stripe Issuing backend)
-server/**/node_modules/
-server/**/.env
