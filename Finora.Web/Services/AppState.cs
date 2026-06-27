@@ -417,10 +417,16 @@ public class AppState(IndexedDbService db, SyncService sync)
         return t is not null && IsLentEligibleTransaction(t);
     }
 
+    // Deliberately narrower than IsBudgetedBillTransaction: a transaction's
+    // category alone (e.g. "Debt", "Rent") shouldn't block marking it as lent
+    // out — people categorise IOUs to friends under whatever category fits.
+    // Only block actual matched recurring bills/known committed payments,
+    // same as the internal-movement guard above.
     private bool IsLentEligibleTransaction(Transaction t) =>
         t.AmountCents < 0 &&
         !IsInternalMovement(t) &&
-        !IsBudgetedBillTransaction(t);
+        !MatchesBillRecord(t) &&
+        !MatchesKnownBudgetedPayment(t);
 
     public decimal GetLentRepaidDollars(int txnId) =>
         IsLentEligibleById(txnId)
