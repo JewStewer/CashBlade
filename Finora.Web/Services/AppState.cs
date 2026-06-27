@@ -2413,6 +2413,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var existing = SavingsGoals.FirstOrDefault(x => x.Id == g.Id);
         if (existing is null) return;
+        LogGoal($"UPDATE before=[{GoalSnapshot(existing)}] after=[{GoalSnapshot(g)}]");
         existing.Name = g.Name;
         existing.TargetCents = g.TargetCents;
         existing.CurrentCents = g.CurrentCents;
@@ -4014,11 +4015,34 @@ public class AppState(IndexedDbService db, SyncService sync)
                 LogGoal($"REAPPLY-SKIP-DELETED {GoalSnapshot(g)}");
                 continue;
             }
-            if (!SavingsGoals.Any(x => x.Id == g.Id))
+            var existingNewGoal = SavingsGoals.FirstOrDefault(x => x.Id == g.Id);
+            if (existingNewGoal is null)
             {
                 LogGoal($"REAPPLY-READD {GoalSnapshot(g)}");
                 SavingsGoals.Add(g);
                 await db.PutAsync("savingsGoals", g);
+                changed = true;
+            }
+            else if (existingNewGoal.Name != g.Name || existingNewGoal.TargetCents != g.TargetCents
+                || existingNewGoal.CurrentCents != g.CurrentCents || existingNewGoal.WeeklyContributionCents != g.WeeklyContributionCents
+                || existingNewGoal.TargetDate != g.TargetDate || existingNewGoal.GroupName != g.GroupName)
+            {
+                // A not-yet-synced goal's edits are never queued into
+                // _pendingUpdatedSavingsGoals (there's nothing server-side to
+                // "update" yet) — they only ever live on this same object
+                // reference inside _pendingNewSavingsGoals. The wholesale
+                // reload above just replaced SavingsGoals with fresh objects
+                // straight from IndexedDB, so any edit made while this sync
+                // round was running needs to be copied back over here or it's
+                // silently lost the moment the user looks away.
+                LogGoal($"REAPPLY-RESYNC existing=[{GoalSnapshot(existingNewGoal)}] pending=[{GoalSnapshot(g)}]");
+                existingNewGoal.Name = g.Name;
+                existingNewGoal.TargetCents = g.TargetCents;
+                existingNewGoal.CurrentCents = g.CurrentCents;
+                existingNewGoal.WeeklyContributionCents = g.WeeklyContributionCents;
+                existingNewGoal.TargetDate = g.TargetDate;
+                existingNewGoal.GroupName = g.GroupName;
+                await db.PutAsync("savingsGoals", existingNewGoal);
                 changed = true;
             }
         }
