@@ -48,6 +48,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public int DaysUntilPayday => Math.Max((NextPayDate.Date - DateTime.Today).Days, 0);
     public string SummaryPeriod { get; private set; } = "Weekly";
     public bool NoSpendMode { get; private set; }
+    public DateTime? NoSpendModeSince { get; private set; }
 
     // ── Affordability savings goal (shared setting keys with WPF) ─────────────
     public decimal AffordabilityGoalAmount { get; private set; }
@@ -230,6 +231,25 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal TotalBillsDue { get; private set; }
     public List<BillAccountShortfall> BillAccountShortfalls { get; private set; } = new();
     public decimal TotalBillShortfall => BillAccountShortfalls.Sum(s => s.Needed);
+
+    // ── Gamification state ──────────────────────────────────────────────────────
+    public StreakState Streak { get; private set; } = new();
+    public XpState Xp { get; private set; } = new();
+    public WeeklyChallengeState? WeeklyChallenge { get; private set; }
+    public RoundUpState RoundUp { get; private set; } = new();
+    public BadgeState Badges { get; private set; } = new();
+    public List<BadgeDefinition> UnlockedBadges =>
+        BadgeCatalog.All.Where(b => Badges.UnlockedBadgeIds.Contains(b.Id)).ToList();
+    public List<BadgeDefinition> LockedBadges =>
+        BadgeCatalog.All.Where(b => !Badges.UnlockedBadgeIds.Contains(b.Id)).ToList();
+    public decimal WeeklyChallengeProgress =>
+        WeeklyChallenge is null || string.IsNullOrEmpty(WeeklyChallenge.CategoryName)
+            ? GetWeekSpending(0)
+            : Transactions
+                .Where(t => t.Date.Date >= GetIsoWeekStart(DateTime.Today)
+                    && t.AmountCents < 0
+                    && string.Equals(t.CategoryName, WeeklyChallenge.CategoryName, StringComparison.OrdinalIgnoreCase))
+                .Sum(t => Math.Abs(t.AmountDollars));
 
     // ── Transactions for display (most recent 100) ────────────────────────────
     public List<Transaction> RecentTransactions { get; private set; } = new();
@@ -652,6 +672,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         // Insight computation is supplementary — it must never be able to stop the rest
         // of Compute() (and the UI re-render/sync that follows it) from completing.
         try { ComputeProactiveInsights(); } catch { }
+        try { ComputeStreaks(); } catch { }
+        try { ComputeXp(); } catch { }
+        try { ComputeWeeklyChallenge(); } catch { }
+        try { ComputeRoundUp(); } catch { }
+        try { ComputeBadges(); } catch { }
         try { ComputeUnifiedSmartSignals(); } catch { }
         RecentTransactions = Transactions
             .OrderByDescending(t => t.Date)
@@ -670,6 +695,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         SummaryPeriod = GetSetting("SummaryPeriod") ?? "Weekly";
         NoSpendMode = string.Equals(GetSetting("NoSpendMode"), "true", StringComparison.OrdinalIgnoreCase);
+        NoSpendModeSince = DateTime.TryParse(GetSetting("NoSpendModeSince"), out var noSpendSince) ? noSpendSince : null;
 
         AffordabilityGoalAmount = decimal.TryParse(GetSetting("AffordabilityAmount"), out var goalAmount) && goalAmount > 0
             ? goalAmount
@@ -991,8 +1017,272 @@ public class AppState(IndexedDbService db, SyncService sync)
             .ToList();
     }
 
+    private const string StreakSettingKey = "GameStreak";
+
+    private void ComputeStreaks()
+    {
+        Streak = GetSettingJson<StreakState>(StreakSettingKey) ?? new StreakState();
+
+        var newlyCompletedWeek = TryGetNewlyCompletedWeek(Streak.LastEvaluatedWeekStart);
+        if (newlyCompletedWeek is null) return;
+
+        Streak.CurrentStreakWeeks = DidWeekPassBudget(1) ? Streak.CurrentStreakWeeks + 1 : 0;
+        Streak.BestStreakWeeks = Math.Max(Streak.BestStreakWeeks, Streak.CurrentStreakWeeks);
+        Streak.LastEvaluatedWeekStart = newlyCompletedWeek;
+        PersistGameStateJson(StreakSettingKey, Streak);
+    }
+
+    private const string XpSettingKey = "GameXp";
+
+    private void ComputeXp()
+    {
+        Xp = GetSettingJson<XpState>(XpSettingKey) ?? new XpState();
+        var changed = false;
+
+        // +5 XP once per day the app is opened with a transaction already logged that day.
+        if (Xp.LastDailyLoginAward?.Date != DateTime.Today && Transactions.Any(t => t.Date.Date == DateTime.Today))
+        {
+            Xp.TotalXp += 5;
+            Xp.LastDailyLoginAward = DateTime.Today;
+            changed = true;
+        }
+
+        // +20 XP once per completed week spent within the safe-to-spend budget.
+        var newlyCompletedWeek = TryGetNewlyCompletedWeek(Xp.LastEvaluatedWeekStart);
+        if (newlyCompletedWeek is not null)
+        {
+            if (DidWeekPassBudget(1)) Xp.TotalXp += 20;
+            Xp.LastEvaluatedWeekStart = newlyCompletedWeek;
+            changed = true;
+        }
+
+        // +15 XP once per bill paid before its due date.
+        var earlyPaidStatuses = BillStatuses
+            .Where(s => s.IsPaid && s.PaidOn is not null && s.PaidOn.Value.Date < s.DueDate.Date && !Xp.AwardedBillStatusIds.Contains(s.Id))
+            .ToList();
+        if (earlyPaidStatuses.Count > 0)
+        {
+            Xp.TotalXp += 15 * earlyPaidStatuses.Count;
+            Xp.AwardedBillStatusIds.AddRange(earlyPaidStatuses.Select(s => s.Id));
+            changed = true;
+        }
+
+        if (changed) PersistGameStateJson(XpSettingKey, Xp);
+    }
+
+    private const string WeeklyChallengeSettingKey = "GameWeeklyChallenge";
+
+    private void ComputeWeeklyChallenge()
+    {
+        WeeklyChallenge = GetSettingJson<WeeklyChallengeState>(WeeklyChallengeSettingKey);
+        var currentWeekStart = GetIsoWeekStart(DateTime.Today);
+        if (WeeklyChallenge is not null && WeeklyChallenge.WeekStart.Date == currentWeekStart.Date) return;
+
+        // Lock in the outcome of the challenge that's ending before replacing it.
+        if (WeeklyChallenge is not null && WeeklyChallenge.Passed is null)
+        {
+            var spentLastWeek = string.IsNullOrEmpty(WeeklyChallenge.CategoryName)
+                ? GetWeekSpending(1)
+                : Transactions
+                    .Where(t => t.Date.Date >= WeeklyChallenge.WeekStart && t.Date.Date < currentWeekStart
+                        && t.AmountCents < 0
+                        && string.Equals(t.CategoryName, WeeklyChallenge.CategoryName, StringComparison.OrdinalIgnoreCase))
+                    .Sum(t => Math.Abs(t.AmountDollars));
+            WeeklyChallenge.Passed = spentLastWeek <= WeeklyChallenge.TargetAmount;
+        }
+
+        WeeklyChallenge = GenerateWeeklyChallenge(currentWeekStart);
+        PersistGameStateJson(WeeklyChallengeSettingKey, WeeklyChallenge);
+    }
+
+    private WeeklyChallengeState GenerateWeeklyChallenge(DateTime weekStart)
+    {
+        var lastWeekStart = weekStart.AddDays(-7);
+        var topCategory = Transactions
+            .Where(t => t.Date.Date >= lastWeekStart && t.Date.Date < weekStart
+                && t.AmountCents < 0
+                && !string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(t.CategoryName, "Transfer", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(t => t.CategoryName)
+            .Select(g => new { Category = g.Key, Spent = g.Sum(t => Math.Abs(t.AmountDollars)), Count = g.Count() })
+            .Where(g => g.Count >= 2 && g.Spent > 0)
+            .OrderByDescending(g => g.Spent)
+            .FirstOrDefault();
+
+        if (topCategory is not null)
+        {
+            var target = Math.Round(topCategory.Spent * 0.9m / 5m) * 5m;
+            return new WeeklyChallengeState
+            {
+                WeekStart = weekStart,
+                ChallengeKey = $"beat-category:{topCategory.Category}",
+                Title = $"Beat last week's {topCategory.Category} spend",
+                Description = $"Keep {topCategory.Category} spending under {target:C} this week (last week: {topCategory.Spent:C}).",
+                TargetAmount = target,
+                CategoryName = topCategory.Category
+            };
+        }
+
+        return new WeeklyChallengeState
+        {
+            WeekStart = weekStart,
+            ChallengeKey = "stay-under-safe-to-spend",
+            Title = "Stay under your safe-to-spend amount",
+            Description = $"Keep total spending under {BudgetSafeToSpendAmount:C} this week.",
+            TargetAmount = BudgetSafeToSpendAmount,
+            CategoryName = null
+        };
+    }
+
+    private const string RoundUpSettingKey = "GameRoundUp";
+
+    private void ComputeRoundUp()
+    {
+        RoundUp = GetSettingJson<RoundUpState>(RoundUpSettingKey) ?? new RoundUpState();
+        if (!RoundUp.Enabled) return;
+
+        var newSpends = Transactions
+            .Where(t => t.Id > RoundUp.LastProcessedTransactionId && t.AmountCents < 0)
+            .ToList();
+        if (newSpends.Count == 0) return;
+
+        var roundTo = Math.Max(RoundUp.RoundToCents, 1);
+        var addedCents = newSpends.Sum(t =>
+        {
+            var spentCents = -t.AmountCents;
+            var remainder = spentCents % roundTo;
+            return remainder == 0 ? 0 : roundTo - remainder;
+        });
+
+        RoundUp.AccumulatedCents += addedCents;
+        RoundUp.LastProcessedTransactionId = Transactions.Max(t => t.Id);
+        PersistGameStateJson(RoundUpSettingKey, RoundUp);
+    }
+
+    public async Task SetRoundUpEnabledAsync(bool enabled, int roundToCents)
+    {
+        RoundUp.Enabled = enabled;
+        RoundUp.RoundToCents = roundToCents;
+        if (RoundUp.LastProcessedTransactionId == 0 && Transactions.Count > 0)
+            RoundUp.LastProcessedTransactionId = Transactions.Max(t => t.Id);
+        await SaveSettingJsonAsync(RoundUpSettingKey, RoundUp);
+        Compute();
+        OnChange?.Invoke();
+    }
+
+    public async Task SweepRoundUpToGoalAsync(int savingsGoalId)
+    {
+        var goal = SavingsGoals.FirstOrDefault(g => g.Id == savingsGoalId);
+        if (goal is null || RoundUp.AccumulatedCents <= 0) return;
+
+        var updated = new SavingsGoal
+        {
+            Id = goal.Id,
+            Name = goal.Name,
+            TargetCents = goal.TargetCents,
+            CurrentCents = goal.CurrentCents + RoundUp.AccumulatedCents,
+            WeeklyContributionCents = goal.WeeklyContributionCents,
+            TargetDate = goal.TargetDate,
+            GroupName = goal.GroupName,
+            TargetStartDate = goal.TargetStartDate,
+            TargetStartingBalanceCents = goal.TargetStartingBalanceCents
+        };
+        await UpdateSavingsGoalAsync(updated);
+
+        RoundUp.AccumulatedCents = 0;
+        await SaveSettingJsonAsync(RoundUpSettingKey, RoundUp);
+        Compute();
+        OnChange?.Invoke();
+    }
+
+    private const string BadgesSettingKey = "GameBadges";
+
+    private void ComputeBadges()
+    {
+        Badges = GetSettingJson<BadgeState>(BadgesSettingKey) ?? new BadgeState();
+        var newlyUnlocked = new List<BadgeDefinition>();
+
+        foreach (var badge in BadgeCatalog.All)
+        {
+            if (Badges.UnlockedBadgeIds.Contains(badge.Id)) continue;
+            if (!IsBadgeEarned(badge.Id)) continue;
+
+            Badges.UnlockedBadgeIds.Add(badge.Id);
+            Badges.UnlockedDates[badge.Id] = DateTime.Today;
+            newlyUnlocked.Add(badge);
+        }
+
+        if (newlyUnlocked.Count > 0) PersistGameStateJson(BadgesSettingKey, Badges);
+        _newlyUnlockedBadges = newlyUnlocked;
+    }
+
+    private List<BadgeDefinition> _newlyUnlockedBadges = new();
+
+    private bool IsBadgeEarned(string badgeId) => badgeId switch
+    {
+        "emergency-1k" => Accounts.Where(a => a.Type == AccountType.Savings)
+            .Any(a => GetAccountBalance(a.Id) >= 1000),
+        "debt-half" => Debts.Any(d => d.OriginalBalanceCents > 0 && d.BalanceCents > 0 && d.BalanceCents <= d.OriginalBalanceCents / 2),
+        "debt-cleared" => Debts.Any(d => d.OriginalBalanceCents > 0 && d.BalanceCents <= 0),
+        "streak-12" => Streak.BestStreakWeeks >= 12,
+        "no-spend-7" => NoSpendMode && NoSpendModeSince is not null && (DateTime.Today - NoSpendModeSince.Value.Date).TotalDays >= 7,
+        _ => false
+    };
+
     public string? GetSetting(string key) =>
         AppSettings.FirstOrDefault(s => s.Key == key)?.Value;
+
+    public T? GetSettingJson<T>(string key)
+    {
+        var raw = GetSetting(key);
+        if (string.IsNullOrWhiteSpace(raw)) return default;
+        try { return System.Text.Json.JsonSerializer.Deserialize<T>(raw); }
+        catch { return default; }
+    }
+
+    public Task SaveSettingJsonAsync<T>(string key, T value) =>
+        SaveSettingAsync(key, System.Text.Json.JsonSerializer.Serialize(value));
+
+    /// <summary>
+    /// Updates the in-memory settings list immediately and fires off the real
+    /// persist in the background. Compute() runs synchronously and often, so a
+    /// gamification state change (e.g. a streak locking in) must be visible to the
+    /// very next Compute() call rather than only after the async DB write returns —
+    /// otherwise a second mutation in the same tick could re-evaluate the same
+    /// week-close transition and double-award it.
+    /// </summary>
+    private void PersistGameStateJson<T>(string key, T value)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(value);
+        var existing = AppSettings.FirstOrDefault(s => s.Key == key);
+        if (existing is not null) existing.Value = json;
+        else AppSettings.Add(new AppSetting { Key = key, Value = json });
+        _ = SaveSettingAsync(key, json);
+    }
+
+    /// <summary>Whether the ISO week starting Monday, N weeks ago, stayed within the safe-to-spend budget.</summary>
+    public bool DidWeekPassBudget(int weeksAgo) =>
+        GetWeekSpending(weeksAgo) <= BudgetSafeToSpendAmount;
+
+    private static DateTime GetIsoWeekStart(DateTime date)
+    {
+        var dow = (int)date.DayOfWeek;
+        return date.Date.AddDays(-(dow == 0 ? 6 : dow - 1));
+    }
+
+    /// <summary>
+    /// Returns the most recently completed ISO week's start date if it hasn't been
+    /// evaluated yet (lastEvaluated is older than it), otherwise null. Shared by every
+    /// feature that locks in a pass/fail result once per week so edits to old
+    /// transactions can't make a streak/challenge/XP award jump around after the fact.
+    /// </summary>
+    private static DateTime? TryGetNewlyCompletedWeek(DateTime? lastEvaluatedWeekStart)
+    {
+        var lastCompletedWeekStart = GetIsoWeekStart(DateTime.Today).AddDays(-7);
+        if (lastEvaluatedWeekStart is not null && lastEvaluatedWeekStart.Value.Date >= lastCompletedWeekStart)
+            return null;
+        return lastCompletedWeekStart;
+    }
 
     // ── Computed properties for Dashboard ─────────────────────────────────────
     public decimal GetAccountBalance(int accountId) =>
@@ -1805,6 +2095,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         catch { }
 
+        try
+        {
+            foreach (var badge in _newlyUnlockedBadges)
+            {
+                signals.Add(new ProactiveInsight
+                {
+                    Key = $"badge-unlocked:{badge.Id}",
+                    Severity = ProactiveInsightSeverity.Info,
+                    Title = $"Badge unlocked: {badge.Title}",
+                    Message = badge.Description,
+                    ActionUrl = "tools"
+                });
+            }
+        }
+        catch { }
+
         SmartSignals = signals
             .OrderByDescending(i => i.Severity)
             .ThenBy(i => i.Title)
@@ -2423,6 +2729,11 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var minId = SavingsGoals.Count > 0 ? SavingsGoals.Min(x => x.Id) : 0;
         g.Id = Math.Min(minId - 1, -1);
+        if (g.TargetDate is not null)
+        {
+            g.TargetStartDate = DateTime.Today;
+            g.TargetStartingBalanceCents = g.CurrentCents;
+        }
         SavingsGoals.Add(g);
         _pendingNewSavingsGoals.Add(g);
         await db.PutAsync("savingsGoals", g);
@@ -2444,6 +2755,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         existing.WeeklyContributionCents = g.WeeklyContributionCents;
         existing.TargetDate = g.TargetDate;
         existing.GroupName = g.GroupName;
+        if (existing.TargetDate is not null && existing.TargetStartDate is null)
+        {
+            existing.TargetStartDate = DateTime.Today;
+            existing.TargetStartingBalanceCents = existing.CurrentCents - contributionCents;
+        }
         await db.PutAsync("savingsGoals", existing);
         // Queue this even for a not-yet-real-id (negative) goal. Once its
         // first create round-trip clears it from _pendingNewSavingsGoals,
@@ -3287,8 +3603,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (ShouldSyncSetting(key)) ScheduleSyncSoon();
     }
 
-    public Task SetNoSpendModeAsync(bool enabled) =>
-        SaveSettingAsync("NoSpendMode", enabled ? "true" : "false");
+    public async Task SetNoSpendModeAsync(bool enabled)
+    {
+        await SaveSettingAsync("NoSpendMode", enabled ? "true" : "false");
+        if (enabled && NoSpendModeSince is null)
+            await SaveSettingAsync("NoSpendModeSince", DateTime.Today.ToString("O"));
+        else if (!enabled)
+            await SaveSettingAsync("NoSpendModeSince", string.Empty);
+    }
 
     private static bool ShouldSyncSetting(string key) =>
         key is not ("AffordabilityMode"

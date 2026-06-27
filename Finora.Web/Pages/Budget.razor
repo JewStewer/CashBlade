@@ -334,6 +334,11 @@
                             <span>@remaining.ToString("C") to go</span>
                         }
                     </div>
+                    @{ var pace = GoalPaceLabel(goal); }
+                    @if (pace is not null)
+                    {
+                        <span class="badge @pace.Value.CssClass" style="margin-top:6px;display:inline-block">@pace.Value.Label</span>
+                    }
                     @if (goal.WeeklyContributionDollars > 0 && !reached)
                     {
                         var weeksLeft = goal.WeeklyContributionDollars > 0
@@ -1367,6 +1372,24 @@ else if (_tab == "Holiday")
     private async Task SetSavingsGoalAsync(int accountId, decimal targetDollars, DateTime targetDate)
     {
         await State.SetAccountGoalAsync(accountId, targetDollars, targetDate);
+    }
+
+    private static (string Label, string CssClass)? GoalPaceLabel(SavingsGoal goal)
+    {
+        var status = GoalMath.GetPaceStatus(
+            goal.TargetDollars,
+            goal.CurrentDollars,
+            (goal.TargetStartingBalanceCents ?? 0) / 100m,
+            goal.TargetStartDate,
+            goal.TargetDate);
+
+        return status switch
+        {
+            GoalMath.PaceStatus.AheadOfPace => ("Ahead of pace", "badge-green"),
+            GoalMath.PaceStatus.OnPace => ("On pace", "badge-teal"),
+            GoalMath.PaceStatus.BehindPace => ("Behind pace", "badge-amber"),
+            _ => null
+        };
     }
 
     private void StartAddSubscriptionAsBill(RecurringPayment sub)

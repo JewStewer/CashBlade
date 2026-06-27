@@ -145,6 +145,16 @@ else
                 <strong style="color:@(State.SafeToSpendAmount > 0 ? "var(--green)" : "var(--red)")">@State.SafeToSpendAmount.ToString("C")</strong>
                 <small>@SafeSpendMessage</small>
             </button>
+            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("tools")'>
+                <span>Savings Streak</span>
+                <strong>@State.Streak.CurrentStreakWeeks week@(State.Streak.CurrentStreakWeeks == 1 ? "" : "s")</strong>
+                <small>Best: @State.Streak.BestStreakWeeks week@(State.Streak.BestStreakWeeks == 1 ? "" : "s")</small>
+            </button>
+            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("tools")'>
+                <span>Level @State.Xp.Level</span>
+                <strong>@State.Xp.XpIntoLevel/100 XP</strong>
+                <small>@State.Xp.TotalXp total XP</small>
+            </button>
         </div>
 
         @if (State.OutstandingLentDollars > 0)

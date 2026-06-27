@@ -19,6 +19,90 @@
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div>
+                <div class="row-title">This week's challenge</div>
+                <div class="row-sub">@State.WeeklyChallenge?.Title</div>
+            </div>
+            @if (State.WeeklyChallenge is not null)
+            {
+                <span class="badge @(WeeklyChallengeOnTrack ? "badge-green" : "badge-amber")">
+                    @(WeeklyChallengeOnTrack ? "On track" : "Over")
+                </span>
+            }
+        </div>
+        @if (State.WeeklyChallenge is not null)
+        {
+            <div style="font-size:13px;color:var(--text2)">@State.WeeklyChallenge.Description</div>
+            <div class="progress-bar" style="height:8px">
+                <div class="progress-fill" style="width:@WeeklyChallengeProgressPercent%;background:@(WeeklyChallengeOnTrack ? "var(--green)" : "var(--red)")"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)">
+                <span>@State.WeeklyChallengeProgress.ToString("C") spent</span>
+                <span>Target @State.WeeklyChallenge.TargetAmount.ToString("C")</span>
+            </div>
+        }
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
+                <div class="row-title">Badges</div>
+                <div class="row-sub">@State.UnlockedBadges.Count of @(State.UnlockedBadges.Count + State.LockedBadges.Count) unlocked</div>
+            </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+            @foreach (var badge in State.UnlockedBadges)
+            {
+                <span class="badge badge-green" title="@badge.Description">@badge.Title</span>
+            }
+            @foreach (var badge in State.LockedBadges)
+            {
+                <span class="badge badge-gray" title="@badge.Description">@badge.Title</span>
+            }
+        </div>
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
+                <div class="row-title">Round-up savings</div>
+                <div class="row-sub">Round every spend up and sweep the spare change into a goal.</div>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px">
+                <input type="checkbox" checked="@State.RoundUp.Enabled" @onchange="ToggleRoundUpAsync" />
+                On
+            </label>
+        </div>
+        @if (State.RoundUp.Enabled)
+        {
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span style="font-size:13px;color:var(--text2)">Round to</span>
+                <select class="form-input" style="font-size:13px" value="@State.RoundUp.RoundToCents" @onchange="ChangeRoundUpAmountAsync">
+                    <option value="100">$1</option>
+                    <option value="500">$5</option>
+                </select>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span style="font-size:13px;color:var(--text2)">Accumulated</span>
+                <strong>@State.RoundUp.AccumulatedDollars.ToString("C")</strong>
+            </div>
+            @if (State.SavingsGoals.Any())
+            {
+                <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
+                    <select class="form-input" style="font-size:13px" @bind="_roundUpSweepGoalId">
+                        @foreach (var goal in State.SavingsGoals)
+                        {
+                            <option value="@goal.Id">@goal.Name</option>
+                        }
+                    </select>
+                    <button class="btn btn-primary btn-sm" disabled="@(State.RoundUp.AccumulatedCents <= 0)" @onclick="SweepRoundUpAsync">Sweep</button>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
                 <div class="row-title">Sync queue</div>
                 <div class="row-sub">See exactly what iOS is waiting to push.</div>
             </div>
@@ -298,6 +382,33 @@
     private string _billStatus = string.Empty;
     private string _watchStatus = string.Empty;
     private string _modeStatus = string.Empty;
+    private int _roundUpSweepGoalId;
+
+    private int WeeklyChallengeProgressPercent =>
+        State.WeeklyChallenge is null || State.WeeklyChallenge.TargetAmount <= 0
+            ? 0
+            : (int)Math.Clamp(State.WeeklyChallengeProgress / State.WeeklyChallenge.TargetAmount * 100m, 0m, 100m);
+
+    private bool WeeklyChallengeOnTrack =>
+        State.WeeklyChallenge is null || State.WeeklyChallengeProgress <= State.WeeklyChallenge.TargetAmount;
+
+    private async Task ToggleRoundUpAsync(ChangeEventArgs e)
+    {
+        var enabled = e.Value is bool b && b;
+        await State.SetRoundUpEnabledAsync(enabled, State.RoundUp.RoundToCents <= 0 ? 100 : State.RoundUp.RoundToCents);
+    }
+
+    private async Task ChangeRoundUpAmountAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var cents))
+            await State.SetRoundUpEnabledAsync(true, cents);
+    }
+
+    private async Task SweepRoundUpAsync()
+    {
+        var goalId = _roundUpSweepGoalId != 0 ? _roundUpSweepGoalId : State.SavingsGoals.FirstOrDefault()?.Id ?? 0;
+        if (goalId != 0) await State.SweepRoundUpToGoalAsync(goalId);
+    }
 
     private async Task SyncNowAsync()
     {

@@ -24,4 +24,9 @@ public class SavingsGoal
     }
     public DateTime? TargetDate { get; set; }
     public string? GroupName { get; set; }
+
+    // Set once, the first time a TargetDate is assigned, so pace can be measured
+    // against where the goal started rather than its current (already-progressed) balance.
+    public DateTime? TargetStartDate { get; set; }
+    public int? TargetStartingBalanceCents { get; set; }
 }
