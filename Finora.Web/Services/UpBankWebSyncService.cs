@@ -125,10 +125,11 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                     if (transactionDeletes.Any(d => SameTransactionSignature(d.Deleted.Date, d.Deleted.Description, d.Deleted.AmountCents, purchaseDate, description, amountCents)))
                         continue;
 
+                    var isTransfer = upTransaction.Relationships.TransferAccount.Data is not null;
                     var category = GetOrCreateCategory(
                         categories,
-                        GetCategoryName(upTransaction.Relationships.Category.Data?.Id, description, amountCents),
-                        amountCents > 0 ? CategoryType.Income : CategoryType.Expense);
+                        GetCategoryName(upTransaction.Relationships.Category.Data?.Id, description, amountCents, isTransfer),
+                        isTransfer ? CategoryType.Expense : amountCents > 0 ? CategoryType.Income : CategoryType.Expense);
 
                     if (existingByUpId.TryGetValue(upTransaction.Id, out var existingTransaction))
                     {
@@ -637,8 +638,9 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
         return parts.Count == 0 ? "Up Bank transaction" : string.Join(" - ", parts);
     }
 
-    private static string GetCategoryName(string? upCategoryId, string description, int amountCents)
+    private static string GetCategoryName(string? upCategoryId, string description, int amountCents, bool isTransfer)
     {
+        if (isTransfer) return "Transfer";
         if (amountCents > 0) return "Income";
         if (!string.IsNullOrWhiteSpace(upCategoryId)) return FormatUpCategoryName(upCategoryId);
         return "Misc";
@@ -715,6 +717,12 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
     {
         public UpAccountRelationship Account { get; set; } = new();
         public UpCategoryRelationship Category { get; set; } = new();
+        public UpTransferAccountRelationship TransferAccount { get; set; } = new();
+    }
+
+    private sealed class UpTransferAccountRelationship
+    {
+        public UpRelationshipData? Data { get; set; }
     }
 
     private sealed class UpAccountRelationship

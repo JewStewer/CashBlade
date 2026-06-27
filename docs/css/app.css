@@ -15,6 +15,10 @@
     --amber: #F59E0B;
     --blue: #3B82F6;
     --purple: #7C3AED;
+    /* Default hue for the card/list/stat-tile "glow" treatment shared across
+       pages. Pages override this (see .page-accent-* below) so the same
+       component shapes don't read as identical teal blocks everywhere. */
+    --card-accent: var(--teal-light);
     --nav-height: 64px;
     --header-height: 56px;
     --safe-top: env(safe-area-inset-top, 0px);
@@ -127,15 +131,21 @@ button, a, input, select, textarea, [role="button"] {
     overflow-y: auto;
     overflow-x: hidden;
     overflow-anchor: none;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     touch-action: pan-x pan-y;
     position: relative;
-    transform: translateZ(0);
     /* Enough bottom padding to clear the fixed nav + home indicator */
     padding: 0 0 calc(var(--nav-height) + var(--safe-bottom) + 96px) 0;
     scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 96px);
 }
+
+/* Per-page accent: shifts the shared card/list/stat-tile glow hue so each
+   page reads as its own space, not a re-skin of the last one. Set on
+   .page-content by MainLayout based on the active route. */
+.page-content.page-accent-budget { --card-accent: var(--blue); }
+.page-content.page-accent-bills { --card-accent: var(--amber); }
+.page-content.page-accent-accounts { --card-accent: #22D3EE; }
+.page-content.page-accent-tools { --card-accent: var(--purple); }
 
 .bottom-nav {
     height: calc(var(--nav-height) + var(--safe-bottom));
@@ -165,25 +175,32 @@ button, a, input, select, textarea, [role="button"] {
     font-size: 10px;
     font-weight: 500;
     padding: 4px 0;
-    transition: color 0.15s;
+    transition: color 0.15s, transform 0.15s ease;
     -webkit-tap-highlight-color: transparent;
 }
 
 .nav-item.active { color: var(--teal-light); }
+.nav-item:active { transform: scale(0.92); }
 .nav-item svg { width: 22px; height: 22px; }
 
 /* ── Cards ── */
 .card {
-    background: var(--surface);
-    border-radius: 12px;
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 9%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 80%);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22);
     padding: 14px;
 }
 
 .card-sm {
-    background: var(--surface);
-    border-radius: 10px;
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 8%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 80%);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
     padding: 10px 12px;
 }
 
@@ -222,9 +239,11 @@ button, a, input, select, textarea, [role="button"] {
 }
 
 .stat-tile {
-    background: var(--surface);
-    border-radius: 12px;
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 9%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 80%);
     padding: 12px;
 }
 
@@ -244,9 +263,11 @@ button, a, input, select, textarea, [role="button"] {
 
 .quick-action {
     min-height: 86px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 9%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 80%);
+    border-radius: 14px;
     color: var(--text);
     padding: 10px 8px;
     display: flex;
@@ -256,6 +277,11 @@ button, a, input, select, textarea, [role="button"] {
     text-align: left;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    transition: background 0.3s ease, border-color 0.3s ease, transform 0.15s ease;
+}
+
+.quick-action:active {
+    transform: scale(0.96);
 }
 
 .quick-action span {
@@ -268,6 +294,7 @@ button, a, input, select, textarea, [role="button"] {
     align-items: center;
     justify-content: center;
     font-weight: 800;
+    transition: background 0.3s ease, color 0.3s ease;
 }
 
 .quick-action strong {
@@ -281,14 +308,24 @@ button, a, input, select, textarea, [role="button"] {
     line-height: 1.2;
 }
 
-.quick-action.active {
-    border-color: rgba(245,158,11,0.55);
-    background: rgba(245,158,11,0.12);
+.quick-action.tone-spend span { background: rgba(52,211,153,0.16); color: var(--green); }
+.quick-action.tone-budget span { background: rgba(59,130,246,0.16); color: var(--blue); }
+.quick-action.tone-bill span { background: rgba(245,158,11,0.16); color: var(--amber); }
+.quick-action.tone-tools span { background: rgba(124,58,237,0.16); color: var(--purple); }
+
+.quick-action.no-spend-action span {
+    background: rgba(52,211,153,0.16);
+    color: var(--green);
 }
 
-.quick-action.active span {
-    background: rgba(245,158,11,0.18);
-    color: var(--amber);
+.quick-action.no-spend-action.is-on {
+    border-color: rgba(248,113,113,0.55);
+    background: rgba(248,113,113,0.12);
+}
+
+.quick-action.no-spend-action.is-on span {
+    background: rgba(248,113,113,0.18);
+    color: var(--red);
 }
 
 .dashboard-shell {
@@ -387,9 +424,11 @@ button, a, input, select, textarea, [role="button"] {
 
 .budget-pulse,
 .dashboard-module {
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 78%);
     border-radius: 14px;
-    background: var(--surface);
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 10%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
     padding: 13px;
 }
 
@@ -488,6 +527,12 @@ button.dashboard-module {
     color: var(--text);
     text-align: left;
     cursor: pointer;
+    transition: background 0.3s ease, border-color 0.3s ease, transform 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+button.dashboard-module:active {
+    transform: scale(0.97);
 }
 
 .dashboard-module strong {
@@ -505,16 +550,27 @@ button.dashboard-module {
     font-size: 12px;
     line-height: 1.35;
     margin: 7px 0 0;
+    min-height: 33px;
+}
+
+.no-spend-module {
+    border-color: rgba(52,211,153,0.35);
+    background: rgba(52,211,153,0.08);
 }
 
 .no-spend-module.is-on {
-    border-color: rgba(245,158,11,0.5);
-    background: rgba(245,158,11,0.12);
+    border-color: rgba(248,113,113,0.5);
+    background: rgba(248,113,113,0.12);
 }
 
 .reimburse-module {
     background: linear-gradient(135deg, rgba(129,140,248,0.14), var(--surface) 64%);
     border-color: rgba(129,140,248,0.36);
+}
+
+.safe-spend-module {
+    background: linear-gradient(135deg, rgba(59,130,246,0.14), var(--surface) 64%);
+    border-color: rgba(59,130,246,0.36);
 }
 
 .mini-row {
@@ -545,34 +601,6 @@ button.dashboard-module {
     font-size: 12px;
     flex-shrink: 0;
 }
-
-.forecast-mini-track {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 5px;
-    align-items: end;
-    height: 44px;
-    margin-top: 12px;
-    padding: 7px;
-    border-radius: 10px;
-    background: var(--bg);
-}
-
-.forecast-mini-track i {
-    display: block;
-    height: 42%;
-    border-radius: 999px 999px 3px 3px;
-    background: var(--teal-light);
-    opacity: 0.75;
-}
-
-.forecast-mini-track i:nth-child(2) { height: 68%; }
-.forecast-mini-track i:nth-child(3) { height: 88%; }
-.forecast-mini-track i:nth-child(4) { height: 54%; }
-.forecast-mini-track i:nth-child(5) { height: 76%; }
-.forecast-mini-track i.bill { background: var(--amber); }
-.forecast-mini-track i.pay { background: var(--green); }
-.forecast-mini-track i.danger { background: var(--red); }
 
 .dashboard-section-head {
     margin-top: 14px;
@@ -612,9 +640,11 @@ button.dashboard-module {
 }
 
 .metric-strip div {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 8%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 80%);
+    border-radius: 12px;
     padding: 10px;
     min-width: 0;
 }
@@ -670,9 +700,11 @@ button.dashboard-module {
 
 /* ── Rounded list section (card-style alternative to a flush edge-to-edge list) ── */
 .list-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 8%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 80%);
+    border-radius: 14px;
     overflow: hidden;
     margin: 12px 16px 0;
 }
@@ -681,9 +713,12 @@ button.dashboard-module {
    Dashboard's look can never cascade into HolidayTab's existing .list-card
    usage elsewhere. Adds the last-row divider cleanup .list-card doesn't have. */
 .card-list {
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--card-accent) 8%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    border: 1px solid color-mix(in srgb, var(--card-accent), var(--border) 80%);
     border-radius: 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22);
     overflow: hidden;
     margin: 14px 16px 0;
 }
@@ -698,13 +733,16 @@ button.dashboard-module {
     gap: 12px;
     border-bottom: 1px solid var(--border);
     overflow-anchor: none;
+    transition: background 0.15s ease;
 }
+
+.list-row:active { background: rgba(255,255,255,0.05); }
 
 .list-row:last-child { border-bottom: none; }
 
 .row-icon {
     width: 36px; height: 36px;
-    border-radius: 9px;
+    border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
     font-size: 15px;
@@ -782,6 +820,20 @@ button.dashboard-module {
 }
 
 .forecast-bar-fill.negative { background: var(--red); }
+
+.forecast-bar-label {
+    position: absolute;
+    left: 50%;
+    font-size: 5.5px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    color: var(--text2);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.forecast-bar-label.above { transform: translate(-50%, calc(-100% - 3px)); }
+.forecast-bar-label.below { transform: translate(-50%, 3px); }
 
 .forecast-chart-dates {
     display: grid;
@@ -1040,7 +1092,8 @@ button.dashboard-module {
     -webkit-tap-highlight-color: transparent;
 }
 
-.btn:active { opacity: 0.75; }
+.btn:active { opacity: 0.75; transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; pointer-events: none; }
 .btn-primary { background: var(--teal); color: #fff; }
 .btn-secondary { background: var(--surface2); color: var(--text); }
 .btn-danger { background: rgba(248,113,113,0.15); color: var(--red); }
@@ -1095,10 +1148,10 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 .modal-sheet {
     background: var(--surface);
     border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 32px rgba(0,0,0,0.35);
     width: 100%;
     max-height: calc(100dvh - var(--safe-top) - 8px);
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     /* Reserve room so the last form field can scroll clear of the fixed
        .modal-actions bar overlaid on top of it (see below). */
@@ -1162,8 +1215,12 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     white-space: nowrap;
     cursor: pointer;
     border: none;
-    transition: background 0.15s;
+    transition: background 0.25s ease, color 0.25s ease, transform 0.15s ease;
     -webkit-tap-highlight-color: transparent;
+}
+
+.pill:active {
+    transform: scale(0.94);
 }
 
 .pill-active { background: var(--teal); color: #fff; }
@@ -1304,6 +1361,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     font-size: 12px;
     line-height: 1.35;
     margin-top: 6px;
+    min-height: 33px;
 }
 
 .tone-green { --tone: var(--green); --tone-bg: rgba(52,211,153,0.13); }
@@ -1380,7 +1438,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     border: 1px solid color-mix(in srgb, var(--tone), var(--border) 68%);
     background: var(--tone-bg);
     color: var(--text);
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 11px 12px;
     display: flex;
     align-items: center;
@@ -1456,7 +1514,6 @@ select.form-input { appearance: none; -webkit-appearance: none; }
        scrollable region in this app (.page-content, .modal-sheet) allows
        both axes for exactly this reason, even when only one axis scrolls. */
     touch-action: pan-x pan-y;
-    -webkit-overflow-scrolling: touch;
     padding-bottom: 2px;
     scrollbar-width: none;
 }
@@ -1482,6 +1539,11 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     justify-content: space-between;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.25s ease, background 0.25s ease, transform 0.15s ease;
+}
+
+.timeline-chip:active {
+    transform: scale(0.96);
 }
 
 .timeline-chip span {

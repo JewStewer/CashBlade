@@ -22,6 +22,9 @@ public class Trip
 
 public class TripItineraryItem
 {
+    // Stable identity so edits target the right item even if the list is
+    // replaced or reordered by a background sync while the user has it open.
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime Date { get; set; }
     public string? Time { get; set; }
     public string? EndTime { get; set; }
@@ -37,6 +40,7 @@ public class TripItineraryItem
 
 public class TripChecklistItem
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Text { get; set; } = string.Empty;
     public bool Done { get; set; }
     public DateTime? DueDate { get; set; }
@@ -44,6 +48,7 @@ public class TripChecklistItem
 
 public class TripBudgetItem
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Category { get; set; } = string.Empty;
     public int PlannedCents { get; set; }
     public int ActualCents { get; set; }

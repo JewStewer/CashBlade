@@ -35,7 +35,7 @@
         <div class="card" style="margin-top:12px;border-color:rgba(245,158,11,0.4)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <div>
-                    <div class="section-title">💸 Payday Transfer Plan</div>
+                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Payday Transfer Plan</div>
                     <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so each account can cover its own bills</div>
                 </div>
                 <span style="font-size:14px;font-weight:700;color:var(--amber)">@transferPlan.Sum(t => t.Amount).ToString("C")</span>
@@ -65,7 +65,7 @@
         <div class="card" style="margin-top:12px;border-color:rgba(99,102,241,0.4)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
-                    <div class="section-title">🤝 Pending Reimbursements</div>
+                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="users" Size="14" /> Pending Reimbursements</div>
                     <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Excluded from your spending until marked repaid</div>
                 </div>
                 <span style="font-size:14px;font-weight:700;color:#818CF8">@totalOwed.ToString("C")</span>
@@ -81,8 +81,8 @@
                         </div>
                     </div>
                     <span style="font-size:14px;font-weight:600;color:#818CF8;flex-shrink:0">@State.GetLentOutstandingDollars(txn).ToString("C") owed</span>
-                    <button @onclick="() => State.MarkRepaidAsync(lent.Id)" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);color:var(--green);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0">
-                        Got paid back ✓
+                    <button @onclick="() => State.MarkRepaidAsync(lent.Id)" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);color:var(--green);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
+                        Got paid back <Icon Name="check" Size="12" />
                     </button>
                 </div>
             }
@@ -104,6 +104,25 @@
         @if (_editingBudget)
         {
             <div style="display:flex;flex-direction:column;gap:10px">
+                @if (_smartSuggestion is null)
+                {
+                    <button class="btn btn-secondary btn-sm" style="align-self:flex-start;display:inline-flex;align-items:center;gap:5px" @onclick="PreviewSmartBudget"><Icon Name="sparkles" Size="13" /> Suggest a smart budget</button>
+                }
+                else
+                {
+                    <div style="background:var(--surface2);border-radius:10px;padding:10px;font-size:12px">
+                        <div style="font-weight:600;margin-bottom:6px">Based on your last 8 weeks of activity</div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Income</span><strong>@_smartSuggestion.Income.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Bills</span><strong>@_smartSuggestion.Bills.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Essentials</span><strong>@_smartSuggestion.Essentials.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Savings</span><strong>@_smartSuggestion.Savings.ToString("C")</strong></div>
+                        <div style="display:flex;justify-content:space-between"><span>Unplanned</span><strong>@_smartSuggestion.Unplanned.ToString("C")</strong></div>
+                        <div style="display:flex;gap:8px;margin-top:8px">
+                            <button class="btn btn-primary btn-sm" style="flex:1" @onclick="ApplySmartBudgetAsync">Apply</button>
+                            <button class="btn btn-secondary btn-sm" style="flex:1" @onclick="() => _smartSuggestion = null">Dismiss</button>
+                        </div>
+                    </div>
+                }
                 <div style="display:flex;align-items:center;gap:8px">
                     <span style="flex:1;font-size:14px;font-weight:600">Weekly Income</span>
                     <input class="form-input" style="width:110px;text-align:right;padding:6px 10px;font-size:14px"
@@ -383,10 +402,10 @@
                 var weeklySpare = State.BudgetLeftover;
                 var leftOver = weeklySpare - weeklyNeeded;
                 var ratio = weeklySpare > 0 ? weeklyNeeded / weeklySpare : 999m;
-                var (verdict, verdictColor) =
-                    ratio < 0.5m ? ("✓ Comfortable — easily on track", "var(--green)") :
-                    ratio <= 1m  ? ("⚠ Tight — uses most of your spare budget", "var(--amber)") :
-                                   ("✕ Short — not enough spare to hit this goal", "var(--red)");
+                var (verdictIcon, verdict, verdictColor) =
+                    ratio < 0.5m ? ("check", "Comfortable — easily on track", "var(--green)") :
+                    ratio <= 1m  ? ("alert-triangle", "Tight — uses most of your spare budget", "var(--amber)") :
+                                   ("x", "Short — not enough spare to hit this goal", "var(--red)");
                 var account = State.AffordabilityGoalAccount;
 
                 @if (weeklySpare > 0)
@@ -416,7 +435,7 @@
                 }
 
                 <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
-                    <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px">@verdict</div>
+                    <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                         <span style="color:var(--text3)">Need to save</span>
                         <span style="font-weight:600">@weeklyNeeded.ToString("C")/wk for @weeks wk@(weeks == 1 ? "" : "s")</span>
@@ -478,13 +497,13 @@
                 var weeklySpare = State.BudgetLeftover;
                 var remainingSpare = weeklySpare - weeklyImpact;
                 var ratio = weeklySpare > 0 ? weeklyImpact / weeklySpare : 999m;
-                var (verdict, verdictColor) =
-                    ratio < 0.5m ? ("✓ Comfortable — easily on track", "var(--green)") :
-                    ratio <= 1m  ? ("⚠ Tight — uses most of your spare budget", "var(--amber)") :
-                                   ("✕ Short — not enough spare for these repayments", "var(--red)");
+                var (verdictIcon, verdict, verdictColor) =
+                    ratio < 0.5m ? ("check", "Comfortable — easily on track", "var(--green)") :
+                    ratio <= 1m  ? ("alert-triangle", "Tight — uses most of your spare budget", "var(--amber)") :
+                                   ("x", "Short — not enough spare for these repayments", "var(--red)");
 
                 <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
-                    <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px">@verdict</div>
+                    <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                         <span style="color:var(--text3)">Repayments</span>
                         <span style="font-weight:600">@count × @perInstallment.ToString("C") / @freq wk@(freq == 1 ? "" : "s")</span>
@@ -511,13 +530,13 @@
             var safe = State.SafeToSpendAmount;
             var remaining = safe - _affordAmount;
             var pct = safe > 0 ? _affordAmount / safe : (_affordAmount > 0 ? 1.5m : 0m);
-            var (verdict, verdictColor) =
-                remaining >= 0 && pct < 0.4m ? ("✓ Comfortably affordable", "var(--green)") :
-                remaining >= 0 && pct < 0.8m ? ("⚠ Affordable — watch your budget", "var(--amber)") :
-                remaining >= 0             ? ("⚠ Very tight — barely affordable", "var(--amber)") :
-                                             ("✕ Over budget", "var(--red)");
+            var (verdictIcon, verdict, verdictColor) =
+                remaining >= 0 && pct < 0.4m ? ("check", "Comfortably affordable", "var(--green)") :
+                remaining >= 0 && pct < 0.8m ? ("alert-triangle", "Affordable — watch your budget", "var(--amber)") :
+                remaining >= 0             ? ("alert-triangle", "Very tight — barely affordable", "var(--amber)") :
+                                             ("x", "Over budget", "var(--red)");
             <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
-                <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px">@verdict</div>
+                <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
                 <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                     <span style="color:var(--text3)">Safe to spend now</span>
                     <span style="font-weight:600">@safe.ToString("C")</span>
@@ -786,8 +805,9 @@ else if (_tab == "Spending")
                 </div>
                 @if (flips)
                 {
-                    <div style="font-size:12px;font-weight:600;color:@(newLeftover>=0?"var(--green)":"var(--red)");margin-top:8px">
-                        @(newLeftover >= 0 ? "✓ This would bring you back under budget" : "⚠ This would put you over budget")
+                    <div style="font-size:12px;font-weight:600;color:@(newLeftover>=0?"var(--green)":"var(--red)");margin-top:8px;display:flex;align-items:center;gap:5px">
+                        <Icon Name="@(newLeftover >= 0 ? "check" : "alert-triangle")" Size="13" />
+                        @(newLeftover >= 0 ? "This would bring you back under budget" : "This would put you over budget")
                     </div>
                 }
             }
@@ -802,7 +822,7 @@ else if (_tab == "Spending")
     {
         <div class="card" style="margin-top:12px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-                <div class="section-title">🔁 Subscriptions</div>
+                <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Subscriptions</div>
                 <span style="font-size:14px;font-weight:700">@State.SubscriptionWeeklyTotal.ToString("C")<span style="font-size:10px;color:var(--text3);font-weight:400">/wk</span></span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">@subscriptions.Count recurring payment@(subscriptions.Count == 1 ? "" : "s") detected from your transaction history</div>
@@ -859,8 +879,8 @@ else if (_tab == "History")
             @if (PreviousPeriodSpend > 0)
             {
                 var cycleDelta = PeriodSpend - PreviousPeriodSpend;
-                <div style="font-size:11px;margin-bottom:6px;color:@(cycleDelta>0?"var(--red)":"var(--green)")">
-                    @(cycleDelta >= 0 ? "▲" : "▼") @Math.Abs(cycleDelta).ToString("C") vs last cycle
+                <div style="font-size:11px;margin-bottom:6px;color:@(cycleDelta>0?"var(--red)":"var(--green)");display:flex;align-items:center;gap:4px">
+                    <Icon Name="@(cycleDelta >= 0 ? "trending-up" : "trending-down")" Size="11" /> @Math.Abs(cycleDelta).ToString("C") vs last cycle
                 </div>
             }
             <div class="progress-bar" style="height:8px">
@@ -885,7 +905,7 @@ else if (_tab == "History")
                 @if (isSpike)
                 {
                     <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:8px">
-                        <span style="color:var(--amber);font-weight:600">⚡ High-spend @PeriodNounLower</span>
+                        <span style="color:var(--amber);font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="zap" Size="12" /> High-spend @PeriodNounLower</span>
                         <span style="color:var(--text3)"> — @spikeAmount.ToString("C") above your usual @avg.ToString("C0") avg. Likely one-off expenses.</span>
                     </div>
                 }
@@ -1035,6 +1055,7 @@ else if (_tab == "Forecast")
                 @foreach (var bar in bars)
                 {
                     <div class="forecast-bar-col">
+                        <div class="forecast-bar-label @(bar.Negative ? "below" : "above")" style="top:@(bar.Y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%">@FormatCompactCurrency(bar.Balance)</div>
                         <div class="forecast-bar-fill @(bar.Negative ? "negative" : "")" style="top:@(bar.Top.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%;height:@(bar.Height.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                         @if (bar.HasBill)
                         {
@@ -1134,8 +1155,8 @@ else if (_tab == "Forecast")
                         <div style="font-size:16px;font-weight:700;color:@(day.Date==DateTime.Today?"var(--teal)":"var(--text)")">@day.Date.Day</div>
                         <div style="font-size:10px;color:var(--text3)">@day.Date.ToString("MMM")</div>
                     </div>
-                    <div class="row-icon" style="background:@(day.IsPayday?"rgba(52,211,153,0.15)":"rgba(248,113,113,0.12)")">
-                        @(day.IsPayday ? "💰" : "📋")
+                    <div class="row-icon" style="background:@(day.IsPayday?"rgba(52,211,153,0.15)":"rgba(248,113,113,0.12)");color:@(day.IsPayday?"var(--green)":"var(--red)")">
+                        <Icon Name="@(day.IsPayday ? "dollar-sign" : "clipboard")" />
                     </div>
                     <div class="row-main">
                         <div class="row-title">@day.Note</div>
@@ -1227,6 +1248,22 @@ else if (_tab == "Holiday")
     private async Task SetBudgetFieldAsync(string field, ChangeEventArgs e)
     {
         await State.SetBudgetOverrideAsync(field, e.Value?.ToString());
+    }
+
+    private AppState.SmartBudgetSuggestion? _smartSuggestion;
+
+    private void PreviewSmartBudget() => _smartSuggestion = State.GetSmartBudgetSuggestion();
+
+    private async Task ApplySmartBudgetAsync()
+    {
+        if (_smartSuggestion is null) return;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        await State.SetBudgetOverrideAsync("Income", _smartSuggestion.Income.ToString(inv));
+        await State.SetBudgetOverrideAsync("Bills", _smartSuggestion.Bills.ToString(inv));
+        await State.SetBudgetOverrideAsync("Essentials", _smartSuggestion.Essentials.ToString(inv));
+        await State.SetBudgetOverrideAsync("Savings", _smartSuggestion.Savings.ToString(inv));
+        await State.SetBudgetOverrideAsync("Unplanned", _smartSuggestion.Unplanned.ToString(inv));
+        _smartSuggestion = null;
     }
 
     private IEnumerable<(string Label, string Field, decimal Amount, string Color)> EditableBudgetRows()
@@ -1487,7 +1524,14 @@ else if (_tab == "Holiday")
         decimal Spending);
 
     private sealed record ForecastCalendarDay(DateTime Date, ForecastDay? Forecast, bool IsOutsideMonth, bool IsPayday);
-    private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay, DateTime Date);
+    private sealed record ForecastBalanceBar(decimal Top, decimal Height, decimal Y, bool Negative, bool HasBill, bool HasPay, DateTime Date, decimal Balance);
+
+    private static string FormatCompactCurrency(decimal v)
+    {
+        var sign = v < 0 ? "-" : "";
+        var abs = Math.Abs(v);
+        return abs >= 1000m ? $"{sign}${(abs / 1000m).ToString("0.#")}k" : $"{sign}${abs:0}";
+    }
 
     // Day-by-day 60-day balance projection: starting balance minus average daily
     // discretionary spend, minus all unpaid recurring bill occurrences, plus
@@ -1613,7 +1657,7 @@ else if (_tab == "Holiday")
             var top = Math.Min(zeroY, y);
             var height = Math.Max(Math.Abs(zeroY - y), 1.5m);
 
-            result.Add(new ForecastBalanceBar(top, height, y, y > zeroY, slice.Any(f => f.Bills > 0), slice.Any(f => f.IsPayday), slice[^1].Date));
+            result.Add(new ForecastBalanceBar(top, height, y, y > zeroY, slice.Any(f => f.Bills > 0), slice.Any(f => f.IsPayday), slice[^1].Date, slice[^1].Balance));
         }
 
         return result;

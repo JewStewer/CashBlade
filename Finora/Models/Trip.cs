@@ -33,9 +33,13 @@ public class Trip
 
 public class TripItineraryItem
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
     public DateTime Date { get; set; }
 
     public string? Time { get; set; }
+
+    public string? EndTime { get; set; }
 
     public string Title { get; set; } = string.Empty;
 
@@ -52,6 +56,8 @@ public class TripItineraryItem
 
 public class TripChecklistItem
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Text { get; set; } = string.Empty;
 
     public bool Done { get; set; }
@@ -61,6 +67,8 @@ public class TripChecklistItem
 
 public class TripBudgetItem
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Category { get; set; } = string.Empty;
 
     public int PlannedCents { get; set; }

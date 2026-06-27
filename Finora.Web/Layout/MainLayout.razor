@@ -42,11 +42,11 @@
                     b.EffectiveDueDate.Date == DateTime.Today.AddDays(1) ? $"{b.Name} (tomorrow)" :
                     $"{b.Name} (in {(b.EffectiveDueDate.Date - DateTime.Today).Days}d)"))</span>
             </div>
-            <button class="bill-alert-close" @onclick="() => _dismissedBillAlert = true">✕</button>
+            <button class="bill-alert-close" @onclick="() => _dismissedBillAlert = true"><Icon Name="x" Size="14" /></button>
         </div>
     }
 
-    <main class="page-content">
+    <main class="page-content @PageAccentClass">
         @if (State.AppLockEnabled && !State.IsUnlocked)
         {
             <LockScreen />
@@ -151,6 +151,15 @@
     private bool IsTransactionsRoute => CurrentPath.Equals("transactions", StringComparison.OrdinalIgnoreCase);
     private bool IsBillsRoute => CurrentPath.Equals("bills", StringComparison.OrdinalIgnoreCase);
 
+    private string PageAccentClass => CurrentPath.ToLowerInvariant() switch
+    {
+        "budget" => "page-accent-budget",
+        "bills" => "page-accent-bills",
+        "accounts" => "page-accent-accounts",
+        "tools" => "page-accent-tools",
+        _ => ""
+    };
+
     private void OnFabClick()
     {
         if (IsTransactionsRoute) _showAddTxn = true;
@@ -164,14 +173,14 @@
         Nav.LocationChanged += OnLocationChanged;
     }
 
-    // State.OnChange fires from background work (sync, debounced pushes, the
-    // periodic timer) with no user gesture in the call stack — exactly the
-    // case WKWebView can fail to repaint for. Flag it so the next
-    // OnAfterRenderAsync nudges a reflow once the DOM has actually updated
-    // (e.g. the bottom-right "unsync'd" badge clearing after a background sync).
+    // State.OnChange fires for EVERY mutation, including ones made directly
+    // by a tap (ticking a checkbox, saving a row) which already have a user
+    // gesture in the call stack and repaint fine on their own. Don't nudge
+    // here — nudgeRepaint's forced scrollTop snap-back fights any scroll the
+    // user starts right after. Sync.OnSyncStateChanged (below) covers the
+    // actual background-without-a-gesture case this workaround is for.
     private void OnStateChanged()
     {
-        _pendingNudge = true;
         StateHasChanged();
     }
 

@@ -1,4 +1,6 @@
 @inject AppState State
+@inject IJSRuntime JS
+@implements IDisposable
 
 @{
     var trip = SelectedTrip;
@@ -304,10 +306,10 @@ else
     @if (trip.BudgetItems.Any())
     {
         <div class="list-card">
-            @foreach (var row in trip.BudgetItems.Select((item, index) => new { item, index }))
+            @foreach (var item in trip.BudgetItems)
             {
-                var displayPaid = row.item.ActualDollars > 0 ? row.item.ActualDollars : (row.item.Paid ? row.item.PlannedDollars : 0);
-                @if (_editingBudgetIndex == row.index)
+                var displayPaid = item.ActualDollars > 0 ? item.ActualDollars : (item.Paid ? item.PlannedDollars : 0);
+                @if (_editingBudgetId == item.Id)
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
                         <input class="form-input" @bind="_newBudgetCategory" placeholder="Category" />
@@ -329,23 +331,23 @@ else
                 else
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
-                        <input type="checkbox" checked="@row.item.Paid" @onchange="() => ToggleBudgetPaid(row.index)" style="width:18px;height:18px;accent-color:var(--teal)" />
+                        <input type="checkbox" checked="@item.Paid" @onchange="() => ToggleBudgetPaid(item.Id)" style="width:18px;height:18px;accent-color:var(--teal)" />
                         <div style="flex:1">
-                            <div style="font-size:14px;font-weight:600">@row.item.Category</div>
-                            @if (!string.IsNullOrWhiteSpace(row.item.Notes))
+                            <div style="font-size:14px;font-weight:600">@item.Category</div>
+                            @if (!string.IsNullOrWhiteSpace(item.Notes))
                             {
-                                <div style="font-size:11px;color:var(--text3);margin-top:2px">@row.item.Notes</div>
+                                <div style="font-size:11px;color:var(--text3);margin-top:2px">@item.Notes</div>
                             }
                         </div>
                         <div style="text-align:right">
-                            <div style="font-size:14px;font-weight:700">@row.item.PlannedDollars.ToString("C")</div>
+                            <div style="font-size:14px;font-weight:700">@item.PlannedDollars.ToString("C")</div>
                             @if (displayPaid > 0)
                             {
                                 <div style="font-size:11px;color:var(--green)">@displayPaid.ToString("C") paid</div>
                             }
                         </div>
-                        <button class="btn btn-secondary btn-sm" @onclick="() => StartBudgetEdit(row.index)">Edit</button>
-                        <button class="btn btn-icon" @onclick="() => RemoveBudgetItem(row.index)">x</button>
+                        <button class="btn btn-secondary btn-sm" @onclick="() => StartBudgetEdit(item.Id)">Edit</button>
+                        <button class="btn btn-icon" @onclick="() => RemoveBudgetItem(item.Id)">x</button>
                     </div>
                 }
             }
@@ -451,9 +453,9 @@ else
     @if (trip.Itinerary.Any())
     {
         <div class="list-card">
-            @foreach (var row in GetOrderedItinerary(trip))
+            @foreach (var item in GetOrderedItinerary(trip))
             {
-                @if (_editingItineraryIndex == row.Index)
+                @if (_editingItineraryId == item.Id)
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
                         <input class="form-input" type="date" @bind="_newItineraryDate" @bind:event="oninput" />
@@ -475,25 +477,25 @@ else
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start">
                         <div style="min-width:68px">
-                            <div style="font-size:12px;color:var(--text3)">@row.Item.Date.ToString("dd MMM")</div>
-                            @if (!string.IsNullOrWhiteSpace(FormatTimeRange(row.Item.Time, row.Item.EndTime)))
+                            <div style="font-size:12px;color:var(--text3)">@item.Date.ToString("dd MMM")</div>
+                            @if (!string.IsNullOrWhiteSpace(FormatTimeRange(item.Time, item.EndTime)))
                             {
-                                <div style="font-size:12px;color:var(--text3)">@FormatTimeRange(row.Item.Time, row.Item.EndTime)</div>
+                                <div style="font-size:12px;color:var(--text3)">@FormatTimeRange(item.Time, item.EndTime)</div>
                             }
                         </div>
                         <div style="flex:1">
-                            <div style="font-size:14px;font-weight:600">@row.Item.Title</div>
-                            @if (row.Item.AmountDollars > 0)
+                            <div style="font-size:14px;font-weight:600">@item.Title</div>
+                            @if (item.AmountDollars > 0)
                             {
-                                <div style="font-size:11px;color:var(--green);font-weight:700;margin-top:2px">@row.Item.AmountDollars.ToString("C")</div>
+                                <div style="font-size:11px;color:var(--green);font-weight:700;margin-top:2px">@item.AmountDollars.ToString("C")</div>
                             }
-                            @if (!string.IsNullOrWhiteSpace(row.Item.Notes))
+                            @if (!string.IsNullOrWhiteSpace(item.Notes))
                             {
-                                <div style="font-size:12px;color:var(--text3);margin-top:2px">@row.Item.Notes</div>
+                                <div style="font-size:12px;color:var(--text3);margin-top:2px">@item.Notes</div>
                             }
                         </div>
-                        <button class="btn btn-secondary btn-sm" @onclick="() => StartItineraryEdit(row.Index)">Edit</button>
-                        <button class="btn btn-icon" @onclick="() => RemoveItineraryItem(row.Index)">x</button>
+                        <button class="btn btn-secondary btn-sm" @onclick="() => StartItineraryEdit(item.Id)">Edit</button>
+                        <button class="btn btn-icon" @onclick="() => RemoveItineraryItem(item.Id)">x</button>
                     </div>
                 }
             }
@@ -545,9 +547,9 @@ else
                 <span>@checklistProgress.ToString("P0") complete</span>
                 <span>@DueSoonCount(trip) due soon</span>
             </div>
-            @foreach (var row in GetOrderedChecklist(trip))
+            @foreach (var item in GetOrderedChecklist(trip))
             {
-                @if (_editingChecklistIndex == row.Index)
+                @if (_editingChecklistId == item.Id)
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
                         <input class="form-input" @bind="_newChecklistText" placeholder="Task" />
@@ -565,16 +567,16 @@ else
                 else
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
-                        <input type="checkbox" checked="@row.Item.Done" @onchange="(ChangeEventArgs e) => ToggleChecklistItem(row.Index, e)" style="width:18px;height:18px;accent-color:var(--teal)" />
+                        <input type="checkbox" checked="@item.Done" @onchange="(ChangeEventArgs e) => ToggleChecklistItem(item.Id, e)" style="width:18px;height:18px;accent-color:var(--teal)" />
                         <div style="flex:1">
-                            <div style="font-size:14px;text-decoration:@(row.Item.Done ? "line-through" : "none");color:@(row.Item.Done ? "var(--text3)" : "var(--text)")">@row.Item.Text</div>
-                            @if (row.Item.DueDate is not null)
+                            <div style="font-size:14px;text-decoration:@(item.Done ? "line-through" : "none");color:@(item.Done ? "var(--text3)" : "var(--text)")">@item.Text</div>
+                            @if (item.DueDate is not null)
                             {
-                                <div style="font-size:11px;color:@(row.Item.Done ? "var(--text3)" : row.Item.DueDate.Value.Date <= DateTime.Today.AddDays(7) ? "var(--amber)" : "var(--text3)")">Due @row.Item.DueDate.Value.ToString("dd MMM yy")</div>
+                                <div style="font-size:11px;color:@(item.Done ? "var(--text3)" : item.DueDate.Value.Date <= DateTime.Today.AddDays(7) ? "var(--amber)" : "var(--text3)")">Due @item.DueDate.Value.ToString("dd MMM yy")</div>
                             }
                         </div>
-                        <button class="btn btn-secondary btn-sm" @onclick="() => StartChecklistEdit(row.Index)">Edit</button>
-                        <button class="btn btn-icon" @onclick="() => RemoveChecklistItem(row.Index)">x</button>
+                        <button class="btn btn-secondary btn-sm" @onclick="() => StartChecklistEdit(item.Id)">Edit</button>
+                        <button class="btn btn-icon" @onclick="() => RemoveChecklistItem(item.Id)">x</button>
                     </div>
                 }
             }
@@ -594,14 +596,14 @@ else
 {
     <AddEditTripModal Trip="@_newTripDraft"
         OnClose="() => _newTripDraft = null"
-        OnSaved="() => _newTripDraft = null" />
+        OnSaved="@((Trip t) => { _newTripDraft = null; _selectedTripId = t.Id; })" />
 }
 
 @if (_editTripDraft is not null)
 {
     <AddEditTripModal Trip="@_editTripDraft"
         OnClose="() => _editTripDraft = null"
-        OnSaved="() => _editTripDraft = null" />
+        OnSaved="@((Trip t) => _editTripDraft = null)" />
 }
 
 @code {
@@ -609,13 +611,37 @@ else
     private Trip? _newTripDraft;
     private Trip? _editTripDraft;
 
+    protected override void OnInitialized()
+    {
+        State.OnTripIdAdopted += OnTripIdAdopted;
+        // A background sync can briefly show a stale Trip snapshot (mid wholesale
+        // reload, before the reapply step corrects it) and that's the *only* render
+        // this component gets unless it reacts to OnChange — without this subscription
+        // the stale snapshot just sits on screen, looking like a permanent revert, until
+        // some unrelated interaction happens to trigger another render.
+        State.OnChange += OnAppStateChanged;
+    }
+
+    private void OnAppStateChanged() => StateHasChanged();
+
+    private void OnTripIdAdopted(int oldId, int newId)
+    {
+        if (_selectedTripId == oldId) _selectedTripId = newId;
+    }
+
+    public void Dispose()
+    {
+        State.OnTripIdAdopted -= OnTripIdAdopted;
+        State.OnChange -= OnAppStateChanged;
+    }
+
     private bool _showBudgetForm;
     private string _newBudgetCategory = string.Empty;
     private decimal? _newBudgetAmount;
     private decimal? _newBudgetActual;
     private bool _newBudgetPaid;
     private string _newBudgetNotes = string.Empty;
-    private int? _editingBudgetIndex;
+    private string? _editingBudgetId;
 
     private bool _showItineraryForm;
     private DateTime? _newItineraryDate;
@@ -624,14 +650,14 @@ else
     private string _newItineraryTitle = string.Empty;
     private string _newItineraryNotes = string.Empty;
     private decimal? _newItineraryAmount;
-    private int? _editingItineraryIndex;
+    private string? _editingItineraryId;
 
     private bool _showChecklistForm;
     private bool _showChecklistTemplates;
     private string _newChecklistText = string.Empty;
     private DateTime? _newChecklistDueDate;
     private bool _newChecklistDone;
-    private int? _editingChecklistIndex;
+    private string? _editingChecklistId;
 
     private static readonly (string Name, string[] Items)[] ChecklistTemplates =
     [
@@ -679,17 +705,15 @@ else
         return anchor.ToString("MMMM yyyy");
     }
 
-    private static IEnumerable<(TripItineraryItem Item, int Index)> GetOrderedItinerary(Trip trip) =>
+    private static IEnumerable<TripItineraryItem> GetOrderedItinerary(Trip trip) =>
         trip.Itinerary
-            .Select((item, index) => (Item: item, Index: index))
-            .OrderBy(x => x.Item.Date)
-            .ThenBy(x => x.Item.Time ?? string.Empty);
+            .OrderBy(x => x.Date)
+            .ThenBy(x => x.Time ?? string.Empty);
 
-    private static IEnumerable<(TripChecklistItem Item, int Index)> GetOrderedChecklist(Trip trip) =>
+    private static IEnumerable<TripChecklistItem> GetOrderedChecklist(Trip trip) =>
         trip.Checklist
-            .Select((item, index) => (Item: item, Index: index))
-            .OrderBy(x => x.Item.Done)
-            .ThenBy(x => x.Item.DueDate ?? DateTime.MaxValue);
+            .OrderBy(x => x.Done)
+            .ThenBy(x => x.DueDate ?? DateTime.MaxValue);
 
     private static int DueSoonCount(Trip trip) =>
         trip.Checklist.Count(c => !c.Done && c.DueDate is not null && c.DueDate.Value.Date <= DateTime.Today.AddDays(7));
@@ -729,7 +753,7 @@ else
     private void ToggleBudgetForm()
     {
         _showBudgetForm = !_showBudgetForm;
-        _editingBudgetIndex = null;
+        _editingBudgetId = null;
         ResetBudgetDraft();
     }
 
@@ -738,7 +762,7 @@ else
         var trip = SelectedTrip;
         if (trip is null || string.IsNullOrWhiteSpace(_newBudgetCategory)) return;
 
-        trip.BudgetItems.Add(new TripBudgetItem
+        await State.AddBudgetItemAsync(trip.Id, new TripBudgetItem
         {
             Category = _newBudgetCategory.Trim(),
             PlannedDollars = _newBudgetAmount ?? 0,
@@ -746,47 +770,49 @@ else
             Paid = _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
             Notes = string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim()
         });
-        await State.UpdateTripAsync(trip);
         ToggleBudgetForm();
     }
 
-    private void StartBudgetEdit(int index)
+    private async Task StartBudgetEdit(string id)
     {
         var trip = SelectedTrip;
-        if (trip is null || index < 0 || index >= trip.BudgetItems.Count) return;
-        var item = trip.BudgetItems[index];
+        var item = trip?.BudgetItems.FirstOrDefault(b => b.Id == id);
+        if (trip is null || item is null) return;
         _showBudgetForm = false;
-        _editingBudgetIndex = index;
+        _editingBudgetId = id;
         _newBudgetCategory = item.Category;
         _newBudgetAmount = item.PlannedDollars;
         _newBudgetActual = item.ActualDollars;
         _newBudgetPaid = item.Paid;
         _newBudgetNotes = item.Notes ?? string.Empty;
+        // Swapping the read-only row for the (taller) edit form grows .page-content's
+        // content height with no user-gesture-attached repaint of WKWebView's
+        // compositor — the same WKWebView quirk nudgeRepaint already works around on
+        // resume/sync. Left unrepaired here, WKWebView's cached scrollHeight goes
+        // stale right as editing starts, which is what's behind both the visible
+        // jump on opening the form and the scroll lock that follows it.
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task SaveBudgetEdit()
     {
         var trip = SelectedTrip;
-        if (trip is null || _editingBudgetIndex is null || string.IsNullOrWhiteSpace(_newBudgetCategory)) return;
-        var index = _editingBudgetIndex.Value;
-        if (index < 0 || index >= trip.BudgetItems.Count) return;
+        if (trip is null || _editingBudgetId is null || string.IsNullOrWhiteSpace(_newBudgetCategory)) return;
 
-        trip.BudgetItems[index] = new TripBudgetItem
-        {
-            Category = _newBudgetCategory.Trim(),
-            PlannedDollars = _newBudgetAmount ?? 0,
-            ActualDollars = _newBudgetActual ?? 0,
-            Paid = _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
-            Notes = string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim()
-        };
-        await State.UpdateTripAsync(trip);
-        CancelBudgetEdit();
+        await State.SaveBudgetItemAsync(trip.Id, _editingBudgetId,
+            _newBudgetCategory.Trim(),
+            _newBudgetAmount ?? 0,
+            _newBudgetActual ?? 0,
+            _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
+            string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim());
+        await CancelBudgetEdit();
     }
 
-    private void CancelBudgetEdit()
+    private async Task CancelBudgetEdit()
     {
-        _editingBudgetIndex = null;
+        _editingBudgetId = null;
         ResetBudgetDraft();
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private void ResetBudgetDraft()
@@ -798,26 +824,28 @@ else
         _newBudgetNotes = string.Empty;
     }
 
-    private async Task ToggleBudgetPaid(int index)
+    private async Task ToggleBudgetPaid(string id)
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.BudgetItems[index].Paid = !trip.BudgetItems[index].Paid;
-        await State.UpdateTripAsync(trip);
+        // Untick clears the recorded actual amount too — otherwise the row's "paid"
+        // badge and the funded/remaining totals keep counting it (ActualDollars > 0
+        // takes priority over Paid in the display logic) until the user reopens Edit
+        // and re-saves, which is what made unticking look like it needed an extra step.
+        await State.ToggleBudgetPaidAsync(trip.Id, id);
     }
 
-    private async Task RemoveBudgetItem(int index)
+    private async Task RemoveBudgetItem(string id)
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.BudgetItems.RemoveAt(index);
-        await State.UpdateTripAsync(trip);
+        await State.RemoveBudgetItemAsync(trip.Id, id);
     }
 
     private void ToggleItineraryForm()
     {
         _showItineraryForm = !_showItineraryForm;
-        _editingItineraryIndex = null;
+        _editingItineraryId = null;
         _newItineraryDate = SelectedTrip?.StartDate ?? DateTime.Today;
         _newItineraryTime = null;
         _newItineraryEndTime = null;
@@ -831,7 +859,7 @@ else
         var trip = SelectedTrip;
         if (trip is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
 
-        trip.Itinerary.Add(new TripItineraryItem
+        await State.AddItineraryItemAsync(trip.Id, new TripItineraryItem
         {
             Date = _newItineraryDate ?? DateTime.Today,
             Time = string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
@@ -840,69 +868,64 @@ else
             AmountDollars = _newItineraryAmount ?? 0,
             Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim()
         });
-        await State.UpdateTripAsync(trip);
         ToggleItineraryForm();
     }
 
-    private void StartItineraryEdit(int index)
+    private async Task StartItineraryEdit(string id)
     {
         var trip = SelectedTrip;
-        if (trip is null || index < 0 || index >= trip.Itinerary.Count) return;
-        var item = trip.Itinerary[index];
+        var item = trip?.Itinerary.FirstOrDefault(i => i.Id == id);
+        if (trip is null || item is null) return;
         _showItineraryForm = false;
-        _editingItineraryIndex = index;
+        _editingItineraryId = id;
         _newItineraryDate = item.Date;
         _newItineraryTime = item.Time;
         _newItineraryEndTime = item.EndTime;
         _newItineraryTitle = item.Title;
         _newItineraryNotes = item.Notes ?? string.Empty;
         _newItineraryAmount = item.AmountDollars;
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task SaveItineraryEdit()
     {
         var trip = SelectedTrip;
-        if (trip is null || _editingItineraryIndex is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
-        var index = _editingItineraryIndex.Value;
-        if (index < 0 || index >= trip.Itinerary.Count) return;
+        if (trip is null || _editingItineraryId is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
 
-        trip.Itinerary[index] = new TripItineraryItem
-        {
-            Date = _newItineraryDate ?? DateTime.Today,
-            Time = string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
-            EndTime = string.IsNullOrWhiteSpace(_newItineraryEndTime) ? null : _newItineraryEndTime,
-            Title = _newItineraryTitle.Trim(),
-            AmountDollars = _newItineraryAmount ?? 0,
-            Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim()
-        };
-        await State.UpdateTripAsync(trip);
-        CancelItineraryEdit();
+        await State.SaveItineraryItemAsync(trip.Id, _editingItineraryId,
+            _newItineraryDate ?? DateTime.Today,
+            string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
+            string.IsNullOrWhiteSpace(_newItineraryEndTime) ? null : _newItineraryEndTime,
+            _newItineraryTitle.Trim(),
+            _newItineraryAmount ?? 0,
+            string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim());
+        await CancelItineraryEdit();
     }
 
-    private void CancelItineraryEdit()
+    private async Task CancelItineraryEdit()
     {
-        _editingItineraryIndex = null;
+        _editingItineraryId = null;
         _newItineraryDate = SelectedTrip?.StartDate ?? DateTime.Today;
         _newItineraryTime = null;
         _newItineraryEndTime = null;
         _newItineraryTitle = string.Empty;
         _newItineraryNotes = string.Empty;
         _newItineraryAmount = null;
+        await RepairScrollAfterKeyboardAsync();
     }
 
-    private async Task RemoveItineraryItem(int index)
+    private async Task RemoveItineraryItem(string id)
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.Itinerary.RemoveAt(index);
-        await State.UpdateTripAsync(trip);
+        await State.RemoveItineraryItemAsync(trip.Id, id);
     }
 
     private void ToggleChecklistForm()
     {
         _showChecklistForm = !_showChecklistForm;
         _showChecklistTemplates = false;
-        _editingChecklistIndex = null;
+        _editingChecklistId = null;
         _newChecklistText = string.Empty;
         _newChecklistDueDate = null;
         _newChecklistDone = false;
@@ -919,13 +942,7 @@ else
         var trip = SelectedTrip;
         if (trip is null) return;
 
-        var existing = new HashSet<string>(trip.Checklist.Select(c => c.Text), StringComparer.OrdinalIgnoreCase);
-        foreach (var text in items)
-        {
-            if (existing.Contains(text)) continue;
-            trip.Checklist.Add(new TripChecklistItem { Text = text, Done = false });
-        }
-        await State.UpdateTripAsync(trip);
+        await State.ApplyChecklistTemplateAsync(trip.Id, items);
         _showChecklistTemplates = false;
     }
 
@@ -934,66 +951,70 @@ else
         var trip = SelectedTrip;
         if (trip is null || string.IsNullOrWhiteSpace(_newChecklistText)) return;
 
-        trip.Checklist.Add(new TripChecklistItem
+        await State.AddChecklistItemAsync(trip.Id, new TripChecklistItem
         {
             Text = _newChecklistText.Trim(),
             Done = false,
             DueDate = _newChecklistDueDate
         });
-        await State.UpdateTripAsync(trip);
         ToggleChecklistForm();
     }
 
-    private void StartChecklistEdit(int index)
+    private async Task StartChecklistEdit(string id)
     {
         var trip = SelectedTrip;
-        if (trip is null || index < 0 || index >= trip.Checklist.Count) return;
-        var item = trip.Checklist[index];
+        var item = trip?.Checklist.FirstOrDefault(c => c.Id == id);
+        if (trip is null || item is null) return;
         _showChecklistForm = false;
-        _editingChecklistIndex = index;
+        _editingChecklistId = id;
         _newChecklistText = item.Text;
         _newChecklistDueDate = item.DueDate;
         _newChecklistDone = item.Done;
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task SaveChecklistEdit()
     {
         var trip = SelectedTrip;
-        if (trip is null || _editingChecklistIndex is null || string.IsNullOrWhiteSpace(_newChecklistText)) return;
-        var index = _editingChecklistIndex.Value;
-        if (index < 0 || index >= trip.Checklist.Count) return;
+        if (trip is null || _editingChecklistId is null || string.IsNullOrWhiteSpace(_newChecklistText)) return;
 
-        trip.Checklist[index] = new TripChecklistItem
-        {
-            Text = _newChecklistText.Trim(),
-            Done = _newChecklistDone,
-            DueDate = _newChecklistDueDate
-        };
-        await State.UpdateTripAsync(trip);
-        CancelChecklistEdit();
+        await State.SaveChecklistItemAsync(trip.Id, _editingChecklistId,
+            _newChecklistText.Trim(), _newChecklistDone, _newChecklistDueDate);
+        await CancelChecklistEdit();
     }
 
-    private void CancelChecklistEdit()
+    private async Task CancelChecklistEdit()
     {
-        _editingChecklistIndex = null;
+        _editingChecklistId = null;
         _newChecklistText = string.Empty;
         _newChecklistDueDate = null;
         _newChecklistDone = false;
+        await RepairScrollAfterKeyboardAsync();
     }
 
-    private async Task RemoveChecklistItem(int index)
+    // Saving/cancelling an inline edit form blurs its focused input, dismissing
+    // the iOS keyboard. WKWebView frequently fails to re-attach .page-content as
+    // a scrollable layer when that happens (the existing financeBlade.nudgeRepaint
+    // workaround documents the same WKWebView quirk for background-sync repaints) —
+    // without this, the page looks like it scrolled (keyboard collapsing) but
+    // overflow-y:auto stops responding to touch until some other reflow happens.
+    private async Task RepairScrollAfterKeyboardAsync()
+    {
+        try { await JS.InvokeVoidAsync("financeBlade.nudgeRepaint"); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task RemoveChecklistItem(string id)
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.Checklist.RemoveAt(index);
-        await State.UpdateTripAsync(trip);
+        await State.RemoveChecklistItemAsync(trip.Id, id);
     }
 
-    private async Task ToggleChecklistItem(int index, ChangeEventArgs e)
+    private async Task ToggleChecklistItem(string id, ChangeEventArgs e)
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.Checklist[index].Done = e.Value is bool b && b;
-        await State.UpdateTripAsync(trip);
+        await State.ToggleChecklistItemAsync(trip.Id, id, e.Value is bool b && b);
     }
 }

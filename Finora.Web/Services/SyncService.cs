@@ -357,6 +357,9 @@ public class SyncService(HttpClient http, IndexedDbService db)
         }
 
         if (!string.Equals(goal.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        // Two distinct goals can share the same name and amounts but belong to
+        // different groups (see the identical check in AppState.SameSavingsGoalDelete).
+        if (!string.Equals((goal.GroupName ?? "").Trim(), (deleted.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         if (deleted.TargetCents > 0 && goal.TargetCents > 0)
             return goal.TargetCents == deleted.TargetCents;
         return goal.CurrentCents == deleted.CurrentCents;

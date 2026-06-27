@@ -1,5 +1,4 @@
 @inject AppState State
-@inject NavigationManager Nav
 
 <div class="modal-backdrop" @onclick="Close">
     <div class="modal-sheet" @onclick:stopPropagation>
@@ -9,7 +8,7 @@
         <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:12px">
             <div>
                 <label class="form-label">Name</label>
-                <input class="form-input" @bind="name" placeholder="e.g. Summer in Japan" autofocus />
+                <input class="form-input" @bind="name" placeholder="e.g. Summer in Japan" />
             </div>
             <div>
                 <label class="form-label">Destination</label>
@@ -84,7 +83,7 @@
 @code {
     [Parameter] public Trip? Trip { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback<Trip> OnSaved { get; set; }
 
     private string name = string.Empty;
     private string destination = string.Empty;
@@ -132,8 +131,7 @@
             };
             var created = await State.AddTripAsync(t);
             saving = false;
-            await OnSaved.InvokeAsync();
-            Nav.NavigateTo($"trips/{created.Id}");
+            await OnSaved.InvokeAsync(created);
         }
         else
         {
@@ -146,7 +144,7 @@
             Trip.WeeklyContributionDollars = weeklyContribution;
             await State.UpdateTripAsync(Trip);
             saving = false;
-            await OnSaved.InvokeAsync();
+            await OnSaved.InvokeAsync(Trip);
         }
     }
 

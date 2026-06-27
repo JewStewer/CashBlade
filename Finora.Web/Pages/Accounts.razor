@@ -36,6 +36,7 @@
     </div>
 }
 
+
 @if (!State.Accounts.Any())
 {
     <div class="empty-state" style="margin-top:40px">
@@ -196,14 +197,14 @@ else
 
 <!-- Debts section -->
 <div class="section-header" style="margin-top:14px">
-    <span class="section-title">Debts</span>
-    <div style="display:flex;align-items:center;gap:10px">
+    <span class="section-title">
+        Debts
         @if (State.Debts.Any())
         {
-            <span style="font-size:13px;color:var(--red)">@State.DebtTotal.ToString("C")</span>
+            <span style="margin-left:8px;text-transform:none;font-weight:600;font-size:13px;color:var(--red)">@State.DebtTotal.ToString("C")</span>
         }
-        <button class="btn btn-secondary btn-sm" @onclick='() => _debtDraft = new Debt { PaymentPeriod = "Weekly" }'>+ Add</button>
-    </div>
+    </span>
+    <button class="btn btn-secondary btn-sm" @onclick='() => _debtDraft = new Debt { PaymentPeriod = "Weekly" }'>+ Add</button>
 </div>
 @if (State.Debts.Any())
 {
@@ -213,7 +214,8 @@ else
             var paidOff = Math.Max(debt.OriginalBalanceDollars - debt.BalanceDollars, 0);
             var progress = debt.OriginalBalanceDollars > 0 ? Math.Clamp(paidOff / debt.OriginalBalanceDollars, 0, 1) : 0;
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _debtDraft = debt">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:rgba(248,113,113,0.15);color:var(--red)"><Icon Name="credit-card" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@debt.Name</div>
                         <div style="font-size:12px;color:var(--text3)">@debt.MinimumPaymentDollars.ToString("C") @debt.PaymentPeriod.ToLowerInvariant()</div>
@@ -248,14 +250,14 @@ else
 
 <!-- Savings goals -->
 <div class="section-header" style="margin-top:14px">
-    <span class="section-title">Savings Goals</span>
-    <div style="display:flex;align-items:center;gap:10px">
+    <span class="section-title">
+        Savings Goals
         @if (State.SavingsGoals.Any())
         {
-            <span style="font-size:13px;color:var(--purple)">@(State.SavingsGoals.Sum(g => g.CurrentDollars).ToString("C"))</span>
+            <span style="margin-left:8px;text-transform:none;font-weight:600;font-size:13px;color:var(--purple)">@(State.SavingsGoals.Sum(g => g.CurrentDollars).ToString("C"))</span>
         }
-        <button class="btn btn-secondary btn-sm" @onclick='() => _goalDraft = new SavingsGoal()'>+ Add</button>
-    </div>
+    </span>
+    <button class="btn btn-secondary btn-sm" @onclick='() => _goalDraft = new SavingsGoal()'>+ Add</button>
 </div>
 @if (State.SavingsGoals.Any())
 {
@@ -264,7 +266,8 @@ else
         {
             var isGroupExpanded = string.Equals(_expandedGoalGroupName, group.Name, StringComparison.OrdinalIgnoreCase);
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => ToggleGoalGroup(group.Name)">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:rgba(124,58,237,0.15);color:var(--purple)"><Icon Name="sprout" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@group.Name</div>
                         <div style="font-size:12px;color:var(--text3)">@group.Goals.Count goals combined</div>
@@ -282,8 +285,8 @@ else
                         @group.Progress.ToString("P0")
                         @if (group.Progress >= 0.25m)
                         {
-                            var (emoji, label, color) = GoalMilestoneTier(group.Progress);
-                            <span style="margin-left:6px;color:@color;font-weight:600">@emoji @label</span>
+                            var (icon, label, color) = GoalMilestoneTier(group.Progress);
+                            <span style="margin-left:6px;color:@color;font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="@icon" Size="12" /> @label</span>
                         }
                     </span>
                     <span>@(isGroupExpanded ? "Tap to close" : "Tap to see goals")</span>
@@ -312,7 +315,8 @@ else
         {
             var progress = goal.TargetDollars > 0 ? Math.Clamp(goal.CurrentDollars / goal.TargetDollars, 0, 1) : 0;
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _goalDraft = goal">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:rgba(124,58,237,0.15);color:var(--purple)"><Icon Name="sprout" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@goal.Name</div>
                         @if (goal.WeeklyContributionDollars > 0)
@@ -333,8 +337,8 @@ else
                         @progress.ToString("P0")
                         @if (progress >= 0.25m)
                         {
-                            var (emoji, label, color) = GoalMilestoneTier(progress);
-                            <span style="margin-left:6px;color:@color;font-weight:600">@emoji @label</span>
+                            var (icon, label, color) = GoalMilestoneTier(progress);
+                            <span style="margin-left:6px;color:@color;font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="@icon" Size="12" /> @label</span>
                         }
                     </span>
                     @if (goal.TargetDate is not null)
@@ -371,7 +375,8 @@ else
             var progress = target > 0 ? Math.Clamp(current / target, 0, 1) : 0;
             var weekly = GoalMath.WeeklyRequired(target, current, acct.TargetDate);
             <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _accountGoalDraft = acct">
-                <div style="display:flex;align-items:center">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div class="row-icon" style="background:color-mix(in srgb, @acct.ColorHex 18%, transparent);color:@acct.ColorHex"><Icon Name="star" /></div>
                     <div style="flex:1">
                         <div style="font-size:15px;font-weight:500">@acct.Name</div>
                         @if (weekly > 0)
@@ -437,11 +442,11 @@ else
 
     // Mirrors DailyTab's StreakTier badge pattern, applied to savings-goal progress
     // instead of a day count — same colors already used there for tier badges.
-    private static (string Emoji, string Label, string Color) GoalMilestoneTier(decimal progress) => progress switch
+    private static (string Icon, string Label, string Color) GoalMilestoneTier(decimal progress) => progress switch
     {
-        >= 1m => ("🎉", "Goal reached!", "var(--green)"),
-        >= 0.75m => ("🔥", "Almost there", "#34D399"),
-        >= 0.5m => ("⚡", "Halfway there", "#FBBF24"),
-        _ => ("🌱", "Building", "var(--purple)")
+        >= 1m => ("award", "Goal reached!", "var(--green)"),
+        >= 0.75m => ("flame", "Almost there", "#34D399"),
+        >= 0.5m => ("zap", "Halfway there", "#FBBF24"),
+        _ => ("sprout", "Building", "var(--purple)")
     };
 }

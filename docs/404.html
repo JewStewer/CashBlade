@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#0B1120" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
@@ -41,12 +41,21 @@
         document.addEventListener('touchend', () => { financeBladeTouchActive = false; }, { passive: true });
         document.addEventListener('touchcancel', () => { financeBladeTouchActive = false; }, { passive: true });
 
+        // nudgeRepaint's body display:none/'' toggle blurs whatever input is
+        // focused — on iOS this dismisses the keyboard mid-typing (the
+        // accessory toolbar can linger with no keyboard under it, and the
+        // field won't accept input again until the user taps out and back
+        // in). Defer the same way as an in-progress touch gesture.
+        const financeBladeIsTextInput = () => {
+            const el = document.activeElement;
+            return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+        };
+
         window.financeBlade = {
             repairScroll: () => {
                 const page = document.querySelector('.page-content');
                 if (!page) return;
                 page.style.overflowY = 'auto';
-                page.style.webkitOverflowScrolling = 'touch';
                 page.style.touchAction = 'pan-x pan-y';
                 // Force WebKit to re-evaluate the scrollable layer without
                 // changing the user's position.
@@ -55,6 +64,20 @@
                 void page.offsetHeight;
                 page.style.transform = '';
                 page.scrollTop = y;
+                // html/body are position:fixed + overflow:hidden — they should
+                // never carry any scroll offset or transform of their own. iOS's
+                // automatic scroll-into-view for a focused input can still nudge
+                // this outer frame (a transform, or a native scroll despite
+                // overflow:hidden) and leaves it there after the keyboard
+                // dismisses. A swipe then fights that residual offset instead of
+                // scrolling .page-content — the page visibly shifts but nothing
+                // actually scrolls. Reset the outer frame back to its pinned
+                // baseline without touching .page-content's own scroll position.
+                document.documentElement.style.transform = '';
+                document.body.style.transform = '';
+                window.scrollTo(0, 0);
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
             },
             scrollPageToTop: () => {
                 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -110,7 +133,12 @@
                     document.addEventListener('touchend', () => window.financeBlade.nudgeRepaint(), { once: true, passive: true });
                     return;
                 }
+                if (financeBladeIsTextInput()) {
+                    document.addEventListener('focusout', () => window.financeBlade.nudgeRepaint(), { once: true, passive: true });
+                    return;
+                }
                 const nudgeOnce = () => {
+                    if (financeBladeIsTextInput()) return;
                     const root = document.documentElement;
                     const app = document.getElementById('app');
                     document.body.style.display = 'none';

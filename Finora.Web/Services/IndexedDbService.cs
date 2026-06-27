@@ -82,6 +82,7 @@ public class IndexedDbService(IJSRuntime js)
         }
 
         await PreserveLocalTripsWhenMissingAsync(p);
+        await PreserveLocalSavingsGoalsWhenMissingAsync(p);
 
         // Preserve PC host / Supabase credentials stored in syncMeta
         var existingMeta = await GetSyncMetaAsync();
@@ -153,6 +154,64 @@ public class IndexedDbService(IJSRuntime js)
                 var index = p.Trips.IndexOf(incoming);
                 p.Trips[index] = local;
             }
+        }
+    }
+
+    // A not-yet-synced (negative Id) savings goal stops appearing in any
+    // AppState pending queue the moment its first "create" push succeeds —
+    // but the server's real-Id record only shows up here, on the next pull,
+    // and replaceAll is about to wholesale-wipe the negative-Id local copy in
+    // favor of it. If an edit happened in between (or this is the very first
+    // pull after the create), the negative-Id copy holds the only up-to-date
+    // values, so it must be merged onto the real-Id record — adopting the
+    // server's Id, not the local one — before the wipe, every single round.
+    // Otherwise the edit is silently discarded the moment the pull lands.
+    private async Task PreserveLocalSavingsGoalsWhenMissingAsync(SyncPayload p)
+    {
+        var localGoals = await GetSavingsGoalsAsync();
+        if (localGoals.Count == 0) return;
+
+        if (p.SavingsGoals.Count == 0)
+        {
+            p.SavingsGoals = localGoals;
+            return;
+        }
+
+        var claimed = new HashSet<int>();
+        foreach (var local in localGoals)
+        {
+            var incoming = p.SavingsGoals.FirstOrDefault(g => g.Id == local.Id && !claimed.Contains(g.Id));
+            if (incoming is not null)
+            {
+                claimed.Add(incoming.Id);
+                continue;
+            }
+
+            if (local.Id > 0) continue; // already-synced goal missing from the pull was really deleted server-side
+
+            var candidates = p.SavingsGoals
+                .Where(g => g.Id > 0 && !claimed.Contains(g.Id)
+                    && string.Equals(g.Name.Trim(), local.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var match = candidates.Count == 1
+                ? candidates[0]
+                : candidates.FirstOrDefault(g => string.Equals((g.GroupName ?? "").Trim(), (local.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (match is not null)
+            {
+                // Adopt the server's real Id; keep the locally-edited field values.
+                match.Name = local.Name;
+                match.TargetCents = local.TargetCents;
+                match.CurrentCents = local.CurrentCents;
+                match.WeeklyContributionCents = local.WeeklyContributionCents;
+                match.TargetDate = local.TargetDate;
+                match.GroupName = local.GroupName;
+                claimed.Add(match.Id);
+                continue;
+            }
+
+            // Never actually reached the server yet — keep it so it isn't lost.
+            p.SavingsGoals.Add(local);
         }
     }
 
@@ -531,13 +590,15 @@ public class PendingSavingsGoalDelete
     public string Name { get; set; } = string.Empty;
     public int TargetCents { get; set; }
     public int CurrentCents { get; set; }
+    public string? GroupName { get; set; }
 
     public static PendingSavingsGoalDelete FromSavingsGoal(SavingsGoal goal) => new()
     {
         Id = goal.Id,
         Name = goal.Name,
         TargetCents = goal.TargetCents,
-        CurrentCents = goal.CurrentCents
+        CurrentCents = goal.CurrentCents,
+        GroupName = goal.GroupName
     };
 }
 

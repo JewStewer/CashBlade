@@ -107,28 +107,28 @@ else
         }
 
         <div class="quick-actions quick-actions-ultimate">
-            <button class="quick-action" @onclick="() => showAddTxn = true">
-                <span>+</span>
+            <button class="quick-action tone-spend" @onclick="() => showAddTxn = true">
+                <span><Icon Name="plus" Size="14" /></span>
                 <strong>Spend</strong>
                 <small>Record transaction</small>
             </button>
-            <button class="quick-action" @onclick='() => Nav.NavigateTo("budget")'>
-                <span>$</span>
+            <button class="quick-action tone-budget" @onclick='() => Nav.NavigateTo("budget")'>
+                <span><Icon Name="dollar-sign" Size="14" /></span>
                 <strong>Budget</strong>
                 <small>Safe-to-spend</small>
             </button>
-            <button class="quick-action" @onclick="() => showAddBill = true">
-                <span>!</span>
+            <button class="quick-action tone-bill" @onclick="() => showAddBill = true">
+                <span><Icon Name="clipboard" Size="14" /></span>
                 <strong>Bill</strong>
                 <small>Add payment</small>
             </button>
-            <button class="quick-action" @onclick='() => Nav.NavigateTo("tools")'>
-                <span>?</span>
+            <button class="quick-action tone-tools" @onclick='() => Nav.NavigateTo("tools")'>
+                <span><Icon Name="sparkles" Size="14" /></span>
                 <strong>Tools</strong>
                 <small>Smart mode</small>
             </button>
             <button class="@NoSpendQuickActionClass" @onclick="ToggleNoSpendModeAsync">
-                <span>@(State.NoSpendMode ? "ON" : "NO")</span>
+                <span><Icon Name="@(State.NoSpendMode ? "lock" : "shield")" Size="14" /></span>
                 <strong>No Spend</strong>
                 <small>@(State.NoSpendMode ? "Tap to unlock" : "Lock it down")</small>
             </button>
@@ -137,12 +137,12 @@ else
         <div class="module-grid">
             <button class="dashboard-module no-spend-module @(State.NoSpendMode ? "is-on" : "")" @onclick="ToggleNoSpendModeAsync">
                 <span>No-Spend Mode</span>
-                <strong>@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
+                <strong style="color:@(State.NoSpendMode ? "var(--red)" : "var(--green)")">@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
                 <small>@NoSpendMessage</small>
             </button>
-            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("budget")'>
+            <button class="dashboard-module safe-spend-module" @onclick='() => Nav.NavigateTo("budget")'>
                 <span>Safe To Spend</span>
-                <strong>@State.SafeToSpendAmount.ToString("C")</strong>
+                <strong style="color:@(State.SafeToSpendAmount > 0 ? "var(--green)" : "var(--red)")">@State.SafeToSpendAmount.ToString("C")</strong>
                 <small>@SafeSpendMessage</small>
             </button>
         </div>
@@ -164,17 +164,6 @@ else
                 }
             </section>
         }
-
-        <section class="dashboard-module forecast-module">
-            <div class="module-head">
-                <span>Forecast Check</span>
-                <strong class="@(ForecastHealthAmount < 0 ? "negative" : "positive")">@ForecastHealthAmount.ToString("C")</strong>
-            </div>
-            <div class="forecast-mini-track">
-                <i></i><i class="bill"></i><i class="pay"></i><i></i><i class="@(ForecastHealthAmount < 0 ? "danger" : "pay")"></i>
-            </div>
-            <p>@ForecastHealthMessage</p>
-        </section>
 
         @if (ActionPrompts.Any())
         {
@@ -223,7 +212,7 @@ else
                 @foreach (var bill in State.BillsDueBeforePayday.Take(5))
                 {
                     <div class="list-row">
-                        <div class="row-icon" style="background:rgba(248,113,113,0.15)">!</div>
+                        <div class="row-icon" style="background:rgba(248,113,113,0.15);color:var(--red)"><Icon Name="alert-circle" /></div>
                         <div class="row-main">
                             <div class="row-title">@bill.Name</div>
                             <div class="row-sub">@bill.AccountName - @bill.EffectiveDueDate.ToString("dd MMM")</div>
@@ -257,9 +246,10 @@ else
             {
                 @foreach (var t in State.RecentTransactions.Take(8))
                 {
+                    var visual = CategoryIcon.Get(t.CategoryName);
                     <div class="list-row">
-                        <div class="row-icon" style="background:var(--surface2)">
-                            @GetCategorySymbol(t.CategoryName)
+                        <div class="row-icon" style="background:@visual.Bg;color:@visual.Fg">
+                            <Icon Name="@visual.Icon" />
                         </div>
                         <div class="row-main">
                             <div class="row-title">@t.Description</div>
@@ -292,7 +282,6 @@ else
     private string _quickSyncStatus = string.Empty;
 
     private (decimal Now, decimal AfterBills, decimal AfterPay) Forecast => State.GetForecastTotals();
-    private (decimal LowestBalance, DateTime LowestDate) ShortfallProjection => State.GetPaydayShortfallProjection();
     private (DateTime From, DateTime To) PayCycle => State.GetCurrentPayCycle();
     private int DaysToPayday => Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0);
     private string DaysToPaydayLabel => DaysToPayday == 0 ? "Payday today" : $"{DaysToPayday}d to payday";
@@ -304,10 +293,9 @@ else
             && string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase))
         .Sum(t => t.AmountDollars);
     private decimal PayCycleNet => PayCycleIncome - PayCycleSpend;
-    private decimal ForecastHealthAmount => ShortfallProjection.LowestBalance;
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
-    private string NoSpendQuickActionClass => $"quick-action{(State.NoSpendMode ? " active" : "")}";
+    private string NoSpendQuickActionClass => $"quick-action no-spend-action{(State.NoSpendMode ? " is-on" : "")}";
 
     private string SafeSpendPercentCss
     {
@@ -335,8 +323,8 @@ else
     {
         get
         {
-            if (State.NoSpendMode) return $"Discretionary forecast is paused; today's spend is {State.GetTodaySpending():C}.";
-            if (State.BudgetSafeToSpendAmount <= 0) return "Switch on to hold safe-to-spend at $0 and quiet discretionary planning.";
+            if (State.NoSpendMode) return $"Discretionary forecast paused. Today's spend: {State.GetTodaySpending():C}.";
+            if (State.BudgetSafeToSpendAmount <= 0) return "Switch on to hold safe-to-spend at $0.";
             return $"{(State.SafeToSpendAmount / Math.Max(DaysToPayday, 1)):C}/day keeps this cycle steady.";
         }
     }
@@ -346,10 +334,6 @@ else
             ? $"{State.OutstandingLentDollars:C} owed back is tracked separately."
             : "After bills, savings and essentials.";
 
-    private string ForecastHealthMessage =>
-        ForecastHealthAmount < 0
-            ? $"Lowest projected balance is {ForecastHealthAmount:C} on {ShortfallProjection.LowestDate:dd MMM}. Open Budget to inspect the 60-day forecast."
-            : $"Lowest projected balance before payday is {ForecastHealthAmount:C} on {ShortfallProjection.LowestDate:dd MMM}.";
 
     private string MobileStatusTitle
     {
@@ -370,7 +354,7 @@ else
             var urgent = State.BillsDueBeforePayday.FirstOrDefault(b => b.EffectiveDueDate.Date <= DateTime.Today.AddDays(1));
             if (urgent is not null) return $"{urgent.Name} is due {DueLabel(urgent.EffectiveDueDate)}. Check it off or move money before it lands.";
             if (Forecast.AfterBills < 0) return $"You are forecast to be {Math.Abs(Forecast.AfterBills):C} short before payday.";
-            if (State.NoSpendMode) return "Stick to bills and essentials today. Forecasts assume no discretionary spending while this is on.";
+            if (State.NoSpendMode) return "Bills and essentials only — discretionary spending is paused.";
             if (State.SafeToSpendAmount <= 0) return "Your safe-to-spend buffer is gone for this pay cycle.";
             var days = Math.Max(DaysToPayday, 1);
             return $"{(State.SafeToSpendAmount / days):C} per day keeps you steady until payday.";
@@ -497,7 +481,6 @@ else
     private async Task ToggleNoSpendModeAsync()
     {
         await State.SetNoSpendModeAsync(!State.NoSpendMode);
-        StateHasChanged();
     }
 
     private Task OnTxnSaved()
@@ -514,19 +497,4 @@ else
         return Task.CompletedTask;
     }
 
-    private static string GetCategorySymbol(string cat) => cat switch
-    {
-        "Income" => "$",
-        "Groceries" => "G",
-        "Fuel" => "F",
-        "Rent" => "H",
-        "Phone" => "P",
-        "Internet" => "I",
-        "Medical" => "M",
-        "Transfer" => "T",
-        "Insurance" => "S",
-        "Debt" => "D",
-        "Study" => "B",
-        _ => "$"
-    };
 }

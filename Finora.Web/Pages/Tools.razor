@@ -60,6 +60,30 @@
     </div>
 
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+            <div class="row-title">Trip debug log</div>
+            <div class="row-sub">Diagnostic trail for the trip-item-reverting bug. Reproduce the issue, then export.</div>
+        </div>
+        <div style="font-size:12px;color:var(--text3)">@State.TripDebugLog.Count entries captured this session.</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ExportTripDebugLogAsync">Export log</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => State.TripDebugLog.Clear()">Clear log</button>
+        </div>
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+            <div class="row-title">Savings goal debug log</div>
+            <div class="row-sub">Diagnostic trail for the savings-goal delete-then-reappear bug. Reproduce the issue, then export.</div>
+        </div>
+        <div style="font-size:12px;color:var(--text3)">@State.SavingsGoalDebugLog.Count entries captured this session.</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="ExportSavingsGoalDebugLogAsync">Export log</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => State.SavingsGoalDebugLog.Clear()">Clear log</button>
+        </div>
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
             <div>
                 <div class="row-title">No-spend mode</div>
@@ -325,6 +349,38 @@
                 window.location.replace(appRoot + '?refresh=' + Date.now());
             })()
         ");
+    }
+
+    private async Task ExportTripDebugLogAsync()
+    {
+        _busy = true;
+        try
+        {
+            var text = string.Join("\n", State.TripDebugLog);
+            await JS.InvokeVoidAsync("financeBlade.downloadFile", $"trip-debug-log-{DateTime.Now:yyyy-MM-dd-HHmmss}.txt", text, "text/plain");
+            _syncStatus = "Trip debug log downloaded.";
+            _syncStatusColor = "var(--green)";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ExportSavingsGoalDebugLogAsync()
+    {
+        _busy = true;
+        try
+        {
+            var text = string.Join("\n", State.SavingsGoalDebugLog);
+            await JS.InvokeVoidAsync("financeBlade.downloadFile", $"savings-goal-debug-log-{DateTime.Now:yyyy-MM-dd-HHmmss}.txt", text, "text/plain");
+            _syncStatus = "Savings goal debug log downloaded.";
+            _syncStatusColor = "var(--green)";
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private async Task DownloadSnapshotAsync()

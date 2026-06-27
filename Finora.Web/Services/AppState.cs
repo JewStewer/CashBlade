@@ -18,6 +18,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<Trip> Trips { get; private set; } = new();
     // Phone-only: transactions marked as lent (excluded from spending until repaid)
     public List<LentTransaction> LentTransactions { get; private set; } = new();
+    // Phone-only: self-imposed spending limits (never synced, never real money)
     private HashSet<int> _unrepaidLentIds = new();
     private HashSet<int> _matchedInternalMovementIds = new();
 
@@ -105,6 +106,54 @@ public class AppState(IndexedDbService db, SyncService sync)
     private DateTime _syncStartedAt;
     public bool IsSyncing => _syncInProgress || sync.IsSyncing;
 
+    // The PC desktop app only reconciles phone_push into its own database on its
+    // own ~5-minute timer, then re-pushes its (now-stale, pre-reconciliation)
+    // snapshot to the shared finance_sync cloud row. If a pull lands in that
+    // window, it can overwrite an edit the phone already successfully pushed
+    // moments earlier — the edit reappears, then silently reverts on the next
+    // sync even though nothing _pending remains to defend it. Keep replaying the
+    // last confirmed push for a grace period that comfortably outlasts that
+    // window, regardless of whether the pending queues have since drained.
+    private PushPayload? _lastConfirmedPush;
+    private DateTime _lastConfirmedPushAt;
+    private static readonly TimeSpan ConfirmedPushGrace = TimeSpan.FromMinutes(6);
+
+    // LoadAsync() wholesale-replaces each Trip object from IndexedDB, then
+    // ReapplyPushChangesAsync/ReapplyPendingChangesAsync correct it back up a
+    // moment later. A Trip edit (Add/Update/Delete) that lands in that gap reads
+    // the not-yet-corrected object, clones its *whole* nested Budget/Itinerary/
+    // Checklist collections (see CloneTrip) into the pending queue, and that
+    // stale clone then gets replayed last — silently reverting a sibling edit
+    // that had already synced. Gate Trip mutators against the same window so an
+    // edit always sees a fully-settled Trips collection, never a mid-reapply one.
+    private readonly SemaphoreSlim _tripMutationGate = new(1, 1);
+
+    // Diagnostic trail for the trip-item-reverting bug: records the affected
+    // trip's itinerary at every mutation/load/reapply step so a repro can be
+    // traced after the fact instead of guessed at. Surfaced read-only on the
+    // Tools page. Capped so it can't grow unbounded across a long session.
+    public List<string> TripDebugLog { get; } = new();
+    private void LogTrip(string msg)
+    {
+        TripDebugLog.Add($"{DateTime.Now:HH:mm:ss.fff} {msg}");
+        if (TripDebugLog.Count > 300) TripDebugLog.RemoveAt(0);
+    }
+    private static string ItinSnapshot(Trip? t) =>
+        t is null ? "null" : string.Join(" | ", t.Itinerary.Select(i => $"{i.Title}={i.AmountDollars:0.00}#{(i.Id.Length >= 6 ? i.Id[..6] : i.Id)}"));
+
+    // Diagnostic trail for the savings-goal delete-then-reappear bug: records
+    // every load, delete, and tombstone-defense decision so a repro can be
+    // traced after the fact instead of guessed at. Surfaced read-only on the
+    // Tools page. Capped so it can't grow unbounded across a long session.
+    public List<string> SavingsGoalDebugLog { get; } = new();
+    private void LogGoal(string msg)
+    {
+        SavingsGoalDebugLog.Add($"{DateTime.Now:HH:mm:ss.fff} {msg}");
+        if (SavingsGoalDebugLog.Count > 300) SavingsGoalDebugLog.RemoveAt(0);
+    }
+    private static string GoalSnapshot(SavingsGoal g) =>
+        $"id={g.Id} name={g.Name} group={g.GroupName ?? "(none)"} target={g.TargetCents} current={g.CurrentCents}";
+
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
     public void ForceResetSyncGuard() => _syncInProgress = false;
@@ -168,6 +217,11 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public event Action? OnChange;
 
+    // Fired when a not-yet-synced (negative-Id) Trip is matched to the real
+    // Id the server assigned it, so UI holding the old Id (e.g. a selected-
+    // trip detail view) can follow the rename instead of losing its place.
+    public event Action<int, int>? OnTripIdAdopted;
+
     // ── Account balances computed from transactions ───────────────────────────
     public Dictionary<int, decimal> AccountBalances { get; private set; } = new();
 
@@ -196,6 +250,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         WeeklyBudgets.Count > 0 ||
         Trips.Count > 0;
 
+    // Suppresses LoadAsync's own OnChange while SyncAndReloadAsync is mid
+    // replace-then-correct: LoadAsync() wholesale-replaces Trips from IndexedDB
+    // (which may briefly be stale, pending the reapply that runs right after),
+    // so firing OnChange here gives subscribers like HolidayTab a render of the
+    // not-yet-corrected snapshot — visible to the user as a value reverting for
+    // about a second before silently fixing itself. SyncAndReloadAsync fires its
+    // own OnChange once the reapply is done, so nothing is lost by skipping this one.
+    private bool _suppressLoadOnChange;
+
     public async Task LoadAsync()
     {
         await LoadStoresAsync();
@@ -212,7 +275,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         Compute();
         IsLoaded = true;
-        OnChange?.Invoke();
+        if (!_suppressLoadOnChange) OnChange?.Invoke();
     }
 
     private async Task LoadStoresAsync()
@@ -225,9 +288,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         Debts = await db.GetDebtsAsync();
         DebtPayments = await db.GetDebtPaymentsAsync();
         SavingsGoals = await db.GetSavingsGoalsAsync();
+        foreach (var g in SavingsGoals) LogGoal($"LOAD {GoalSnapshot(g)}");
         WeeklyBudgets = await db.GetWeeklyBudgetsAsync();
         AppSettings = await db.GetAppSettingsAsync();
         Trips = await db.GetTripsAsync();
+        foreach (var t in Trips) LogTrip($"LOAD trip={t.Id} itin=[{ItinSnapshot(t)}]");
         LentTransactions = await db.GetLentTransactionsAsync();
         NormaliseLentRepayments();
         await RemoveInvalidLentTransactionsAsync();
@@ -509,7 +574,16 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .Where(g => SameSavingsGoalDelete(g, deleted))
                 .Select(g => g.Id)
                 .ToHashSet();
-            if (removedIds.Count == 0) continue;
+            LogGoal($"TOMBSTONE id={deleted.Id} name={deleted.Name} group={deleted.GroupName ?? "(none)"} target={deleted.TargetCents} current={deleted.CurrentCents} matched=[{string.Join(",", removedIds)}]");
+            if (removedIds.Count == 0)
+            {
+                // Nothing in this freshly-pulled snapshot matches anymore — the
+                // server has actually reconciled the delete now. Only stop
+                // defending it once that's confirmed, not just because a push
+                // succeeded (see the comment in SyncAndReloadAsync).
+                await db.ClearSavingsGoalDeleteAsync(deleted.Id);
+                continue;
+            }
 
             SavingsGoals.RemoveAll(g => removedIds.Contains(g.Id));
             _pendingNewSavingsGoals.RemoveAll(g => removedIds.Contains(g.Id));
@@ -518,6 +592,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 _pendingDeletedSavingsGoalIds.RemoveAll(x => x == id);
                 _pendingDeletedSavingsGoalIds.Add(id);
+                // Without this, IndexedDB still has the old record (it was only
+                // matched here by content, not by the id the original delete
+                // persisted), so the very next LoadStoresAsync() call reads it
+                // straight back out of the DB and the goal looks "revived".
+                await db.DeleteAsync("savingsGoals", id);
             }
         }
     }
@@ -1005,11 +1084,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public (DateTime from, DateTime to) GetCurrentPeriod()
     {
         if (SummaryPeriod == "Weekly")
-        {
-            var mon = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek + (int)DayOfWeek.Monday);
-            if (DateTime.Today.DayOfWeek == DayOfWeek.Sunday) mon = mon.AddDays(-7);
-            return (mon, mon.AddDays(6));
-        }
+            return GetCurrentPayCycle();
         return (new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1),
                 new DateTime(DateTime.Today.Year, DateTime.Today.Month,
                     DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month)));
@@ -1093,6 +1168,53 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     // Weekly discretionary budget = essentials + unplanned
     public decimal DiscretionaryBudget => BudgetEssentials + BudgetUnplanned;
+
+    public record SmartBudgetSuggestion(decimal Income, decimal Bills, decimal Essentials, decimal Unplanned, decimal Savings);
+
+    // Heuristic budget suggestion built from real history, not a model call:
+    // bills = real weekly-equivalent of tracked Bills, essentials/unplanned = trailing
+    // 8-week averages of essential vs. discretionary spend, savings = whatever's left
+    // of income once those are covered.
+    public SmartBudgetSuggestion GetSmartBudgetSuggestion(int weeksBack = 8)
+    {
+        var to = DateTime.Today;
+        var from = to.AddDays(-7 * weeksBack);
+        var weeks = Math.Max(weeksBack, 1);
+
+        var income = WeeklyIncome > 0 ? WeeklyIncome : GetAverageWeeklyIncome(from, to);
+
+        var bills = Bills.Sum(b => GetWeeklyEquivalent(b.AmountDollars, b.Frequency));
+
+        var discretionary = Transactions
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0
+                        && !IsInternalMovement(t) && !IsBudgetedBillTransaction(t) && !IsLent(t.Id))
+            .ToList();
+        var essentials = Math.Round(discretionary.Where(t => IsEssentialCategory(t.CategoryName)).Sum(t => Math.Abs(t.AmountDollars)) / weeks, 0);
+        var unplanned = Math.Round(discretionary.Where(t => !IsEssentialCategory(t.CategoryName)).Sum(t => Math.Abs(t.AmountDollars)) / weeks, 0);
+
+        var savings = Math.Max(income - bills - essentials - unplanned, 0);
+
+        return new SmartBudgetSuggestion(Math.Round(income, 0), Math.Round(bills, 0), essentials, unplanned, Math.Round(savings, 0));
+    }
+
+    private decimal GetAverageWeeklyIncome(DateTime from, DateTime to)
+    {
+        var weeks = Math.Max((to - from).Days / 7.0, 1);
+        var total = Transactions
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents > 0 && !IsInternalMovement(t))
+            .Sum(t => t.AmountDollars);
+        return (decimal)((double)total / weeks);
+    }
+
+    private static decimal GetWeeklyEquivalent(decimal amount, BillFrequency frequency) => frequency switch
+    {
+        BillFrequency.Weekly => amount,
+        BillFrequency.Fortnightly => amount / 2m,
+        BillFrequency.Monthly => amount * 12m / 52m,
+        BillFrequency.Quarterly => amount * 4m / 52m,
+        BillFrequency.Yearly => amount / 52m,
+        _ => 0
+    };
 
     public decimal GetTodaySpending() =>
         Transactions
@@ -2314,6 +2436,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var existing = SavingsGoals.FirstOrDefault(x => x.Id == g.Id);
         if (existing is null) return;
+        LogGoal($"UPDATE before=[{GoalSnapshot(existing)}] after=[{GoalSnapshot(g)}]");
+        var contributionCents = g.CurrentCents - existing.CurrentCents;
         existing.Name = g.Name;
         existing.TargetCents = g.TargetCents;
         existing.CurrentCents = g.CurrentCents;
@@ -2321,23 +2445,67 @@ public class AppState(IndexedDbService db, SyncService sync)
         existing.TargetDate = g.TargetDate;
         existing.GroupName = g.GroupName;
         await db.PutAsync("savingsGoals", existing);
-        // Negative-id (not-yet-synced) goals are mutated in place via the
-        // same object reference already queued in _pendingNewSavingsGoals.
-        if (existing.Id > 0)
-            QueueUpdatedSavingsGoal(existing);
+        // Queue this even for a not-yet-real-id (negative) goal. Once its
+        // first create round-trip clears it from _pendingNewSavingsGoals,
+        // relying on in-place object mutation alone stops working — the
+        // Supabase canonical-store merge (BuildMergedCloudPayloadAsync) only
+        // ever re-applies edits it finds in UpdatedSavingsGoals, matched by
+        // Id, and that already-uploaded record keeps its negative Id forever
+        // unless/until WPF later drains phone_push. Server-side handlers
+        // already filter UpdatedSavingsGoals to Id > 0, so this is a no-op
+        // for them and only feeds the canonical-store merge and the local
+        // reapply-after-reload defense.
+        QueueUpdatedSavingsGoal(existing);
+        if (contributionCents > 0)
+            await RecordSavingsGoalContributionAsync(existing.Name, contributionCents);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
     }
 
+    private const string SavingsGoalContributionCategoryName = "Savings Goal";
+
+    // Money put toward a goal isn't a real bank transfer in this app (goals have
+    // no linked account), so nothing ever reduced the weekly/monthly budget when
+    // a contribution was made. Recording it as a normal expense transaction makes
+    // it count toward GetDiscretionarySpendingForPeriod like any other spend, so
+    // it visibly eats into safe-to-spend for the period it happened in.
+    private async Task RecordSavingsGoalContributionAsync(string goalName, int contributionCents)
+    {
+        var category = Categories.FirstOrDefault(c => string.Equals(c.Name, SavingsGoalContributionCategoryName, StringComparison.OrdinalIgnoreCase));
+        if (category is null)
+        {
+            var newCatId = Math.Min(Categories.Select(c => c.Id).DefaultIfEmpty(0).Min() - 1, -1);
+            category = new Category { Id = newCatId, Name = SavingsGoalContributionCategoryName, Type = CategoryType.Expense };
+            Categories.Add(category);
+        }
+
+        await AddTransactionAsync(new Transaction
+        {
+            Date = DateTime.Today,
+            Description = $"Contribution to {goalName}",
+            AmountCents = -contributionCents,
+            CategoryId = category.Id,
+            CategoryName = category.Name
+        });
+    }
+
     public async Task DeleteSavingsGoalAsync(int id)
     {
         var deletedGoal = SavingsGoals.FirstOrDefault(g => g.Id == id);
+        if (deletedGoal is not null) LogGoal($"DELETE {GoalSnapshot(deletedGoal)}");
         SavingsGoals.RemoveAll(g => g.Id == id);
         _pendingNewSavingsGoals.RemoveAll(g => g.Id == id);
         _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == id);
         if (id > 0) _pendingDeletedSavingsGoalIds.Add(id);
-        if (deletedGoal is not null && id > 0)
+        // Tombstone this even for a not-yet-synced (negative id) goal. A sync
+        // round already in flight when the delete happens captured this goal
+        // in its NewSavingsGoals snapshot before the delete; without a
+        // tombstone, ReapplyPushChangesAsync's "re-add new goals the server
+        // doesn't know about yet" pass has no way to tell the delete apart
+        // from the pull having wiped out a pending create, and blindly
+        // re-adds the goal that was just deleted.
+        if (deletedGoal is not null)
             await db.SetSavingsGoalDeleteAsync(deletedGoal);
         await db.DeleteAsync("savingsGoals", id);
         Compute();
@@ -2367,11 +2535,16 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task<Trip> AddTripAsync(Trip t)
     {
-        var minId = Trips.Count > 0 ? Trips.Min(x => x.Id) : 0;
-        t.Id = Math.Min(minId - 1, -1);
-        Trips.Add(t);
-        _pendingNewTrips.Add(t);
-        await db.PutAsync("trips", t);
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var minId = Trips.Count > 0 ? Trips.Min(x => x.Id) : 0;
+            t.Id = Math.Min(minId - 1, -1);
+            Trips.Add(t);
+            _pendingNewTrips.Add(t);
+            await db.PutAsync("trips", t);
+        }
+        finally { _tripMutationGate.Release(); }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -2380,23 +2553,28 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task UpdateTripAsync(Trip t)
     {
-        var existing = Trips.FirstOrDefault(x => x.Id == t.Id);
-        if (existing is null) return;
-        existing.Name = t.Name;
-        existing.Destination = t.Destination;
-        existing.Notes = t.Notes;
-        existing.StartDate = t.StartDate;
-        existing.EndDate = t.EndDate;
-        existing.SavingsAccountId = t.SavingsAccountId;
-        existing.WeeklyContributionCents = t.WeeklyContributionCents;
-        existing.Itinerary = t.Itinerary;
-        existing.Checklist = t.Checklist;
-        existing.BudgetItems = t.BudgetItems;
-        await db.PutAsync("trips", existing);
-        // Negative-id (not-yet-synced) trips are mutated in place via the
-        // same object reference already queued in _pendingNewTrips.
-        if (existing.Id > 0)
-            QueueUpdatedTrip(existing);
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var existing = Trips.FirstOrDefault(x => x.Id == t.Id);
+            if (existing is null) return;
+            existing.Name = t.Name;
+            existing.Destination = t.Destination;
+            existing.Notes = t.Notes;
+            existing.StartDate = t.StartDate;
+            existing.EndDate = t.EndDate;
+            existing.SavingsAccountId = t.SavingsAccountId;
+            existing.WeeklyContributionCents = t.WeeklyContributionCents;
+            existing.Itinerary = t.Itinerary;
+            existing.Checklist = t.Checklist;
+            existing.BudgetItems = t.BudgetItems;
+            await db.PutAsync("trips", existing);
+            // Negative-id (not-yet-synced) trips are mutated in place via the
+            // same object reference already queued in _pendingNewTrips.
+            if (existing.Id > 0)
+                QueueUpdatedTrip(existing);
+        }
+        finally { _tripMutationGate.Release(); }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -2404,18 +2582,133 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task DeleteTripAsync(int id)
     {
-        var deletedTrip = Trips.FirstOrDefault(t => t.Id == id);
-        Trips.RemoveAll(t => t.Id == id);
-        _pendingNewTrips.RemoveAll(t => t.Id == id);
-        _pendingUpdatedTrips.RemoveAll(t => t.Id == id);
-        if (id > 0) _pendingDeletedTripIds.Add(id);
-        if (deletedTrip is not null && id > 0)
-            await db.SetTripDeleteAsync(deletedTrip);
-        await db.DeleteAsync("trips", id);
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var deletedTrip = Trips.FirstOrDefault(t => t.Id == id);
+            Trips.RemoveAll(t => t.Id == id);
+            _pendingNewTrips.RemoveAll(t => t.Id == id);
+            _pendingUpdatedTrips.RemoveAll(t => t.Id == id);
+            if (id > 0) _pendingDeletedTripIds.Add(id);
+            if (deletedTrip is not null && id > 0)
+                await db.SetTripDeleteAsync(deletedTrip);
+            await db.DeleteAsync("trips", id);
+        }
+        finally { _tripMutationGate.Release(); }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
     }
+
+    // Targeted Budget/Itinerary/Checklist item mutators. These always take plain
+    // values (never a whole Trip snapshot from a caller) and do a fresh, gated
+    // lookup of the live Trip right before mutating just the one targeted item.
+    // This closes the race that UpdateTripAsync(trip) was vulnerable to: a Razor
+    // component reading SelectedTrip, mutating one item in place, then handing
+    // the whole Trip back to UpdateTripAsync — if that read happened in the gap
+    // between LoadAsync()'s wholesale replace and the reapply's correction, the
+    // component's clone of the trip carried stale sibling items that could win
+    // a later replay and silently revert an already-synced edit.
+    private async Task MutateTripAsync(int tripId, Action<Trip> mutate)
+    {
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var trip = Trips.FirstOrDefault(x => x.Id == tripId);
+            if (trip is null) return;
+            LogTrip($"MUTATE trip={tripId} before=[{ItinSnapshot(trip)}]");
+            mutate(trip);
+            LogTrip($"MUTATE trip={tripId} after=[{ItinSnapshot(trip)}]");
+            await db.PutAsync("trips", trip);
+            if (trip.Id > 0)
+                QueueUpdatedTrip(trip);
+        }
+        finally { _tripMutationGate.Release(); }
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    public Task AddBudgetItemAsync(int tripId, TripBudgetItem newItem) =>
+        MutateTripAsync(tripId, trip => trip.BudgetItems.Add(newItem));
+
+    public Task SaveBudgetItemAsync(int tripId, string itemId, string category, decimal plannedDollars, decimal actualDollars, bool paid, string? notes) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.BudgetItems.FirstOrDefault(b => b.Id == itemId);
+            if (item is null) return;
+            item.Category = category;
+            item.PlannedDollars = plannedDollars;
+            item.ActualDollars = actualDollars;
+            item.Paid = paid;
+            item.Notes = notes;
+        });
+
+    public Task ToggleBudgetPaidAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.BudgetItems.FirstOrDefault(b => b.Id == itemId);
+            if (item is null) return;
+            item.Paid = !item.Paid;
+            if (!item.Paid) item.ActualDollars = 0;
+        });
+
+    public Task RemoveBudgetItemAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip => trip.BudgetItems.RemoveAll(b => b.Id == itemId));
+
+    public Task AddItineraryItemAsync(int tripId, TripItineraryItem newItem) =>
+        MutateTripAsync(tripId, trip => trip.Itinerary.Add(newItem));
+
+    public Task SaveItineraryItemAsync(int tripId, string itemId, DateTime date, string? time, string? endTime, string title, decimal amountDollars, string? notes) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.Itinerary.FirstOrDefault(i => i.Id == itemId);
+            if (item is null) return;
+            item.Date = date;
+            item.Time = time;
+            item.EndTime = endTime;
+            item.Title = title;
+            item.AmountDollars = amountDollars;
+            item.Notes = notes;
+        });
+
+    public Task RemoveItineraryItemAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip => trip.Itinerary.RemoveAll(i => i.Id == itemId));
+
+    public Task ApplyChecklistTemplateAsync(int tripId, string[] items) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var existing = new HashSet<string>(trip.Checklist.Select(c => c.Text), StringComparer.OrdinalIgnoreCase);
+            foreach (var text in items)
+            {
+                if (existing.Contains(text)) continue;
+                trip.Checklist.Add(new TripChecklistItem { Text = text, Done = false });
+            }
+        });
+
+    public Task AddChecklistItemAsync(int tripId, TripChecklistItem newItem) =>
+        MutateTripAsync(tripId, trip => trip.Checklist.Add(newItem));
+
+    public Task SaveChecklistItemAsync(int tripId, string itemId, string text, bool done, DateTime? dueDate) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.Checklist.FirstOrDefault(c => c.Id == itemId);
+            if (item is null) return;
+            item.Text = text;
+            item.Done = done;
+            item.DueDate = dueDate;
+        });
+
+    public Task RemoveChecklistItemAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip => trip.Checklist.RemoveAll(c => c.Id == itemId));
+
+    public Task ToggleChecklistItemAsync(int tripId, string itemId, bool done) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.Checklist.FirstOrDefault(c => c.Id == itemId);
+            if (item is null) return;
+            item.Done = done;
+        });
 
     // Used when a new bill is created from the "Add to Budget as a Bill"
     // installment-plan flow: also create a matching Debt so the remaining
@@ -2514,8 +2807,49 @@ public class AppState(IndexedDbService db, SyncService sync)
     private void QueueUpdatedTrip(Trip t)
     {
         _pendingUpdatedTrips.RemoveAll(x => x.Id == t.Id);
-        _pendingUpdatedTrips.Add(t);
+        // Snapshot a clone, not the live object — t keeps mutating in place as the
+        // user makes further edits, and an in-flight push payload (built earlier from
+        // this same list) must not silently pick up changes made after it was sent.
+        _pendingUpdatedTrips.Add(CloneTrip(t));
     }
+
+    private static Trip CloneTrip(Trip t) => new()
+    {
+        Id = t.Id,
+        Name = t.Name,
+        Destination = t.Destination,
+        Notes = t.Notes,
+        StartDate = t.StartDate,
+        EndDate = t.EndDate,
+        SavingsAccountId = t.SavingsAccountId,
+        WeeklyContributionCents = t.WeeklyContributionCents,
+        Itinerary = t.Itinerary.Select(i => new TripItineraryItem
+        {
+            Id = i.Id,
+            Date = i.Date,
+            Time = i.Time,
+            EndTime = i.EndTime,
+            Title = i.Title,
+            Notes = i.Notes,
+            AmountCents = i.AmountCents
+        }).ToList(),
+        Checklist = t.Checklist.Select(c => new TripChecklistItem
+        {
+            Id = c.Id,
+            Text = c.Text,
+            Done = c.Done,
+            DueDate = c.DueDate
+        }).ToList(),
+        BudgetItems = t.BudgetItems.Select(b => new TripBudgetItem
+        {
+            Id = b.Id,
+            Category = b.Category,
+            PlannedCents = b.PlannedCents,
+            ActualCents = b.ActualCents,
+            Paid = b.Paid,
+            Notes = b.Notes
+        }).ToList()
+    };
 
     // Mirrors WPF's DebtPaymentMatcher.ApplyBillDebtPaymentStatus: when a bill
     // linked to a debt (by DebtId, or by fuzzy name match as a fallback) is
@@ -2893,6 +3227,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         if (!string.Equals(goal.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        // Two distinct goals can share the same name and amounts (e.g. two
+        // goals both called "Bed" saved toward the same target) but belong to
+        // different groups. Without this check the fallback above would treat
+        // them as the same goal and delete/resurrect the wrong one.
+        if (!string.Equals((goal.GroupName ?? "").Trim(), (deleted.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         if (deleted.TargetCents > 0 && goal.TargetCents > 0)
             return goal.TargetCents == deleted.TargetCents;
         return goal.CurrentCents == deleted.CurrentCents;
@@ -3117,14 +3456,22 @@ public class AppState(IndexedDbService db, SyncService sync)
             var existing = cloud.SavingsGoals.FirstOrDefault(g => g.Id == u.Id);
             if (existing is not null)
             {
+                LogGoal($"MERGE-UPDATE cloud=[{GoalSnapshot(existing)}] incoming=[{GoalSnapshot(u)}]");
                 existing.Name = u.Name;
                 existing.TargetCents = u.TargetCents;
                 existing.CurrentCents = u.CurrentCents;
                 existing.WeeklyContributionCents = u.WeeklyContributionCents;
                 existing.TargetDate = u.TargetDate;
+                existing.GroupName = u.GroupName;
             }
         }
-        cloud.SavingsGoals.AddRange(push.NewSavingsGoals);
+        // AddRange only for goals the canonical snapshot doesn't already have —
+        // a not-yet-real-id goal stays at the same negative Id in cloud.SavingsGoals
+        // across every future round (nothing here ever reconciles it to a real Id
+        // unless/until WPF drains phone_push), so a blind AddRange would duplicate
+        // it the moment it's ever re-queued for any reason.
+        var cloudGoalIds = cloud.SavingsGoals.Select(g => g.Id).ToHashSet();
+        cloud.SavingsGoals.AddRange(push.NewSavingsGoals.Where(g => !cloudGoalIds.Contains(g.Id)));
 
         cloud.Trips.RemoveAll(t => push.DeletedTripIds.Contains(t.Id));
         foreach (var u in push.UpdatedTrips)
@@ -3244,6 +3591,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     UpdatedTrips = new List<Trip>(_pendingUpdatedTrips),
                     DeletedTripIds = new List<int>(_pendingDeletedTripIds)
                 };
+                foreach (var t in push.UpdatedTrips)
+                    LogTrip($"PUSH-BUILD trip={t.Id} itin=[{ItinSnapshot(t)}]");
 
                 bool pushedToPc = false;
                 if (sync.HasLocalSync)
@@ -3288,8 +3637,17 @@ public class AppState(IndexedDbService db, SyncService sync)
                         await db.ClearBillOverrideAsync(s.BillId);
                     foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
                         await db.ClearDebtDeleteAsync(id);
-                    foreach (var id in push.DeletedSavingsGoalIds.Where(id => id > 0))
-                        await db.ClearSavingsGoalDeleteAsync(id);
+                    // Savings goal tombstones are deliberately NOT cleared here. A
+                    // successful push only means Supabase/the PC's inbox accepted the
+                    // delete, not that WPF has reconciled it into the canonical
+                    // finance_sync snapshot yet — that can lag well past this sync
+                    // round. Clearing the tombstone this early left nothing to defend
+                    // against a pull that still has the goal, so it would silently
+                    // reappear once ConfirmedPushGrace ran out (and a subsequent edit
+                    // on the revived copy would then vanish the next time the server's
+                    // delayed delete finally landed). ApplyPersistedSavingsGoalDeletesAsync
+                    // clears it instead, once a freshly-pulled snapshot actually confirms
+                    // the goal is gone.
                     foreach (var id in push.DeletedTripIds.Where(id => id > 0))
                         await db.ClearTripDeleteAsync(id);
                     foreach (var s in push.UpdatedSettings)
@@ -3317,7 +3675,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
                     _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
                     _pendingNewTrips.RemoveRange(0, push.NewTrips.Count);
-                    _pendingUpdatedTrips.RemoveRange(0, push.UpdatedTrips.Count);
+                    // Reference-based removal: if QueueUpdatedTrip queued a newer clone for this
+                    // trip while the push above was in flight, that clone is a different object
+                    // and must survive so the edit isn't lost — count-based removal would have
+                    // dropped it here even though it was never actually sent.
+                    foreach (var t in push.UpdatedTrips) _pendingUpdatedTrips.Remove(t);
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
             }
@@ -3326,13 +3688,36 @@ public class AppState(IndexedDbService db, SyncService sync)
             var ok = await sync.AutoSyncAsync();
             if (ok)
             {
-                await LoadAsync();
-                LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
-                // Sync wipes IndexedDB and replaces with server data; reapply any
-                // phone-side changes that weren't pushed so they aren't lost.
-                if (sentPush is not null)
-                    await ReapplyPushChangesAsync(sentPush);
-                await ReapplyPendingChangesAsync();
+                // Hold the Trip mutation gate for the whole replace-then-correct
+                // window: LoadAsync() wholesale-replaces Trip objects from
+                // IndexedDB (which may still be stale pending the reapply below),
+                // so a concurrent AddTripAsync/UpdateTripAsync/DeleteTripAsync must
+                // wait rather than clone/queue a half-corrected Trip.
+                await _tripMutationGate.WaitAsync();
+                try
+                {
+                    _suppressLoadOnChange = true;
+                    try { await LoadAsync(); }
+                    finally { _suppressLoadOnChange = false; }
+                    LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
+                    // Sync wipes IndexedDB and replaces with server data; reapply any
+                    // phone-side changes that weren't pushed so they aren't lost.
+                    if (sentPush is not null)
+                    {
+                        await ReapplyPushChangesAsync(sentPush);
+                        _lastConfirmedPush = sentPush;
+                        _lastConfirmedPushAt = DateTime.UtcNow;
+                    }
+                    else if (_lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace)
+                    {
+                        // Nothing new to push this round, but a recently-confirmed push may
+                        // not have propagated through the PC's reconciliation cycle yet —
+                        // keep defending it until the grace period elapses.
+                        await ReapplyPushChangesAsync(_lastConfirmedPush);
+                    }
+                    await ReapplyPendingChangesAsync();
+                }
+                finally { _tripMutationGate.Release(); }
             }
             else OnChange?.Invoke();
         }
@@ -3409,6 +3794,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public async Task RepairPendingSyncAsync()
     {
         _syncDebounceCts?.Cancel();
+        _lastConfirmedPush = null;
         await MarkPendingChangesSyncedAsync();
         await db.ClearTransactionOverridesAsync();
         await db.ClearTransactionDeletesAsync();
@@ -3684,13 +4070,60 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
-        // Re-add phone-created savings goals the server doesn't know about yet
+        // Re-add phone-created savings goals the server doesn't know about yet.
+        // Skip any that match a delete tombstone — this push payload was
+        // captured before a delete that happened while this sync round was
+        // already in flight, and a not-yet-synced goal that got deleted has
+        // no other defense against being blindly re-added here.
+        var pendingGoalDeletesForReapply = await db.GetPendingSavingsGoalDeletesAsync();
         foreach (var g in push.NewSavingsGoals)
         {
-            if (!SavingsGoals.Any(x => x.Id == g.Id))
+            if (pendingGoalDeletesForReapply.Any(d => SameSavingsGoalDelete(g, d)))
             {
+                LogGoal($"REAPPLY-SKIP-DELETED {GoalSnapshot(g)}");
+                continue;
+            }
+            var existingNewGoal = SavingsGoals.FirstOrDefault(x => x.Id == g.Id);
+            if (existingNewGoal is null)
+            {
+                // IndexedDbService.PreserveLocalSavingsGoalsWhenMissingAsync already
+                // merged this negative-Id goal onto the server's real-Id record
+                // (by content match) before the wholesale reload above — re-adding
+                // the stale negative-Id object here would create a duplicate.
+                var alreadyAdopted = SavingsGoals.FirstOrDefault(x => x.Id > 0
+                    && string.Equals(x.Name.Trim(), g.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                    && string.Equals((x.GroupName ?? "").Trim(), (g.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
+                if (alreadyAdopted is not null)
+                {
+                    LogGoal($"REAPPLY-ADOPTED oldId={g.Id} {GoalSnapshot(alreadyAdopted)}");
+                    continue;
+                }
+
+                LogGoal($"REAPPLY-READD {GoalSnapshot(g)}");
                 SavingsGoals.Add(g);
                 await db.PutAsync("savingsGoals", g);
+                changed = true;
+            }
+            else if (existingNewGoal.Name != g.Name || existingNewGoal.TargetCents != g.TargetCents
+                || existingNewGoal.CurrentCents != g.CurrentCents || existingNewGoal.WeeklyContributionCents != g.WeeklyContributionCents
+                || existingNewGoal.TargetDate != g.TargetDate || existingNewGoal.GroupName != g.GroupName)
+            {
+                // A not-yet-synced goal's edits are never queued into
+                // _pendingUpdatedSavingsGoals (there's nothing server-side to
+                // "update" yet) — they only ever live on this same object
+                // reference inside _pendingNewSavingsGoals. The wholesale
+                // reload above just replaced SavingsGoals with fresh objects
+                // straight from IndexedDB, so any edit made while this sync
+                // round was running needs to be copied back over here or it's
+                // silently lost the moment the user looks away.
+                LogGoal($"REAPPLY-RESYNC existing=[{GoalSnapshot(existingNewGoal)}] pending=[{GoalSnapshot(g)}]");
+                existingNewGoal.Name = g.Name;
+                existingNewGoal.TargetCents = g.TargetCents;
+                existingNewGoal.CurrentCents = g.CurrentCents;
+                existingNewGoal.WeeklyContributionCents = g.WeeklyContributionCents;
+                existingNewGoal.TargetDate = g.TargetDate;
+                existingNewGoal.GroupName = g.GroupName;
+                await db.PutAsync("savingsGoals", existingNewGoal);
                 changed = true;
             }
         }
@@ -3714,20 +4147,44 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             if (SavingsGoals.RemoveAll(x => x.Id == id) > 0)
             {
+                LogGoal($"REAPPLY-REREMOVE id={id}");
                 await db.DeleteAsync("savingsGoals", id);
                 changed = true;
             }
         }
 
-        // Re-add phone-created trips the server doesn't know about yet
+        // Re-add phone-created trips the server doesn't know about yet. If the
+        // server actually accepted this trip already and assigned it a real Id
+        // (the common case — push+pull both happen in this same sync round trip),
+        // adopt that Id onto the freshly-pulled record instead of re-adding the
+        // stale negative-Id object as a separate entry: a true duplicate would
+        // silently lose every edit made on the orphaned negative-Id copy the
+        // moment the *next* sync wipes Trips again, since nothing tracks it once
+        // it's no longer in any pending queue.
         foreach (var t in push.NewTrips)
         {
-            if (!Trips.Any(x => x.Id == t.Id))
+            if (Trips.Any(x => x.Id == t.Id)) continue;
+
+            var adopted = Trips.FirstOrDefault(x => x.Id > 0
+                && x.Name == t.Name && x.Destination == t.Destination && x.StartDate == t.StartDate);
+            if (adopted is not null)
             {
-                Trips.Add(t);
-                await db.PutAsync("trips", t);
+                adopted.Notes = t.Notes;
+                adopted.EndDate = t.EndDate;
+                adopted.SavingsAccountId = t.SavingsAccountId;
+                adopted.WeeklyContributionCents = t.WeeklyContributionCents;
+                adopted.Itinerary = t.Itinerary;
+                adopted.Checklist = t.Checklist;
+                adopted.BudgetItems = t.BudgetItems;
+                await db.PutAsync("trips", adopted);
+                OnTripIdAdopted?.Invoke(t.Id, adopted.Id);
                 changed = true;
+                continue;
             }
+
+            Trips.Add(t);
+            await db.PutAsync("trips", t);
+            changed = true;
         }
 
         // Re-apply trip edits made on phone
@@ -3735,6 +4192,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             var trip = Trips.FirstOrDefault(x => x.Id == ut.Id);
             if (trip is null) continue;
+            LogTrip($"REAPPLY trip={ut.Id} current=[{ItinSnapshot(trip)}] incoming=[{ItinSnapshot(ut)}]");
             trip.Name = ut.Name;
             trip.Destination = ut.Destination;
             trip.Notes = ut.Notes;
