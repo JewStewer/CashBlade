@@ -19,6 +19,26 @@
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div>
+                <div class="row-title">Streak &amp; Level</div>
+                <div class="row-sub">Level @State.Xp.Level &middot; @State.Xp.TotalXp XP &middot; @State.Streak.CurrentStreakWeeks-week streak (best @State.Streak.BestStreakWeeks)</div>
+            </div>
+            <span class="badge badge-teal">@State.Streak.FreezesAvailable freeze@(State.Streak.FreezesAvailable == 1 ? "" : "s")</span>
+        </div>
+        <div style="font-size:12px;color:var(--text3)">
+            A freeze protects your streak the next time a week goes over budget, instead of resetting it to zero.
+        </div>
+        <button class="btn btn-secondary btn-sm" disabled="@(State.Xp.TotalXp < 100)" @onclick="BuyStreakFreezeAsync">
+            Buy a freeze (100 XP)
+        </button>
+        @if (!string.IsNullOrEmpty(_freezeStatus))
+        {
+            <div style="font-size:12px;color:@_freezeStatusColor">@_freezeStatus</div>
+        }
+    </div>
+
+    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
                 <div class="row-title">This week's challenge</div>
                 <div class="row-sub">@State.WeeklyChallenge?.Title</div>
             </div>
@@ -383,6 +403,15 @@
     private string _watchStatus = string.Empty;
     private string _modeStatus = string.Empty;
     private int _roundUpSweepGoalId;
+    private string _freezeStatus = string.Empty;
+    private string _freezeStatusColor = "var(--text3)";
+
+    private async Task BuyStreakFreezeAsync()
+    {
+        var bought = await State.BuyStreakFreezeAsync();
+        _freezeStatus = bought ? "Freeze purchased." : "Not enough XP yet.";
+        _freezeStatusColor = bought ? "var(--green)" : "var(--amber)";
+    }
 
     private int WeeklyChallengeProgressPercent =>
         State.WeeklyChallenge is null || State.WeeklyChallenge.TargetAmount <= 0

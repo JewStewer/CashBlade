@@ -1026,10 +1026,41 @@ public class AppState(IndexedDbService db, SyncService sync)
         var newlyCompletedWeek = TryGetNewlyCompletedWeek(Streak.LastEvaluatedWeekStart);
         if (newlyCompletedWeek is null) return;
 
-        Streak.CurrentStreakWeeks = DidWeekPassBudget(1) ? Streak.CurrentStreakWeeks + 1 : 0;
+        if (DidWeekPassBudget(1))
+        {
+            Streak.CurrentStreakWeeks++;
+        }
+        else if (Streak.FreezesAvailable > 0 && Streak.CurrentStreakWeeks > 0)
+        {
+            // Spend a freeze to protect an existing streak rather than resetting it —
+            // gives the XP spent buying a freeze an actual payoff.
+            Streak.FreezesAvailable--;
+            Streak.LastFreezeUsedWeekStart = newlyCompletedWeek;
+        }
+        else
+        {
+            Streak.CurrentStreakWeeks = 0;
+        }
+        _streakRecordBrokenThisCompute = Streak.CurrentStreakWeeks > Streak.BestStreakWeeks && Streak.CurrentStreakWeeks > 0;
         Streak.BestStreakWeeks = Math.Max(Streak.BestStreakWeeks, Streak.CurrentStreakWeeks);
         Streak.LastEvaluatedWeekStart = newlyCompletedWeek;
         PersistGameStateJson(StreakSettingKey, Streak);
+    }
+
+    private bool _streakRecordBrokenThisCompute;
+
+    private const int StreakFreezeCostXp = 100;
+
+    public async Task<bool> BuyStreakFreezeAsync()
+    {
+        if (Xp.TotalXp < StreakFreezeCostXp) return false;
+        Xp.TotalXp -= StreakFreezeCostXp;
+        Streak.FreezesAvailable++;
+        await SaveSettingJsonAsync(XpSettingKey, Xp);
+        await SaveSettingJsonAsync(StreakSettingKey, Streak);
+        Compute();
+        OnChange?.Invoke();
+        return true;
     }
 
     private const string XpSettingKey = "GameXp";
@@ -2180,6 +2211,29 @@ public class AppState(IndexedDbService db, SyncService sync)
                         ActionUrl = "budget"
                     });
                 }
+            }
+        }
+        catch { }
+
+        try
+        {
+            // Give a milestone (new streak record, or a fresh best-week-ever) an actual
+            // payoff suggestion instead of just a number going up: nudge the user to
+            // bank the round-up total they've already accumulated.
+            var bestWeekEver = GetBestWeekEver();
+            var lastWeekStart = GetIsoWeekStart(DateTime.Today).AddDays(-7);
+            var hitNewBestWeek = RoundUp.Enabled && WeekHasTransactions(1)
+                && bestWeekEver.WeekStart.Date == lastWeekStart.Date;
+            if ((_streakRecordBrokenThisCompute || hitNewBestWeek) && RoundUp.Enabled && RoundUp.AccumulatedCents > 0 && SavingsGoals.Count > 0)
+            {
+                signals.Add(new ProactiveInsight
+                {
+                    Key = $"milestone-roundup-nudge:{GetIsoWeekStart(DateTime.Today):yyyyMMdd}",
+                    Severity = ProactiveInsightSeverity.Info,
+                    Title = _streakRecordBrokenThisCompute ? "New streak record! Bank it" : "Best week yet — bank it",
+                    Message = $"You've got {RoundUp.AccumulatedDollars:C} in round-up savings waiting. Sweep it into a goal to make this milestone count.",
+                    ActionUrl = "tools"
+                });
             }
         }
         catch { }
