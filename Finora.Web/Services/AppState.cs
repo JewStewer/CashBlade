@@ -1107,10 +1107,15 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         WeeklyChallenge = GetSettingJson<WeeklyChallengeState>(WeeklyChallengeSettingKey);
         var currentWeekStart = GetIsoWeekStart(DateTime.Today);
-        if (WeeklyChallenge is not null && WeeklyChallenge.WeekStart.Date == currentWeekStart.Date) return;
+        var cachedCategoryIsStale = WeeklyChallenge is not null
+            && (string.Equals(WeeklyChallenge.CategoryName, "Income", StringComparison.OrdinalIgnoreCase)
+                || TransactionClassification.IsInternalMovementCategory(WeeklyChallenge.CategoryName));
+        if (WeeklyChallenge is not null && WeeklyChallenge.WeekStart.Date == currentWeekStart.Date && !cachedCategoryIsStale) return;
 
         // Lock in the outcome of the challenge that's ending before replacing it.
-        if (WeeklyChallenge is not null && WeeklyChallenge.Passed is null)
+        // Skip this when we're regenerating mid-week because the cached category was stale —
+        // the week hasn't actually ended, so there's no outcome to lock in yet.
+        if (WeeklyChallenge is not null && WeeklyChallenge.Passed is null && WeeklyChallenge.WeekStart.Date != currentWeekStart.Date)
         {
             var spentLastWeek = string.IsNullOrEmpty(WeeklyChallenge.CategoryName)
                 ? GetWeekSpending(1)
