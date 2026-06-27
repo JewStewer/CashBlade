@@ -3,6 +3,7 @@
 @inject SyncService Sync
 @inject UpBankWebSyncService UpSync
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
 
 <PageTitle>Settings — Evergrove</PageTitle>
@@ -421,6 +422,7 @@ else if (_tab == "Data")
 
     protected override async Task OnInitializedAsync()
     {
+        ApplyInitialTabFromQuery();
         supabaseUrl = Sync.SupabaseUrl ?? string.Empty;
         supabaseKey = Sync.SupabaseKey ?? string.Empty;
         upBankToken = await UpSync.GetAccessTokenAsync();
@@ -430,6 +432,21 @@ else if (_tab == "Data")
         Sync.OnSyncStateChanged += StateHasChanged;
         UpSync.OnStateChanged += StateHasChanged;
         State.OnChange += OnAppStateChanged;
+    }
+
+    private void ApplyInitialTabFromQuery()
+    {
+        var query = new Uri(Nav.Uri).Query.TrimStart('?');
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length != 2 || !string.Equals(pair[0], "tab", StringComparison.OrdinalIgnoreCase)) continue;
+            var tab = Uri.UnescapeDataString(pair[1]);
+            if (new[] { "Sync", "Preferences", "Notifications", "Data" }.Contains(tab, StringComparer.OrdinalIgnoreCase))
+            {
+                _tab = tab;
+            }
+        }
     }
 
     // localEditIntents/localDeleteIntents are a one-time snapshot taken at page load —

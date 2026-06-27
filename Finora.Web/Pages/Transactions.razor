@@ -146,6 +146,7 @@
                         var localT = t;
                         var isLent = State.IsLent(localT.Id);
                         var isUnrepaid = State.IsUnrepaid(localT.Id);
+                        var sameNameCount = State.GetSameNameTransactionCount(localT);
                         <div style="padding:8px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px" @onclick:stopPropagation="true">
                             <div style="display:flex;align-items:center;gap:8px">
                                 <span style="font-size:12px;color:var(--text3);flex-shrink:0">Category</span>
@@ -158,6 +159,16 @@
                                     }
                                 </select>
                             </div>
+                            @if (sameNameCount > 1)
+                            {
+                                <button class="btn btn-sm btn-secondary" @onclick="() => DoApplyCategoryToSameName(localT)" @onclick:stopPropagation="true">
+                                    Apply this category to @sameNameCount matching names
+                                </button>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(_bulkCategoryStatus) && _bulkCategoryStatusId == localT.Id)
+                            {
+                                <div style="font-size:12px;color:@_bulkCategoryStatusColor">@_bulkCategoryStatus</div>
+                            }
                             <div style="display:flex;gap:8px;flex-wrap:wrap">
                                 <button class="btn btn-sm btn-secondary" @onclick="() => StartEdit(localT)" @onclick:stopPropagation="true">Edit</button>
                                 @if (localT.AmountCents < 0 && !State.IsInternalMovement(localT))
@@ -268,6 +279,9 @@
     private string _lentNote = string.Empty;
     private int _repayPickId;
     private decimal _repayAmount;
+    private int _bulkCategoryStatusId;
+    private string _bulkCategoryStatus = string.Empty;
+    private string _bulkCategoryStatusColor = "var(--text3)";
 
     private bool HasActiveFilters =>
         filter != "All" ||
@@ -304,7 +318,18 @@
     {
         if (!int.TryParse(e.Value?.ToString(), out var id) || id == 0 || id == t.CategoryId)
             return Task.CompletedTask;
+        _bulkCategoryStatus = string.Empty;
         return State.UpdateTransactionCategoryAsync(t.Id, id);
+    }
+
+    private async Task DoApplyCategoryToSameName(Transaction t)
+    {
+        var changed = await State.UpdateSameNameTransactionCategoriesAsync(t.Id, t.CategoryId);
+        _bulkCategoryStatusId = t.Id;
+        _bulkCategoryStatus = changed == 0
+            ? "Matching transactions already use this category."
+            : $"Updated {changed} matching transaction{(changed == 1 ? "" : "s")}.";
+        _bulkCategoryStatusColor = changed == 0 ? "var(--text3)" : "var(--green)";
     }
 
     private async Task DoToggleUnnecessary(Transaction t)

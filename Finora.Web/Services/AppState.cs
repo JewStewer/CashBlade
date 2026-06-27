@@ -66,10 +66,34 @@ public class AppState(IndexedDbService db, SyncService sync)
     public int AffordabilityInstallmentFrequencyWeeks { get; private set; } = 2;
     private const string PaceExcludedCategoriesSettingKey = "SpendingPaceExcludedCategories";
     private const string PaceExcludedTransactionNamesSettingKey = "SpendingPaceExcludedTransactionNames";
+    private const string CategoryManagementRulesSettingKey = "CategoryManagementRules";
     private HashSet<string> _paceExcludedCategories = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _paceExcludedTransactionNames = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> PaceExcludedCategories => _paceExcludedCategories;
     public IReadOnlyCollection<string> PaceExcludedTransactionNames => _paceExcludedTransactionNames;
+    private CategoryManagementRules _categoryManagementRules = new();
+
+    public sealed class CategoryManagementRules
+    {
+        public List<ManagedCategoryRule> AddedCategories { get; set; } = new();
+        public List<DeletedCategoryRule> DeletedCategories { get; set; } = new();
+    }
+
+    public sealed class ManagedCategoryRule
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public CategoryType Type { get; set; } = CategoryType.Expense;
+    }
+
+    public sealed class DeletedCategoryRule
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public CategoryType Type { get; set; } = CategoryType.Expense;
+        public int ReplacementId { get; set; }
+        public string ReplacementName { get; set; } = string.Empty;
+    }
 
     // ── App lock (PIN) ──────────────────────────────────────────────────────────
     private const string AppLockPinHashKey = "AppLockPinHash";
@@ -333,6 +357,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedTripDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
         await ApplyPersistedSettingOverridesAsync();
+        await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: true);
     }
 
     // ── Lent money tracking ──────────────────────────────────────────────────
@@ -3554,8 +3579,169 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    public int GetSameNameTransactionCount(Transaction transaction)
+    {
+        var normalized = NormalizeRecurringDescription(transaction.Description);
+        return Transactions.Count(t =>
+            t.AmountCents < 0 &&
+            !IsInternalMovement(t) &&
+            string.Equals(NormalizeRecurringDescription(t.Description), normalized, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<int> UpdateSameNameTransactionCategoriesAsync(int transactionId, int categoryId)
+    {
+        var seed = Transactions.FirstOrDefault(t => t.Id == transactionId);
+        var category = Categories.FirstOrDefault(c => c.Id == categoryId);
+        if (seed is null || category is null) return 0;
+
+        var normalized = NormalizeRecurringDescription(seed.Description);
+        var matches = Transactions
+            .Where(t => t.AmountCents < 0 &&
+                !IsInternalMovement(t) &&
+                string.Equals(NormalizeRecurringDescription(t.Description), normalized, StringComparison.OrdinalIgnoreCase) &&
+                t.CategoryId != categoryId)
+            .ToList();
+
+        foreach (var transaction in matches)
+        {
+            transaction.CategoryId = category.Id;
+            transaction.CategoryName = category.Name;
+            await db.PutAsync("transactions", transaction);
+            QueueUpdatedTransaction(transaction);
+            await db.SetTransactionOverrideAsync(transaction);
+        }
+
+        if (matches.Count > 0)
+        {
+            Compute();
+            OnChange?.Invoke();
+            ScheduleSyncSoon();
+        }
+
+        return matches.Count;
+    }
+
     public int GetCategoryUsageCount(int categoryId) =>
         Transactions.Count(t => t.CategoryId == categoryId);
+
+    private CategoryManagementRules LoadCategoryManagementRules()
+    {
+        var rules = GetSettingJson<CategoryManagementRules>(CategoryManagementRulesSettingKey) ?? new CategoryManagementRules();
+        return NormalizeCategoryManagementRules(rules);
+    }
+
+    private static CategoryManagementRules NormalizeCategoryManagementRules(CategoryManagementRules rules)
+    {
+        rules.AddedCategories = rules.AddedCategories
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name))
+            .GroupBy(r => $"{r.Type}:{r.Name.Trim().ToUpperInvariant()}")
+            .Select(g => g.Last())
+            .ToList();
+        rules.DeletedCategories = rules.DeletedCategories
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name) && !string.IsNullOrWhiteSpace(r.ReplacementName))
+            .GroupBy(r => $"{r.Type}:{r.Name.Trim().ToUpperInvariant()}")
+            .Select(g => g.Last())
+            .ToList();
+        return rules;
+    }
+
+    private async Task SaveCategoryManagementRulesAsync()
+    {
+        _categoryManagementRules = NormalizeCategoryManagementRules(_categoryManagementRules);
+        await SaveSettingAsync(CategoryManagementRulesSettingKey, System.Text.Json.JsonSerializer.Serialize(_categoryManagementRules));
+    }
+
+    private Category? FindCategory(string name, CategoryType type) =>
+        Categories.FirstOrDefault(c =>
+            c.Type == type &&
+            string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    private int NextLocalCategoryId()
+    {
+        var min = Categories.Select(c => c.Id).DefaultIfEmpty(0).Min();
+        return Math.Min(min - 1, -1);
+    }
+
+    private async Task ApplyManagedCategoryRulesAsync(bool persistTransactionOverrides)
+    {
+        _categoryManagementRules = LoadCategoryManagementRules();
+        if (_categoryManagementRules.AddedCategories.Count == 0 && _categoryManagementRules.DeletedCategories.Count == 0)
+            return;
+
+        var changed = false;
+        foreach (var rule in _categoryManagementRules.AddedCategories)
+        {
+            if (_categoryManagementRules.DeletedCategories.Any(d =>
+                d.Type == rule.Type &&
+                string.Equals(d.Name, rule.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            if (FindCategory(rule.Name, rule.Type) is not null) continue;
+            var id = rule.Id < 0 && Categories.All(c => c.Id != rule.Id) ? rule.Id : NextLocalCategoryId();
+            var category = new Category { Id = id, Name = rule.Name.Trim(), Type = rule.Type };
+            Categories.Add(category);
+            await db.PutAsync("categories", category);
+            changed = true;
+        }
+
+        foreach (var rule in _categoryManagementRules.DeletedCategories)
+        {
+            var replacement = FindCategory(rule.ReplacementName, rule.Type)
+                ?? Categories.FirstOrDefault(c => c.Id == rule.ReplacementId && c.Type == rule.Type)
+                ?? Categories.FirstOrDefault(c => c.Type == rule.Type && !string.Equals(c.Name, rule.Name, StringComparison.OrdinalIgnoreCase));
+            if (replacement is null) continue;
+
+            var deletedIds = Categories
+                .Where(c => c.Type == rule.Type &&
+                    (c.Id == rule.Id || string.Equals(c.Name, rule.Name, StringComparison.OrdinalIgnoreCase)))
+                .Select(c => c.Id)
+                .ToHashSet();
+
+            var affected = Transactions
+                .Where(t => deletedIds.Contains(t.CategoryId) ||
+                    string.Equals(t.CategoryName, rule.Name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var transaction in affected)
+            {
+                if (transaction.CategoryId == replacement.Id &&
+                    string.Equals(transaction.CategoryName, replacement.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                transaction.CategoryId = replacement.Id;
+                transaction.CategoryName = replacement.Name;
+                await db.PutAsync("transactions", transaction);
+                if (persistTransactionOverrides)
+                {
+                    QueueUpdatedTransaction(transaction);
+                    await db.SetTransactionOverrideAsync(transaction);
+                }
+                changed = true;
+            }
+
+            var removed = Categories.RemoveAll(c => deletedIds.Contains(c.Id));
+            if (removed > 0)
+            {
+                foreach (var id in deletedIds)
+                    await db.DeleteAsync("categories", id);
+                changed = true;
+            }
+
+            if (_paceExcludedCategories.Remove(rule.Name))
+            {
+                await SaveSettingAsync(PaceExcludedCategoriesSettingKey, System.Text.Json.JsonSerializer.Serialize(_paceExcludedCategories.OrderBy(v => v, StringComparer.OrdinalIgnoreCase)));
+            }
+        }
+
+        if (changed)
+        {
+            if (persistTransactionOverrides) ScheduleSyncSoon();
+        }
+    }
 
     public async Task<(bool Ok, string Message)> AddCategoryAsync(string name, CategoryType type)
     {
@@ -3564,12 +3750,17 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (Categories.Any(c => string.Equals(c.Name, clean, StringComparison.OrdinalIgnoreCase)))
             return (false, "That category already exists.");
 
-        var id = Math.Min(Categories.Select(c => c.Id).DefaultIfEmpty(0).Min() - 1, -1);
+        var id = NextLocalCategoryId();
         var category = new Category { Id = id, Name = clean, Type = type };
         Categories.Add(category);
         await db.PutAsync("categories", category);
-        Compute();
-        OnChange?.Invoke();
+        _categoryManagementRules = LoadCategoryManagementRules();
+        _categoryManagementRules.DeletedCategories.RemoveAll(r =>
+            r.Type == type && string.Equals(r.Name, clean, StringComparison.OrdinalIgnoreCase));
+        _categoryManagementRules.AddedCategories.RemoveAll(r =>
+            r.Type == type && string.Equals(r.Name, clean, StringComparison.OrdinalIgnoreCase));
+        _categoryManagementRules.AddedCategories.Add(new ManagedCategoryRule { Id = id, Name = clean, Type = type });
+        await SaveCategoryManagementRulesAsync();
         return (true, $"Added {clean}.");
     }
 
@@ -3595,13 +3786,30 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         Categories.RemoveAll(c => c.Id == categoryId);
         await db.DeleteAsync("categories", categoryId);
+        _categoryManagementRules = LoadCategoryManagementRules();
+        var wasLocalAddition = _categoryManagementRules.AddedCategories.RemoveAll(r =>
+            r.Type == category.Type && string.Equals(r.Name, category.Name, StringComparison.OrdinalIgnoreCase)) > 0;
+        _categoryManagementRules.DeletedCategories.RemoveAll(r =>
+            r.Type == category.Type && string.Equals(r.Name, category.Name, StringComparison.OrdinalIgnoreCase));
+        if (!wasLocalAddition)
+        {
+            _categoryManagementRules.DeletedCategories.Add(new DeletedCategoryRule
+            {
+                Id = category.Id,
+                Name = category.Name,
+                Type = category.Type,
+                ReplacementId = replacement.Id,
+                ReplacementName = replacement.Name
+            });
+        }
         _paceExcludedCategories.Remove(category.Name);
         await SaveSettingAsync(PaceExcludedCategoriesSettingKey, System.Text.Json.JsonSerializer.Serialize(_paceExcludedCategories.OrderBy(v => v, StringComparer.OrdinalIgnoreCase)));
+        await SaveCategoryManagementRulesAsync();
 
         Compute();
         OnChange?.Invoke();
         if (affected.Count > 0) ScheduleSyncSoon();
-        return (true, $"Deleted {category.Name}; moved {affected.Count} transaction{(affected.Count == 1 ? "" : "s")} to {replacement.Name}.");
+        return (true, $"Deleted {category.Name}; moved {affected.Count} transaction{(affected.Count == 1 ? "" : "s")} to {replacement.Name}. Sync will keep it deleted.");
     }
 
     public async Task DeleteTransactionAsync(int id)

@@ -16,6 +16,14 @@
         <button class="btn btn-primary btn-sm" @onclick='() => Nav.NavigateTo("settings")'>Open</button>
     </div>
 
+    <div class="card-sm" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+            <div class="row-title">Transaction Categories</div>
+            <div class="row-sub">Add, delete, and merge categories.</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("settings?tab=Data")'>Manage</button>
+    </div>
+
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
             <div>
