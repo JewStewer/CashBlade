@@ -64,6 +64,20 @@
                 void page.offsetHeight;
                 page.style.transform = '';
                 page.scrollTop = y;
+                // html/body are position:fixed + overflow:hidden — they should
+                // never carry any scroll offset or transform of their own. iOS's
+                // automatic scroll-into-view for a focused input can still nudge
+                // this outer frame (a transform, or a native scroll despite
+                // overflow:hidden) and leaves it there after the keyboard
+                // dismisses. A swipe then fights that residual offset instead of
+                // scrolling .page-content — the page visibly shifts but nothing
+                // actually scrolls. Reset the outer frame back to its pinned
+                // baseline without touching .page-content's own scroll position.
+                document.documentElement.style.transform = '';
+                document.body.style.transform = '';
+                window.scrollTo(0, 0);
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
             },
             scrollPageToTop: () => {
                 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
