@@ -36,7 +36,34 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal BudgetUnplanned { get; private set; }
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned;
     public decimal BudgetSafeToSpendAmount => Math.Max(BudgetLeftover, 0);
-    public decimal SafeToSpendAmount => NoSpendMode ? 0 : Math.Max(BudgetLeftover, 0);
+    // Reactive, pace-aware version of the safe-to-spend headline: starts from
+    // what's actually left in the current pay cycle (allowance minus real
+    // discretionary spend so far) rather than the flat weekly plan figure, then
+    // tightens further if today's spending rate projects you to run out before
+    // the cycle ends. BudgetSafeToSpendAmount stays untouched as the static plan
+    // number other features (challenges, the budget editor) key off.
+    public decimal SafeToSpendAmount
+    {
+        get
+        {
+            if (NoSpendMode) return 0m;
+
+            var (from, to) = GetCurrentPeriod();
+            var periodDays = Math.Max((to.Date - from.Date).Days + 1, 1);
+            var periodBudget = Math.Max(BudgetLeftover * (periodDays / 7m), 0m);
+
+            var today = DateTime.Today.Date < from.Date ? from.Date
+                : DateTime.Today.Date > to.Date ? to.Date
+                : DateTime.Today.Date;
+            var elapsedDays = Math.Clamp((today - from.Date).Days + 1, 1, periodDays);
+            var spendToDate = GetDiscretionarySpendingForPeriod(from, today);
+            var remaining = periodBudget - spendToDate;
+            if (remaining <= 0) return 0m;
+
+            var projectedOverrun = (spendToDate / elapsedDays) * periodDays - periodBudget;
+            return projectedOverrun > 0 ? Math.Max(remaining - projectedOverrun, 0m) : remaining;
+        }
+    }
     public decimal OutstandingLentDollars =>
         Transactions
             .Where(t => IsUnrepaid(t.Id))
