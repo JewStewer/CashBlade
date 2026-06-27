@@ -2401,6 +2401,23 @@ public class AppState(IndexedDbService db, SyncService sync)
         return (afterBills, afterBills + (accountId == PayAccountId ? EstimatedPayAmount : 0m));
     }
 
+    // Per-bill coverage check. Unlike GetAccountForecast (which only looks at bills due
+    // before the next payday, since that's what the Accounts page balance projection
+    // needs), this sums every unpaid bill on the account due on or before THIS bill's
+    // own due date, in due-date order. That way a bill due after the next payday can't
+    // be marked "Covered" just because it fell outside that narrower window, and two
+    // bills sharing an account get checked against their combined draw on the balance
+    // rather than independently.
+    public (bool Covered, decimal Shortfall) GetBillCoverage(Bill bill)
+    {
+        var current = GetAccountBalance(bill.AccountId);
+        var dueByThen = Bills
+            .Where(b => b.AccountId == bill.AccountId && !IsBillPaid(b) && b.EffectiveDueDate.Date <= bill.EffectiveDueDate.Date)
+            .Sum(b => b.AmountDollars);
+        var remaining = current - dueByThen;
+        return (remaining >= 0, remaining < 0 ? -remaining : 0m);
+    }
+
     // How much to move from the pay account into each other account this payday so
     // it can cover the bills already assigned to it before the next payday — i.e.
     // the same shortfall GetAccountForecast already flags per-account, just
