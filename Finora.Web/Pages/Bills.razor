@@ -79,8 +79,8 @@
         <div class="mini-timeline">
             @foreach (var occ in DueSoonBills)
             {
-                var (acctAfterBills, _) = State.GetAccountForecast(occ.Bill.AccountId);
-                <button class="timeline-chip @(acctAfterBills < 0 ? "is-danger" : "is-ready")" @onclick="() => StartEdit(occ.Bill)">
+                var (occCovered, _) = State.GetBillCoverage(occ.Bill);
+                <button class="timeline-chip @(occCovered ? "is-ready" : "is-danger")" @onclick="() => StartEdit(occ.Bill)">
                     <span>@DueLabel(occ.DueDate)</span>
                     <strong>@occ.Bill.Name</strong>
                     <small>@occ.Bill.AmountDollars.ToString("C")</small>
@@ -116,8 +116,7 @@ else
         @foreach (var bill in bills)
         {
             var isPaid = State.IsBillPaid(bill);
-            var (acctAfterBills, _) = State.GetAccountForecast(bill.AccountId);
-            var covered = acctAfterBills >= 0;
+            var (covered, shortfall) = State.GetBillCoverage(bill);
             <div class="list-row" style="align-items:flex-start;gap:10px">
                 <div style="padding-top:2px">
                     <button @onclick="() => TogglePaid(bill)" style="width:22px;height:22px;border-radius:50%;border:2px solid @(isPaid?"var(--green)":"var(--border)");background:@(isPaid?"var(--green)":"transparent");cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -136,7 +135,6 @@ else
                             }
                             else
                             {
-                                var shortfall = -acctAfterBills;
                                 <span class="badge badge-red">Short @shortfall.ToString("C")</span>
                             }
                             @if (bill.IsAutoPay)
@@ -198,9 +196,9 @@ else
 
     private string GetDangerBadge(Bill bill)
     {
-        var (acctAfterBills, _) = State.GetAccountForecast(bill.AccountId);
-        if (acctAfterBills < 0 && bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Danger";
-        if (acctAfterBills < 0) return "Short";
+        var (covered, _) = State.GetBillCoverage(bill);
+        if (!covered && bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Danger";
+        if (!covered) return "Short";
         if (bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Ready";
         return string.Empty;
     }
