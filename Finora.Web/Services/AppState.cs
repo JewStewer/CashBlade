@@ -2414,6 +2414,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         var existing = SavingsGoals.FirstOrDefault(x => x.Id == g.Id);
         if (existing is null) return;
         LogGoal($"UPDATE before=[{GoalSnapshot(existing)}] after=[{GoalSnapshot(g)}]");
+        var contributionCents = g.CurrentCents - existing.CurrentCents;
         existing.Name = g.Name;
         existing.TargetCents = g.TargetCents;
         existing.CurrentCents = g.CurrentCents;
@@ -2432,9 +2433,38 @@ public class AppState(IndexedDbService db, SyncService sync)
         // for them and only feeds the canonical-store merge and the local
         // reapply-after-reload defense.
         QueueUpdatedSavingsGoal(existing);
+        if (contributionCents > 0)
+            await RecordSavingsGoalContributionAsync(existing.Name, contributionCents);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
+    }
+
+    private const string SavingsGoalContributionCategoryName = "Savings Goal";
+
+    // Money put toward a goal isn't a real bank transfer in this app (goals have
+    // no linked account), so nothing ever reduced the weekly/monthly budget when
+    // a contribution was made. Recording it as a normal expense transaction makes
+    // it count toward GetDiscretionarySpendingForPeriod like any other spend, so
+    // it visibly eats into safe-to-spend for the period it happened in.
+    private async Task RecordSavingsGoalContributionAsync(string goalName, int contributionCents)
+    {
+        var category = Categories.FirstOrDefault(c => string.Equals(c.Name, SavingsGoalContributionCategoryName, StringComparison.OrdinalIgnoreCase));
+        if (category is null)
+        {
+            var newCatId = Math.Min(Categories.Select(c => c.Id).DefaultIfEmpty(0).Min() - 1, -1);
+            category = new Category { Id = newCatId, Name = SavingsGoalContributionCategoryName, Type = CategoryType.Expense };
+            Categories.Add(category);
+        }
+
+        await AddTransactionAsync(new Transaction
+        {
+            Date = DateTime.Today,
+            Description = $"Contribution to {goalName}",
+            AmountCents = -contributionCents,
+            CategoryId = category.Id,
+            CategoryName = category.Name
+        });
     }
 
     public async Task DeleteSavingsGoalAsync(int id)
