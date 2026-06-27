@@ -1,4 +1,5 @@
 @inject AppState State
+@implements IDisposable
 
 @{
     var trip = SelectedTrip;
@@ -594,20 +595,35 @@ else
 {
     <AddEditTripModal Trip="@_newTripDraft"
         OnClose="() => _newTripDraft = null"
-        OnSaved="() => _newTripDraft = null" />
+        OnSaved="@((Trip t) => { _newTripDraft = null; _selectedTripId = t.Id; })" />
 }
 
 @if (_editTripDraft is not null)
 {
     <AddEditTripModal Trip="@_editTripDraft"
         OnClose="() => _editTripDraft = null"
-        OnSaved="() => _editTripDraft = null" />
+        OnSaved="@((Trip t) => _editTripDraft = null)" />
 }
 
 @code {
     private int? _selectedTripId;
     private Trip? _newTripDraft;
     private Trip? _editTripDraft;
+
+    protected override void OnInitialized()
+    {
+        State.OnTripIdAdopted += OnTripIdAdopted;
+    }
+
+    private void OnTripIdAdopted(int oldId, int newId)
+    {
+        if (_selectedTripId == oldId) _selectedTripId = newId;
+    }
+
+    public void Dispose()
+    {
+        State.OnTripIdAdopted -= OnTripIdAdopted;
+    }
 
     private bool _showBudgetForm;
     private string _newBudgetCategory = string.Empty;

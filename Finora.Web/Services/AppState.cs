@@ -168,6 +168,11 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public event Action? OnChange;
 
+    // Fired when a not-yet-synced (negative-Id) Trip is matched to the real
+    // Id the server assigned it, so UI holding the old Id (e.g. a selected-
+    // trip detail view) can follow the rename instead of losing its place.
+    public event Action<int, int>? OnTripIdAdopted;
+
     // ── Account balances computed from transactions ───────────────────────────
     public Dictionary<int, decimal> AccountBalances { get; private set; } = new();
 
@@ -3782,15 +3787,38 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
-        // Re-add phone-created trips the server doesn't know about yet
+        // Re-add phone-created trips the server doesn't know about yet. If the
+        // server actually accepted this trip already and assigned it a real Id
+        // (the common case — push+pull both happen in this same sync round trip),
+        // adopt that Id onto the freshly-pulled record instead of re-adding the
+        // stale negative-Id object as a separate entry: a true duplicate would
+        // silently lose every edit made on the orphaned negative-Id copy the
+        // moment the *next* sync wipes Trips again, since nothing tracks it once
+        // it's no longer in any pending queue.
         foreach (var t in push.NewTrips)
         {
-            if (!Trips.Any(x => x.Id == t.Id))
+            if (Trips.Any(x => x.Id == t.Id)) continue;
+
+            var adopted = Trips.FirstOrDefault(x => x.Id > 0
+                && x.Name == t.Name && x.Destination == t.Destination && x.StartDate == t.StartDate);
+            if (adopted is not null)
             {
-                Trips.Add(t);
-                await db.PutAsync("trips", t);
+                adopted.Notes = t.Notes;
+                adopted.EndDate = t.EndDate;
+                adopted.SavingsAccountId = t.SavingsAccountId;
+                adopted.WeeklyContributionCents = t.WeeklyContributionCents;
+                adopted.Itinerary = t.Itinerary;
+                adopted.Checklist = t.Checklist;
+                adopted.BudgetItems = t.BudgetItems;
+                await db.PutAsync("trips", adopted);
+                OnTripIdAdopted?.Invoke(t.Id, adopted.Id);
                 changed = true;
+                continue;
             }
+
+            Trips.Add(t);
+            await db.PutAsync("trips", t);
+            changed = true;
         }
 
         // Re-apply trip edits made on phone

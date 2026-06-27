@@ -33,15 +33,15 @@
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-JzWmdwDVbEE8A159tlrA+Vq0i7rNj2mlqxXCqmAjNEw=",
+      "hash": "sha256-KDg+UKS2hYcDEO0BwFPun4vLFN8ZSt05KpXPRzF+iIw=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-8Gg0nzIPpkRWlT9GGDurcs+UbWkLigwIgr8bncBc2A4=",
+      "hash": "sha256-9UvdDe1NYrrxMpc2lQmu5+PAvcWn0tlacro3w0rD4Ac=",
       "url": "_framework\/Finora.Web.wasm"
     },
     {
-      "hash": "sha256-mzTiYUEuIRUARP225jPXpEW+v2ntYUsV8zhdfyZNBao=",
+      "hash": "sha256-5qWtHPnnZH9LxQmwuYJzfpWtn4Bm4ojhqxtG7n0+k4Y=",
       "url": "_framework\/Microsoft.AspNetCore.Components.wasm"
     },
     {
@@ -169,7 +169,7 @@
       "url": "_framework\/System.Runtime.InteropServices.JavaScript.wasm"
     },
     {
-      "hash": "sha256-HWBgNZ45qgbAGftJRqMO0gN75BXbsm3qbOxwlrb1ias=",
+      "hash": "sha256-GtGGoEiPrmA68grZmR1MtsgBYzI2MFed75FtJZ\/Do0s=",
       "url": "_framework\/System.Runtime.wasm"
     },
     {
@@ -229,5 +229,5 @@
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "0dYHmpxs"
+  "version": "+VfGJPhE"
 };
