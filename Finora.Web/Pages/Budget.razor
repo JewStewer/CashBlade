@@ -236,37 +236,41 @@
         var dailyRoom = Math.Max(remainingBudget / daysRemaining, 0);
         var currentDailyAverage = spendToDate / elapsedDays;
         var projectedSpend = currentDailyAverage * PeriodDays;
-        var expectedSpendToDate = PeriodBudget * elapsedDays / PeriodDays;
-        var paceDelta = spendToDate - expectedSpendToDate;
-        var paceDeltaLabel = FormatPaceDelta(paceDelta);
-        var isOnPace = projectedSpend <= PeriodBudget;
-        var paceColor = isOnPace ? "var(--green)" : "var(--red)";
-        <div class="card" style="margin-top:12px;border-color:@(isOnPace ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)")">
+        var projectedDelta = projectedSpend - PeriodBudget;
+        var isOverBudget = remainingBudget < 0;
+        var isTrendingOver = !isOverBudget && projectedDelta > 0;
+        var paceColor = isOverBudget ? "var(--red)" : isTrendingOver ? "var(--amber)" : "var(--green)";
+        var paceTitle = isOverBudget ? "Over budget" : isTrendingOver ? "Slow down" : "On track";
+        var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, remainingBudget, dailyRoom, daysRemaining, projectedDelta, PeriodNounLower);
+        <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
                     <div class="section-title">Spending Pace</div>
                     <div style="font-size:18px;font-weight:700;color:@paceColor">
-                        @(isOnPace ? "On track" : "Running hot")
+                        @paceTitle
                     </div>
                 </div>
                 <div style="text-align:right">
-                    <div style="font-size:11px;color:var(--text3)">Daily room</div>
-                    <div style="font-size:16px;font-weight:700">@dailyRoom.ToString("C")</div>
+                    <div style="font-size:11px;color:var(--text3)">Budget left</div>
+                    <div style="font-size:16px;font-weight:700;color:@(remainingBudget >= 0 ? "var(--green)" : "var(--red)")">
+                        @(remainingBudget >= 0 ? remainingBudget.ToString("C") : $"{Math.Abs(remainingBudget):C} over")
+                    </div>
                 </div>
             </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:6px;opacity:0.7">Uses discretionary spend from @PeriodRange.From.ToString("d MMM") to @todayInPeriod.ToString("d MMM"). Daily room is what you can spend each remaining day and still land on budget.</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.35">@paceSummary</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">This only counts discretionary spending from @PeriodRange.From.ToString("d MMM") to @todayInPeriod.ToString("d MMM"). Bills and internal transfers are excluded.</div>
             <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">
                 <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
-                    <div class="stat-label">Left</div>
-                    <div style="font-size:14px;font-weight:700;color:@(remainingBudget >= 0 ? "var(--green)" : "var(--red)")">@remainingBudget.ToString("C")</div>
+                    <div class="stat-label">Spent</div>
+                    <div style="font-size:14px;font-weight:700;color:@(isOverBudget ? "var(--red)" : "var(--text)")">@spendToDate.ToString("C")</div>
                 </div>
                 <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
-                    <div class="stat-label">Projected</div>
+                    <div class="stat-label">Budget</div>
+                    <div style="font-size:14px;font-weight:700">@PeriodBudget.ToString("C")</div>
+                </div>
+                <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
+                    <div class="stat-label">End forecast</div>
                     <div style="font-size:14px;font-weight:700;color:@paceColor">@projectedSpend.ToString("C")</div>
-                </div>
-                <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
-                    <div class="stat-label">Vs pace</div>
-                    <div style="font-size:14px;font-weight:700;color:@(paceDelta <= 0 ? "var(--green)" : "var(--red)")">@paceDeltaLabel</div>
                 </div>
             </div>
         </div>
@@ -1506,11 +1510,19 @@ else if (_tab == "Holiday")
 
     private static string GroupWhatIfSettingKey(string groupName) => $"GoalGroupWhatIfWeekly:{groupName}";
 
-    private static string FormatPaceDelta(decimal paceDelta)
+    private static string BuildSpendingPaceSummary(decimal spendToDate, decimal periodBudget, decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta, string periodNounLower)
     {
-        if (Math.Abs(paceDelta) < 0.01m) return "On pace";
-        var amount = Math.Abs(paceDelta).ToString("C");
-        return paceDelta <= 0 ? $"{amount} under" : $"{amount} over";
+        if (periodBudget <= 0)
+            return "Set a discretionary budget to see how much room you have for the rest of the period.";
+
+        if (remainingBudget < 0)
+            return $"You've spent {spendToDate:C} against a {periodBudget:C} {periodNounLower} budget, so you're {Math.Abs(remainingBudget):C} over already.";
+
+        if (projectedDelta > 0)
+            return $"You have {remainingBudget:C} left. Keep future discretionary spending near {dailyRoom:C}/day to finish inside budget.";
+
+        var projectedUnder = Math.Abs(projectedDelta);
+        return $"You have {remainingBudget:C} left, about {dailyRoom:C}/day for the next {daysRemaining} day{(daysRemaining == 1 ? "" : "s")}. At this pace you'll finish about {projectedUnder:C} under budget.";
     }
 
     private static (string Label, string CssClass)? GoalPaceLabel(SavingsGoal goal)
