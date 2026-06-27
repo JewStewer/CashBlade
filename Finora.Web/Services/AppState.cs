@@ -557,7 +557,15 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .Where(g => SameSavingsGoalDelete(g, deleted))
                 .Select(g => g.Id)
                 .ToHashSet();
-            if (removedIds.Count == 0) continue;
+            if (removedIds.Count == 0)
+            {
+                // Nothing in this freshly-pulled snapshot matches anymore — the
+                // server has actually reconciled the delete now. Only stop
+                // defending it once that's confirmed, not just because a push
+                // succeeded (see the comment in SyncAndReloadAsync).
+                await db.ClearSavingsGoalDeleteAsync(deleted.Id);
+                continue;
+            }
 
             SavingsGoals.RemoveAll(g => removedIds.Contains(g.Id));
             _pendingNewSavingsGoals.RemoveAll(g => removedIds.Contains(g.Id));
@@ -3527,8 +3535,17 @@ public class AppState(IndexedDbService db, SyncService sync)
                         await db.ClearBillOverrideAsync(s.BillId);
                     foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
                         await db.ClearDebtDeleteAsync(id);
-                    foreach (var id in push.DeletedSavingsGoalIds.Where(id => id > 0))
-                        await db.ClearSavingsGoalDeleteAsync(id);
+                    // Savings goal tombstones are deliberately NOT cleared here. A
+                    // successful push only means Supabase/the PC's inbox accepted the
+                    // delete, not that WPF has reconciled it into the canonical
+                    // finance_sync snapshot yet — that can lag well past this sync
+                    // round. Clearing the tombstone this early left nothing to defend
+                    // against a pull that still has the goal, so it would silently
+                    // reappear once ConfirmedPushGrace ran out (and a subsequent edit
+                    // on the revived copy would then vanish the next time the server's
+                    // delayed delete finally landed). ApplyPersistedSavingsGoalDeletesAsync
+                    // clears it instead, once a freshly-pulled snapshot actually confirms
+                    // the goal is gone.
                     foreach (var id in push.DeletedTripIds.Where(id => id > 0))
                         await db.ClearTripDeleteAsync(id);
                     foreach (var s in push.UpdatedSettings)
