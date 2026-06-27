@@ -1133,7 +1133,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             .Where(t => t.Date.Date >= lastWeekStart && t.Date.Date < weekStart
                 && t.AmountCents < 0
                 && !string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(t.CategoryName, "Transfer", StringComparison.OrdinalIgnoreCase))
+                && !TransactionClassification.IsInternalMovementCategory(t.CategoryName))
             .GroupBy(t => t.CategoryName)
             .Select(g => new { Category = g.Key, Spent = g.Sum(t => Math.Abs(t.AmountDollars)), Count = g.Count() })
             .Where(g => g.Count >= 2 && g.Spent > 0)

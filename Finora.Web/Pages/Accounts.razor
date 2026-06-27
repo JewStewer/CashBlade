@@ -37,7 +37,7 @@
 }
 
 <div class="pill-tabs">
-    @foreach (var t in new[] { "Accounts", "Debts", "Goals", "Targets" })
+    @foreach (var t in new[] { "Accounts", "Debts" })
     {
         <button class="pill @(_tab == t ? "pill-active" : "pill-inactive")" @onclick="() => _tab = t">@t</button>
     }
@@ -190,16 +190,24 @@ else
                     @if (acct.TargetCents is not null)
                     {
                         var progress = acct.TargetDollars > 0 ? Math.Clamp(balance / acct.TargetDollars!.Value, 0, 1) : 0;
-                        <div class="progress-bar" style="margin-top:8px">
-                            <div class="progress-fill" style="width:@((int)(progress * 100))%;background:@acct.ColorHex"></div>
+                        <div style="cursor:pointer" @onclick:stopPropagation="true" @onclick="() => _accountGoalDraft = acct">
+                            <div class="progress-bar" style="margin-top:8px">
+                                <div class="progress-fill" style="width:@((int)(progress * 100))%;background:@acct.ColorHex"></div>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
+                                <span>@((progress).ToString("P0")) of @acct.TargetDollars!.Value.ToString("C") · tap to edit target</span>
+                                @if (acct.TargetDate is not null)
+                                {
+                                    <span>by @acct.TargetDate.Value.ToString("dd MMM yy")</span>
+                                }
+                            </div>
                         </div>
-                        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
-                            <span>@((progress).ToString("P0")) of @acct.TargetDollars!.Value.ToString("C")</span>
-                            @if (acct.TargetDate is not null)
-                            {
-                                <span>by @acct.TargetDate.Value.ToString("dd MMM yy")</span>
-                            }
-                        </div>
+                    }
+                    else if (acct.Type == AccountType.Savings)
+                    {
+                        <button class="btn btn-secondary btn-sm" style="margin-top:8px" @onclick:stopPropagation="true" @onclick="() => _accountGoalDraft = acct">
+                            Set a balance target
+                        </button>
                     }
                 </div>
             }
@@ -262,164 +270,6 @@ else
     </div>
 }
 }
-else if (_tab == "Goals")
-{
-<!-- Savings goals -->
-<div class="section-header" style="margin-top:14px">
-    <span class="section-title">
-        Savings Goals
-        @if (State.SavingsGoals.Any())
-        {
-            <span style="margin-left:8px;text-transform:none;font-weight:600;font-size:13px;color:var(--purple)">@(State.SavingsGoals.Sum(g => g.CurrentDollars).ToString("C"))</span>
-        }
-    </span>
-    <button class="btn btn-secondary btn-sm" @onclick='() => _goalDraft = new SavingsGoal()'>+ Add</button>
-</div>
-@if (State.SavingsGoals.Any())
-{
-    <div class="card-list" style="margin-top:0">
-        @foreach (var group in State.GetSavingsGoalGroups())
-        {
-            var isGroupExpanded = string.Equals(_expandedGoalGroupName, group.Name, StringComparison.OrdinalIgnoreCase);
-            <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => ToggleGoalGroup(group.Name)">
-                <div style="display:flex;align-items:center;gap:10px">
-                    <div class="row-icon" style="background:rgba(124,58,237,0.15);color:var(--purple)"><Icon Name="sprout" /></div>
-                    <div style="flex:1">
-                        <div style="font-size:15px;font-weight:500">@group.Name</div>
-                        <div style="font-size:12px;color:var(--text3)">@group.Goals.Count goals combined</div>
-                    </div>
-                    <div style="text-align:right">
-                        <div style="font-size:15px;font-weight:600">@group.TotalCurrentDollars.ToString("C")</div>
-                        <div style="font-size:11px;color:var(--text3)">of @group.TotalTargetDollars.ToString("C")</div>
-                    </div>
-                </div>
-                <div class="progress-bar" style="margin-top:8px">
-                    <div class="progress-fill" style="width:@((int)(group.Progress * 100))%;background:var(--purple)"></div>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
-                    <span>
-                        @group.Progress.ToString("P0")
-                        @if (group.Progress >= 0.25m)
-                        {
-                            var (icon, label, color) = GoalMilestoneTier(group.Progress);
-                            <span style="margin-left:6px;color:@color;font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="@icon" Size="12" /> @label</span>
-                        }
-                    </span>
-                    <span>@(isGroupExpanded ? "Tap to close" : "Tap to see goals")</span>
-                </div>
-                @if (isGroupExpanded)
-                {
-                    <div style="margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px" @onclick:stopPropagation="true">
-                        @foreach (var goal in group.Goals)
-                        {
-                            var memberProgress = goal.TargetDollars > 0 ? Math.Clamp(goal.CurrentDollars / goal.TargetDollars, 0, 1) : 0;
-                            <div style="cursor:pointer" @onclick="() => _goalDraft = goal">
-                                <div style="display:flex;justify-content:space-between;font-size:13px">
-                                    <span style="color:var(--text2)">@goal.Name</span>
-                                    <span style="font-weight:600">@goal.CurrentDollars.ToString("C") <span style="color:var(--text3);font-weight:400">of @goal.TargetDollars.ToString("C")</span></span>
-                                </div>
-                                <div class="progress-bar" style="margin-top:5px;height:5px">
-                                    <div class="progress-fill" style="width:@((int)(memberProgress * 100))%;background:var(--purple)"></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        }
-        @foreach (var goal in State.SavingsGoals.Where(g => string.IsNullOrWhiteSpace(g.GroupName)))
-        {
-            var progress = goal.TargetDollars > 0 ? Math.Clamp(goal.CurrentDollars / goal.TargetDollars, 0, 1) : 0;
-            <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _goalDraft = goal">
-                <div style="display:flex;align-items:center;gap:10px">
-                    <div class="row-icon" style="background:rgba(124,58,237,0.15);color:var(--purple)"><Icon Name="sprout" /></div>
-                    <div style="flex:1">
-                        <div style="font-size:15px;font-weight:500">@goal.Name</div>
-                        @if (goal.WeeklyContributionDollars > 0)
-                        {
-                            <div style="font-size:12px;color:var(--text3)">@goal.WeeklyContributionDollars.ToString("C")/week</div>
-                        }
-                    </div>
-                    <div style="text-align:right">
-                        <div style="font-size:15px;font-weight:600">@goal.CurrentDollars.ToString("C")</div>
-                        <div style="font-size:11px;color:var(--text3)">of @goal.TargetDollars.ToString("C")</div>
-                    </div>
-                </div>
-                <div class="progress-bar" style="margin-top:8px">
-                    <div class="progress-fill" style="width:@((int)(progress * 100))%;background:var(--purple)"></div>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
-                    <span>
-                        @progress.ToString("P0")
-                        @if (progress >= 0.25m)
-                        {
-                            var (icon, label, color) = GoalMilestoneTier(progress);
-                            <span style="margin-left:6px;color:@color;font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="@icon" Size="12" /> @label</span>
-                        }
-                    </span>
-                    @if (goal.TargetDate is not null)
-                    {
-                        <span>@goal.TargetDate.Value.ToString("dd MMM yy")</span>
-                    }
-                </div>
-            </div>
-        }
-    </div>
-}
-else
-{
-    <div class="card-list" style="margin-top:0;padding:20px;text-align:center;color:var(--text3);font-size:13px">
-        No savings goals yet — tap "+ Add" to create one.
-    </div>
-}
-}
-else if (_tab == "Targets")
-{
-    <!-- Account targets (a balance goal attached to an existing account, distinct from a dedicated savings goal) -->
-    var accountGoals = State.Accounts.Where(a => a.TargetCents is not null).ToList();
-@if (accountGoals.Any())
-{
-    <div class="section-header" style="margin-top:14px">
-        <span class="section-title">Targets</span>
-        <span style="font-size:13px;color:var(--text2)">@(accountGoals.Sum(a => State.GetAccountBalance(a.Id)).ToString("C"))</span>
-    </div>
-    <div class="card-list" style="margin-top:0">
-        @foreach (var acct in accountGoals)
-        {
-            var current = State.GetAccountBalance(acct.Id);
-            var target = acct.TargetDollars!.Value;
-            var progress = target > 0 ? Math.Clamp(current / target, 0, 1) : 0;
-            var weekly = GoalMath.WeeklyRequired(target, current, acct.TargetDate);
-            <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => _accountGoalDraft = acct">
-                <div style="display:flex;align-items:center;gap:10px">
-                    <div class="row-icon" style="background:color-mix(in srgb, @acct.ColorHex 18%, transparent);color:@acct.ColorHex"><Icon Name="star" /></div>
-                    <div style="flex:1">
-                        <div style="font-size:15px;font-weight:500">@acct.Name</div>
-                        @if (weekly > 0)
-                        {
-                            <div style="font-size:12px;color:var(--text3)">@weekly.ToString("C")/week</div>
-                        }
-                    </div>
-                    <div style="text-align:right">
-                        <div style="font-size:15px;font-weight:600">@current.ToString("C")</div>
-                        <div style="font-size:11px;color:var(--text3)">of @target.ToString("C")</div>
-                    </div>
-                </div>
-                <div class="progress-bar" style="margin-top:8px">
-                    <div class="progress-fill" style="width:@((int)(progress * 100))%;background:@acct.ColorHex"></div>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
-                    <span>@progress.ToString("P0")</span>
-                    @if (acct.TargetDate is not null)
-                    {
-                        <span>@acct.TargetDate.Value.ToString("dd MMM yy")</span>
-                    }
-                </div>
-            </div>
-        }
-    </div>
-}
-}
 
 <div style="height:calc(var(--nav-height) + var(--safe-bottom) + 96px)"></div>
 
@@ -428,13 +278,6 @@ else if (_tab == "Targets")
     <AddEditDebtModal Debt="@_debtDraft"
         OnClose="() => _debtDraft = null"
         OnSaved="() => _debtDraft = null" />
-}
-
-@if (_goalDraft is not null)
-{
-    <AddEditSavingsGoalModal Goal="@_goalDraft"
-        OnClose="() => _goalDraft = null"
-        OnSaved="() => _goalDraft = null" />
 }
 
 @if (_accountGoalDraft is not null)
@@ -447,24 +290,9 @@ else if (_tab == "Targets")
 @code {
     private string _tab = "Accounts";
     private Debt? _debtDraft;
-    private SavingsGoal? _goalDraft;
     private Account? _accountGoalDraft;
     private int _expandedAccountId;
-    private string? _expandedGoalGroupName;
 
     private void ToggleAccount(int accountId) =>
         _expandedAccountId = _expandedAccountId == accountId ? 0 : accountId;
-
-    private void ToggleGoalGroup(string name) =>
-        _expandedGoalGroupName = string.Equals(_expandedGoalGroupName, name, StringComparison.OrdinalIgnoreCase) ? null : name;
-
-    // Mirrors DailyTab's StreakTier badge pattern, applied to savings-goal progress
-    // instead of a day count — same colors already used there for tier badges.
-    private static (string Icon, string Label, string Color) GoalMilestoneTier(decimal progress) => progress switch
-    {
-        >= 1m => ("award", "Goal reached!", "var(--green)"),
-        >= 0.75m => ("flame", "Almost there", "#34D399"),
-        >= 0.5m => ("zap", "Halfway there", "#FBBF24"),
-        _ => ("sprout", "Building", "var(--purple)")
-    };
 }
