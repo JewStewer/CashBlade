@@ -2437,7 +2437,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingNewSavingsGoals.RemoveAll(g => g.Id == id);
         _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == id);
         if (id > 0) _pendingDeletedSavingsGoalIds.Add(id);
-        if (deletedGoal is not null && id > 0)
+        // Tombstone this even for a not-yet-synced (negative id) goal. A sync
+        // round already in flight when the delete happens captured this goal
+        // in its NewSavingsGoals snapshot before the delete; without a
+        // tombstone, ReapplyPushChangesAsync's "re-add new goals the server
+        // doesn't know about yet" pass has no way to tell the delete apart
+        // from the pull having wiped out a pending create, and blindly
+        // re-adds the goal that was just deleted.
+        if (deletedGoal is not null)
             await db.SetSavingsGoalDeleteAsync(deletedGoal);
         await db.DeleteAsync("savingsGoals", id);
         Compute();
@@ -3994,9 +4001,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
-        // Re-add phone-created savings goals the server doesn't know about yet
+        // Re-add phone-created savings goals the server doesn't know about yet.
+        // Skip any that match a delete tombstone — this push payload was
+        // captured before a delete that happened while this sync round was
+        // already in flight, and a not-yet-synced goal that got deleted has
+        // no other defense against being blindly re-added here.
+        var pendingGoalDeletesForReapply = await db.GetPendingSavingsGoalDeletesAsync();
         foreach (var g in push.NewSavingsGoals)
         {
+            if (pendingGoalDeletesForReapply.Any(d => SameSavingsGoalDelete(g, d)))
+            {
+                LogGoal($"REAPPLY-SKIP-DELETED {GoalSnapshot(g)}");
+                continue;
+            }
             if (!SavingsGoals.Any(x => x.Id == g.Id))
             {
                 LogGoal($"REAPPLY-READD {GoalSnapshot(g)}");
