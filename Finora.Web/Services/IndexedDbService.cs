@@ -531,13 +531,15 @@ public class PendingSavingsGoalDelete
     public string Name { get; set; } = string.Empty;
     public int TargetCents { get; set; }
     public int CurrentCents { get; set; }
+    public string? GroupName { get; set; }
 
     public static PendingSavingsGoalDelete FromSavingsGoal(SavingsGoal goal) => new()
     {
         Id = goal.Id,
         Name = goal.Name,
         TargetCents = goal.TargetCents,
-        CurrentCents = goal.CurrentCents
+        CurrentCents = goal.CurrentCents,
+        GroupName = goal.GroupName
     };
 }
 

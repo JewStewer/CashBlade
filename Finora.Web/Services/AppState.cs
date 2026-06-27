@@ -140,6 +140,19 @@ public class AppState(IndexedDbService db, SyncService sync)
     private static string ItinSnapshot(Trip? t) =>
         t is null ? "null" : string.Join(" | ", t.Itinerary.Select(i => $"{i.Title}={i.AmountDollars:0.00}#{(i.Id.Length >= 6 ? i.Id[..6] : i.Id)}"));
 
+    // Diagnostic trail for the savings-goal delete-then-reappear bug: records
+    // every load, delete, and tombstone-defense decision so a repro can be
+    // traced after the fact instead of guessed at. Surfaced read-only on the
+    // Tools page. Capped so it can't grow unbounded across a long session.
+    public List<string> SavingsGoalDebugLog { get; } = new();
+    private void LogGoal(string msg)
+    {
+        SavingsGoalDebugLog.Add($"{DateTime.Now:HH:mm:ss.fff} {msg}");
+        if (SavingsGoalDebugLog.Count > 300) SavingsGoalDebugLog.RemoveAt(0);
+    }
+    private static string GoalSnapshot(SavingsGoal g) =>
+        $"id={g.Id} name={g.Name} group={g.GroupName ?? "(none)"} target={g.TargetCents} current={g.CurrentCents}";
+
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
     public void ForceResetSyncGuard() => _syncInProgress = false;
@@ -272,6 +285,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Debts = await db.GetDebtsAsync();
         DebtPayments = await db.GetDebtPaymentsAsync();
         SavingsGoals = await db.GetSavingsGoalsAsync();
+        foreach (var g in SavingsGoals) LogGoal($"LOAD {GoalSnapshot(g)}");
         WeeklyBudgets = await db.GetWeeklyBudgetsAsync();
         AppSettings = await db.GetAppSettingsAsync();
         Trips = await db.GetTripsAsync();
@@ -557,6 +571,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .Where(g => SameSavingsGoalDelete(g, deleted))
                 .Select(g => g.Id)
                 .ToHashSet();
+            LogGoal($"TOMBSTONE id={deleted.Id} name={deleted.Name} group={deleted.GroupName ?? "(none)"} target={deleted.TargetCents} current={deleted.CurrentCents} matched=[{string.Join(",", removedIds)}]");
             if (removedIds.Count == 0)
             {
                 // Nothing in this freshly-pulled snapshot matches anymore — the
@@ -574,6 +589,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 _pendingDeletedSavingsGoalIds.RemoveAll(x => x == id);
                 _pendingDeletedSavingsGoalIds.Add(id);
+                // Without this, IndexedDB still has the old record (it was only
+                // matched here by content, not by the id the original delete
+                // persisted), so the very next LoadStoresAsync() call reads it
+                // straight back out of the DB and the goal looks "revived".
+                await db.DeleteAsync("savingsGoals", id);
             }
         }
     }
@@ -2412,6 +2432,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public async Task DeleteSavingsGoalAsync(int id)
     {
         var deletedGoal = SavingsGoals.FirstOrDefault(g => g.Id == id);
+        if (deletedGoal is not null) LogGoal($"DELETE {GoalSnapshot(deletedGoal)}");
         SavingsGoals.RemoveAll(g => g.Id == id);
         _pendingNewSavingsGoals.RemoveAll(g => g.Id == id);
         _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == id);
@@ -3138,6 +3159,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         if (!string.Equals(goal.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        // Two distinct goals can share the same name and amounts (e.g. two
+        // goals both called "Bed" saved toward the same target) but belong to
+        // different groups. Without this check the fallback above would treat
+        // them as the same goal and delete/resurrect the wrong one.
+        if (!string.Equals((goal.GroupName ?? "").Trim(), (deleted.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         if (deleted.TargetCents > 0 && goal.TargetCents > 0)
             return goal.TargetCents == deleted.TargetCents;
         return goal.CurrentCents == deleted.CurrentCents;
@@ -3973,6 +3999,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             if (!SavingsGoals.Any(x => x.Id == g.Id))
             {
+                LogGoal($"REAPPLY-READD {GoalSnapshot(g)}");
                 SavingsGoals.Add(g);
                 await db.PutAsync("savingsGoals", g);
                 changed = true;
@@ -3998,6 +4025,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             if (SavingsGoals.RemoveAll(x => x.Id == id) > 0)
             {
+                LogGoal($"REAPPLY-REREMOVE id={id}");
                 await db.DeleteAsync("savingsGoals", id);
                 changed = true;
             }
