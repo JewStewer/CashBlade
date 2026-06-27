@@ -4018,6 +4018,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             var existingNewGoal = SavingsGoals.FirstOrDefault(x => x.Id == g.Id);
             if (existingNewGoal is null)
             {
+                // IndexedDbService.PreserveLocalSavingsGoalsWhenMissingAsync already
+                // merged this negative-Id goal onto the server's real-Id record
+                // (by content match) before the wholesale reload above — re-adding
+                // the stale negative-Id object here would create a duplicate.
+                var alreadyAdopted = SavingsGoals.FirstOrDefault(x => x.Id > 0
+                    && string.Equals(x.Name.Trim(), g.Name.Trim(), StringComparison.OrdinalIgnoreCase)
+                    && string.Equals((x.GroupName ?? "").Trim(), (g.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
+                if (alreadyAdopted is not null)
+                {
+                    LogGoal($"REAPPLY-ADOPTED oldId={g.Id} {GoalSnapshot(alreadyAdopted)}");
+                    continue;
+                }
+
                 LogGoal($"REAPPLY-READD {GoalSnapshot(g)}");
                 SavingsGoals.Add(g);
                 await db.PutAsync("savingsGoals", g);

@@ -239,7 +239,8 @@ public static class SyncServer
                         TargetCents = g.TargetCents,
                         CurrentCents = g.CurrentCents,
                         WeeklyContributionCents = g.WeeklyContributionCents,
-                        TargetDate = g.TargetDate
+                        TargetDate = g.TargetDate,
+                        GroupName = g.GroupName
                     });
                 }
 
@@ -253,6 +254,7 @@ public static class SyncServer
                     existing.CurrentCents = g.CurrentCents;
                     existing.WeeklyContributionCents = g.WeeklyContributionCents;
                     existing.TargetDate = g.TargetDate;
+                    existing.GroupName = g.GroupName;
                 }
 
                 // Deleted savings goals from phone
