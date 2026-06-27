@@ -7,6 +7,7 @@ namespace Finora.Web.Services;
 public class SyncService(HttpClient http, IndexedDbService db)
 {
     private const string CategoryManagementRulesSettingKey = "CategoryManagementRules";
+    private const string TransactionCategoryRulesSettingKey = "TransactionCategoryRules";
 
     private static readonly JsonSerializerOptions _opts = new()
     {
@@ -293,6 +294,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
         }
 
         ApplyManagedCategoryRules(payload, localSettings);
+        ApplyTransactionCategoryRules(payload, localSettings);
 
         // CategoryLimit:* and other phone-only keys are invisible to WPF, so
         // every WPF push overwrites appSettings without them.  Re-add any local
@@ -337,6 +339,18 @@ public class SyncService(HttpClient http, IndexedDbService db)
         public CategoryType Type { get; set; } = CategoryType.Expense;
         public int ReplacementId { get; set; }
         public string ReplacementName { get; set; } = string.Empty;
+    }
+
+    private sealed class TransactionCategoryRules
+    {
+        public List<TransactionCategoryRule> Rules { get; set; } = new();
+    }
+
+    private sealed class TransactionCategoryRule
+    {
+        public string NormalizedName { get; set; } = string.Empty;
+        public int CategoryId { get; set; }
+        public string CategoryName { get; set; } = string.Empty;
     }
 
     private void ApplyManagedCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings)
@@ -398,6 +412,44 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
             payload.Categories.RemoveAll(c => deletedIds.Contains(c.Id));
         }
+    }
+
+    private void ApplyTransactionCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings)
+    {
+        var raw = localSettings.FirstOrDefault(s => s.Key == TransactionCategoryRulesSettingKey)?.Value;
+        if (string.IsNullOrWhiteSpace(raw)) return;
+
+        TransactionCategoryRules? rules;
+        try { rules = JsonSerializer.Deserialize<TransactionCategoryRules>(raw, _opts); }
+        catch { return; }
+        if (rules is null) return;
+
+        foreach (var rule in rules.Rules.Where(r => !string.IsNullOrWhiteSpace(r.NormalizedName) && !string.IsNullOrWhiteSpace(r.CategoryName)))
+        {
+            var category = payload.Categories.FirstOrDefault(c =>
+                    string.Equals(c.Name, rule.CategoryName.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? payload.Categories.FirstOrDefault(c => c.Id == rule.CategoryId);
+            if (category is null) continue;
+
+            foreach (var transaction in payload.Transactions.Where(t =>
+                t.AmountCents < 0 &&
+                string.Equals(NormalizeRecurringDescription(t.Description), rule.NormalizedName.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                transaction.CategoryId = category.Id;
+                transaction.CategoryName = category.Name;
+            }
+        }
+    }
+
+    private static string NormalizeRecurringDescription(string description)
+    {
+        var cleaned = description.Trim();
+        var separatorIndex = cleaned.IndexOf(" - ", StringComparison.Ordinal);
+        if (separatorIndex > 0)
+        {
+            cleaned = cleaned[..separatorIndex];
+        }
+        return cleaned;
     }
 
     private static bool SameBillDelete(Bill bill, BillDelete deleted)

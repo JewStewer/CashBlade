@@ -67,11 +67,13 @@ public class AppState(IndexedDbService db, SyncService sync)
     private const string PaceExcludedCategoriesSettingKey = "SpendingPaceExcludedCategories";
     private const string PaceExcludedTransactionNamesSettingKey = "SpendingPaceExcludedTransactionNames";
     private const string CategoryManagementRulesSettingKey = "CategoryManagementRules";
+    private const string TransactionCategoryRulesSettingKey = "TransactionCategoryRules";
     private HashSet<string> _paceExcludedCategories = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _paceExcludedTransactionNames = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> PaceExcludedCategories => _paceExcludedCategories;
     public IReadOnlyCollection<string> PaceExcludedTransactionNames => _paceExcludedTransactionNames;
     private CategoryManagementRules _categoryManagementRules = new();
+    private TransactionCategoryRules _transactionCategoryRules = new();
 
     public sealed class CategoryManagementRules
     {
@@ -93,6 +95,18 @@ public class AppState(IndexedDbService db, SyncService sync)
         public CategoryType Type { get; set; } = CategoryType.Expense;
         public int ReplacementId { get; set; }
         public string ReplacementName { get; set; } = string.Empty;
+    }
+
+    public sealed class TransactionCategoryRules
+    {
+        public List<TransactionCategoryRule> Rules { get; set; } = new();
+    }
+
+    public sealed class TransactionCategoryRule
+    {
+        public string NormalizedName { get; set; } = string.Empty;
+        public int CategoryId { get; set; }
+        public string CategoryName { get; set; } = string.Empty;
     }
 
     // ── App lock (PIN) ──────────────────────────────────────────────────────────
@@ -358,6 +372,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedBillOverridesAsync();
         await ApplyPersistedSettingOverridesAsync();
         await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: false);
+        await ApplyTransactionCategoryRulesAsync(persistTransactionOverrides: false);
     }
 
     // ── Lent money tracking ──────────────────────────────────────────────────
@@ -3569,11 +3584,11 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var t = Transactions.FirstOrDefault(x => x.Id == transactionId);
         if (t is null) return;
-        t.CategoryId = categoryId;
-        t.CategoryName = Categories.FirstOrDefault(c => c.Id == categoryId)?.Name ?? "";
-        await db.PutAsync("transactions", t);
-        QueueUpdatedTransaction(t);
-        await db.SetTransactionOverrideAsync(t);
+        var category = Categories.FirstOrDefault(c => c.Id == categoryId);
+        if (category is null) return;
+
+        await SaveTransactionCategoryRuleAsync(t, category);
+        await ApplyTransactionCategoryRuleAsync(NormalizeRecurringDescription(t.Description), category, persistTransactionOverrides: true);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3588,6 +3603,80 @@ public class AppState(IndexedDbService db, SyncService sync)
             string.Equals(NormalizeRecurringDescription(t.Description), normalized, StringComparison.OrdinalIgnoreCase));
     }
 
+    private TransactionCategoryRules LoadTransactionCategoryRules()
+    {
+        var rules = GetSettingJson<TransactionCategoryRules>(TransactionCategoryRulesSettingKey) ?? new TransactionCategoryRules();
+        return NormalizeTransactionCategoryRules(rules);
+    }
+
+    private static TransactionCategoryRules NormalizeTransactionCategoryRules(TransactionCategoryRules rules)
+    {
+        rules.Rules = rules.Rules
+            .Where(r => !string.IsNullOrWhiteSpace(r.NormalizedName) && !string.IsNullOrWhiteSpace(r.CategoryName))
+            .GroupBy(r => r.NormalizedName.Trim().ToUpperInvariant())
+            .Select(g => g.Last())
+            .ToList();
+        return rules;
+    }
+
+    private async Task SaveTransactionCategoryRuleAsync(Transaction transaction, Category category)
+    {
+        var normalized = NormalizeRecurringDescription(transaction.Description);
+        if (string.IsNullOrWhiteSpace(normalized)) return;
+
+        _transactionCategoryRules = LoadTransactionCategoryRules();
+        _transactionCategoryRules.Rules.RemoveAll(r =>
+            string.Equals(r.NormalizedName, normalized, StringComparison.OrdinalIgnoreCase));
+        _transactionCategoryRules.Rules.Add(new TransactionCategoryRule
+        {
+            NormalizedName = normalized,
+            CategoryId = category.Id,
+            CategoryName = category.Name
+        });
+        _transactionCategoryRules = NormalizeTransactionCategoryRules(_transactionCategoryRules);
+        await SaveSettingAsync(TransactionCategoryRulesSettingKey, System.Text.Json.JsonSerializer.Serialize(_transactionCategoryRules));
+    }
+
+    private async Task ApplyTransactionCategoryRulesAsync(bool persistTransactionOverrides)
+    {
+        _transactionCategoryRules = LoadTransactionCategoryRules();
+        foreach (var rule in _transactionCategoryRules.Rules)
+        {
+            var category = FindCategory(rule.CategoryName, CategoryType.Expense)
+                ?? Categories.FirstOrDefault(c => c.Id == rule.CategoryId)
+                ?? Categories.FirstOrDefault(c => string.Equals(c.Name, rule.CategoryName, StringComparison.OrdinalIgnoreCase));
+            if (category is null) continue;
+
+            await ApplyTransactionCategoryRuleAsync(rule.NormalizedName, category, persistTransactionOverrides);
+        }
+    }
+
+    private async Task<int> ApplyTransactionCategoryRuleAsync(string normalizedName, Category category, bool persistTransactionOverrides)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedName)) return 0;
+
+        var matches = Transactions
+            .Where(t => t.AmountCents < 0 &&
+                !IsInternalMovement(t) &&
+                string.Equals(NormalizeRecurringDescription(t.Description), normalizedName, StringComparison.OrdinalIgnoreCase) &&
+                (t.CategoryId != category.Id || !string.Equals(t.CategoryName, category.Name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        foreach (var transaction in matches)
+        {
+            transaction.CategoryId = category.Id;
+            transaction.CategoryName = category.Name;
+            await db.PutAsync("transactions", transaction);
+            if (persistTransactionOverrides)
+            {
+                QueueUpdatedTransaction(transaction);
+                await db.SetTransactionOverrideAsync(transaction);
+            }
+        }
+
+        return matches.Count;
+    }
+
     public async Task<int> UpdateSameNameTransactionCategoriesAsync(int transactionId, int categoryId)
     {
         var seed = Transactions.FirstOrDefault(t => t.Id == transactionId);
@@ -3595,6 +3684,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (seed is null || category is null) return 0;
 
         var normalized = NormalizeRecurringDescription(seed.Description);
+        await SaveTransactionCategoryRuleAsync(seed, category);
         var matches = Transactions
             .Where(t => t.AmountCents < 0 &&
                 !IsInternalMovement(t) &&
@@ -4111,6 +4201,10 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task SaveSettingAsync(string key, string value)
     {
+        var current = AppSettings.FirstOrDefault(s => s.Key == key);
+        if (current is not null && string.Equals(current.Value, value, StringComparison.Ordinal))
+            return;
+
         await db.SaveSettingAsync(key, value);
         AppSettings = await db.GetAppSettingsAsync();
         var setting = AppSettings.FirstOrDefault(s => s.Key == key);
