@@ -18,6 +18,7 @@ dotnet publish $project -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:EnableCompressionInSingleFile=true `
+    -p:AssemblyName=Cashglade `
     -o $publishDir
 
 $version = [xml](Get-Content -Raw -LiteralPath $project)

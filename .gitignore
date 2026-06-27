@@ -12,6 +12,7 @@ Finora/wwwroot/
 Standalone/
 Standalonewin-x64/
 StandaloneWebApp/
+LocalPublish/
 
 # SQLite databases — contain financial data, never commit
 *.db
