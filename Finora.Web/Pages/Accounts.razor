@@ -76,8 +76,12 @@ else
                 <div style="padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer" @onclick="() => ToggleAccount(acct.Id)">
                     <div style="display:flex;align-items:center;gap:10px">
                         <div class="dot" style="background:@acct.ColorHex;width:12px;height:12px"></div>
-                        <div style="flex:1">
+                        <div style="flex:1;display:flex;align-items:center;gap:6px">
                             <div style="font-size:15px;font-weight:500">@acct.Name</div>
+                            @if (acctAfterBills < 0)
+                            {
+                                <span style="display:inline-flex;align-items:center;color:var(--red)" title="Needs funding before payday"><Icon Name="alert-triangle" Size="14" /></span>
+                            }
                         </div>
                         <div style="text-align:right">
                             <div style="font-size:17px;font-weight:600;color:@(balance>=0?"var(--text)":"var(--red)")">@balance.ToString("C")</div>
