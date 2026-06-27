@@ -2558,6 +2558,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         WeeklyContributionCents = t.WeeklyContributionCents,
         Itinerary = t.Itinerary.Select(i => new TripItineraryItem
         {
+            Id = i.Id,
             Date = i.Date,
             Time = i.Time,
             EndTime = i.EndTime,
@@ -2567,12 +2568,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         }).ToList(),
         Checklist = t.Checklist.Select(c => new TripChecklistItem
         {
+            Id = c.Id,
             Text = c.Text,
             Done = c.Done,
             DueDate = c.DueDate
         }).ToList(),
         BudgetItems = t.BudgetItems.Select(b => new TripBudgetItem
         {
+            Id = b.Id,
             Category = b.Category,
             PlannedCents = b.PlannedCents,
             ActualCents = b.ActualCents,
