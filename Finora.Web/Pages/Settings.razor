@@ -31,6 +31,15 @@
         </button>
     </div>
 
+    <div class="pill-tabs">
+        @foreach (var t in new[] { "Sync", "Preferences", "Notifications", "Data" })
+        {
+            <button class="pill @(_tab == t ? "pill-active" : "pill-inactive")" @onclick="() => _tab = t">@t</button>
+        }
+    </div>
+
+@if (_tab == "Sync")
+{
     <!-- Last synced / sync now -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:10px">Data Sync</div>
@@ -186,8 +195,9 @@
             <div style="margin-top:8px;font-size:13px;color:var(--red)">@UpSync.LastError</div>
         }
     </div>
-
-
+}
+else if (_tab == "Preferences")
+{
     <!-- Payday -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:12px">Payday</div>
@@ -208,7 +218,9 @@
             }
         </div>
     </div>
-
+}
+else if (_tab == "Notifications")
+{
     <!-- Push notifications -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px"><Icon Name="bell" Size="15" /> Push Notifications</div>
@@ -262,7 +274,9 @@
             }
         }
     </div>
-
+}
+else if (_tab == "Data")
+{
     <!-- Data export -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:4px">Data</div>
@@ -301,6 +315,7 @@
             }
         </div>
     </div>
+}
 
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px">About</div>
@@ -310,6 +325,7 @@
 </div>
 
 @code {
+    private string _tab = "Sync";
     private string supabaseUrl = string.Empty;
     private string supabaseKey = string.Empty;
     private string upBankToken = string.Empty;
