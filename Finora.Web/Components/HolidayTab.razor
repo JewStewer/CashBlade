@@ -1,4 +1,5 @@
 @inject AppState State
+@inject IJSRuntime JS
 @implements IDisposable
 
 @{
@@ -797,13 +798,14 @@ else
             _newBudgetActual ?? 0,
             _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
             string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim());
-        CancelBudgetEdit();
+        await CancelBudgetEdit();
     }
 
-    private void CancelBudgetEdit()
+    private async Task CancelBudgetEdit()
     {
         _editingBudgetId = null;
         ResetBudgetDraft();
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private void ResetBudgetDraft()
@@ -889,10 +891,10 @@ else
             _newItineraryTitle.Trim(),
             _newItineraryAmount ?? 0,
             string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim());
-        CancelItineraryEdit();
+        await CancelItineraryEdit();
     }
 
-    private void CancelItineraryEdit()
+    private async Task CancelItineraryEdit()
     {
         _editingItineraryId = null;
         _newItineraryDate = SelectedTrip?.StartDate ?? DateTime.Today;
@@ -901,6 +903,7 @@ else
         _newItineraryTitle = string.Empty;
         _newItineraryNotes = string.Empty;
         _newItineraryAmount = null;
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task RemoveItineraryItem(string id)
@@ -968,15 +971,28 @@ else
 
         await State.SaveChecklistItemAsync(trip.Id, _editingChecklistId,
             _newChecklistText.Trim(), _newChecklistDone, _newChecklistDueDate);
-        CancelChecklistEdit();
+        await CancelChecklistEdit();
     }
 
-    private void CancelChecklistEdit()
+    private async Task CancelChecklistEdit()
     {
         _editingChecklistId = null;
         _newChecklistText = string.Empty;
         _newChecklistDueDate = null;
         _newChecklistDone = false;
+        await RepairScrollAfterKeyboardAsync();
+    }
+
+    // Saving/cancelling an inline edit form blurs its focused input, dismissing
+    // the iOS keyboard. WKWebView frequently fails to re-attach .page-content as
+    // a scrollable layer when that happens (the existing financeBlade.nudgeRepaint
+    // workaround documents the same WKWebView quirk for background-sync repaints) —
+    // without this, the page looks like it scrolled (keyboard collapsing) but
+    // overflow-y:auto stops responding to touch until some other reflow happens.
+    private async Task RepairScrollAfterKeyboardAsync()
+    {
+        try { await JS.InvokeVoidAsync("financeBlade.nudgeRepaint"); }
+        catch (JSDisconnectedException) { }
     }
 
     private async Task RemoveChecklistItem(string id)
