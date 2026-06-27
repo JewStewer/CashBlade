@@ -127,6 +127,19 @@ public class AppState(IndexedDbService db, SyncService sync)
     // edit always sees a fully-settled Trips collection, never a mid-reapply one.
     private readonly SemaphoreSlim _tripMutationGate = new(1, 1);
 
+    // Diagnostic trail for the trip-item-reverting bug: records the affected
+    // trip's itinerary at every mutation/load/reapply step so a repro can be
+    // traced after the fact instead of guessed at. Surfaced read-only on the
+    // Tools page. Capped so it can't grow unbounded across a long session.
+    public List<string> TripDebugLog { get; } = new();
+    private void LogTrip(string msg)
+    {
+        TripDebugLog.Add($"{DateTime.Now:HH:mm:ss.fff} {msg}");
+        if (TripDebugLog.Count > 300) TripDebugLog.RemoveAt(0);
+    }
+    private static string ItinSnapshot(Trip? t) =>
+        t is null ? "null" : string.Join(" | ", t.Itinerary.Select(i => $"{i.Title}={i.AmountDollars:0.00}#{(i.Id.Length >= 6 ? i.Id[..6] : i.Id)}"));
+
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
     public void ForceResetSyncGuard() => _syncInProgress = false;
@@ -253,6 +266,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         WeeklyBudgets = await db.GetWeeklyBudgetsAsync();
         AppSettings = await db.GetAppSettingsAsync();
         Trips = await db.GetTripsAsync();
+        foreach (var t in Trips) LogTrip($"LOAD trip={t.Id} itin=[{ItinSnapshot(t)}]");
         LentTransactions = await db.GetLentTransactionsAsync();
         NormaliseLentRepayments();
         await RemoveInvalidLentTransactionsAsync();
@@ -2496,7 +2510,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             var trip = Trips.FirstOrDefault(x => x.Id == tripId);
             if (trip is null) return;
+            LogTrip($"MUTATE trip={tripId} before=[{ItinSnapshot(trip)}]");
             mutate(trip);
+            LogTrip($"MUTATE trip={tripId} after=[{ItinSnapshot(trip)}]");
             await db.PutAsync("trips", trip);
             if (trip.Id > 0)
                 QueueUpdatedTrip(trip);
@@ -3456,6 +3472,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     UpdatedTrips = new List<Trip>(_pendingUpdatedTrips),
                     DeletedTripIds = new List<int>(_pendingDeletedTripIds)
                 };
+                foreach (var t in push.UpdatedTrips)
+                    LogTrip($"PUSH-BUILD trip={t.Id} itin=[{ItinSnapshot(t)}]");
 
                 bool pushedToPc = false;
                 if (sync.HasLocalSync)
@@ -3996,6 +4014,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             var trip = Trips.FirstOrDefault(x => x.Id == ut.Id);
             if (trip is null) continue;
+            LogTrip($"REAPPLY trip={ut.Id} current=[{ItinSnapshot(trip)}] incoming=[{ItinSnapshot(ut)}]");
             trip.Name = ut.Name;
             trip.Destination = ut.Destination;
             trip.Notes = ut.Notes;

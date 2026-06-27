@@ -613,7 +613,15 @@ else
     protected override void OnInitialized()
     {
         State.OnTripIdAdopted += OnTripIdAdopted;
+        // A background sync can briefly show a stale Trip snapshot (mid wholesale
+        // reload, before the reapply step corrects it) and that's the *only* render
+        // this component gets unless it reacts to OnChange — without this subscription
+        // the stale snapshot just sits on screen, looking like a permanent revert, until
+        // some unrelated interaction happens to trigger another render.
+        State.OnChange += OnAppStateChanged;
     }
+
+    private void OnAppStateChanged() => StateHasChanged();
 
     private void OnTripIdAdopted(int oldId, int newId)
     {
@@ -623,6 +631,7 @@ else
     public void Dispose()
     {
         State.OnTripIdAdopted -= OnTripIdAdopted;
+        State.OnChange -= OnAppStateChanged;
     }
 
     private bool _showBudgetForm;
