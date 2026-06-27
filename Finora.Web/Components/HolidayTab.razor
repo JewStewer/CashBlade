@@ -773,7 +773,7 @@ else
         ToggleBudgetForm();
     }
 
-    private void StartBudgetEdit(string id)
+    private async Task StartBudgetEdit(string id)
     {
         var trip = SelectedTrip;
         var item = trip?.BudgetItems.FirstOrDefault(b => b.Id == id);
@@ -785,6 +785,13 @@ else
         _newBudgetActual = item.ActualDollars;
         _newBudgetPaid = item.Paid;
         _newBudgetNotes = item.Notes ?? string.Empty;
+        // Swapping the read-only row for the (taller) edit form grows .page-content's
+        // content height with no user-gesture-attached repaint of WKWebView's
+        // compositor — the same WKWebView quirk nudgeRepaint already works around on
+        // resume/sync. Left unrepaired here, WKWebView's cached scrollHeight goes
+        // stale right as editing starts, which is what's behind both the visible
+        // jump on opening the form and the scroll lock that follows it.
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task SaveBudgetEdit()
@@ -864,7 +871,7 @@ else
         ToggleItineraryForm();
     }
 
-    private void StartItineraryEdit(string id)
+    private async Task StartItineraryEdit(string id)
     {
         var trip = SelectedTrip;
         var item = trip?.Itinerary.FirstOrDefault(i => i.Id == id);
@@ -877,6 +884,7 @@ else
         _newItineraryTitle = item.Title;
         _newItineraryNotes = item.Notes ?? string.Empty;
         _newItineraryAmount = item.AmountDollars;
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task SaveItineraryEdit()
@@ -952,7 +960,7 @@ else
         ToggleChecklistForm();
     }
 
-    private void StartChecklistEdit(string id)
+    private async Task StartChecklistEdit(string id)
     {
         var trip = SelectedTrip;
         var item = trip?.Checklist.FirstOrDefault(c => c.Id == id);
@@ -962,6 +970,7 @@ else
         _newChecklistText = item.Text;
         _newChecklistDueDate = item.DueDate;
         _newChecklistDone = item.Done;
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task SaveChecklistEdit()
