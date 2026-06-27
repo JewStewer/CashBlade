@@ -2650,9 +2650,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             var date = today.AddDays(-i);
             var dayTxns = txByDate.GetValueOrDefault(date);
             var spending = dayTxns?.Sum(t => Math.Abs(t.AmountDollars)) ?? 0m;
-            var unnecessary = dayTxns?.Where(t => t.IsUnnecessary).Sum(t => Math.Abs(t.AmountDollars)) ?? 0m;
-            var necessary = spending - unnecessary;
-            var score = spending == 0 ? 0 : (int)(necessary / spending * 100);
+            var unnecessaryTxns = dayTxns?.Where(t => t.IsUnnecessary).ToList() ?? new List<Transaction>();
+            var unnecessary = unnecessaryTxns.Sum(t => Math.Abs(t.AmountDollars));
+            var transactionCount = dayTxns?.Count ?? 0;
+            var unnecessaryCount = unnecessaryTxns.Count;
+            var score = CalculateDailyScore(spending, unnecessary, transactionCount, unnecessaryCount);
             var grade = spending == 0 ? "-" : score switch
             {
                 100 => "A+", >= 90 => "A", >= 80 => "B", >= 70 => "C", >= 50 => "D", _ => "F"
@@ -2664,6 +2666,28 @@ public class AppState(IndexedDbService db, SyncService sync)
             result.Add(new DailyScore(date, spending, unnecessary, score, grade, color));
         }
         return result;
+    }
+
+    private static int CalculateDailyScore(decimal spending, decimal unnecessary, int transactionCount, int unnecessaryCount)
+    {
+        if (spending <= 0 || transactionCount <= 0) return 0;
+        if (unnecessary <= 0 || unnecessaryCount <= 0) return 100;
+
+        var unnecessarySpendRatio = (double)Math.Clamp(unnecessary / spending, 0m, 1m);
+        var unnecessaryTxnRatio = Math.Clamp((double)unnecessaryCount / transactionCount, 0d, 1d);
+
+        var score = 100
+            - (unnecessarySpendRatio * 45)
+            - (unnecessaryTxnRatio * 20)
+            - Math.Min(unnecessaryCount * 5, 20);
+
+        if (transactionCount <= 2) score += 15;
+        else if (transactionCount <= 4) score += 8;
+
+        if (unnecessary <= 25m) score += 15;
+        else if (unnecessary <= 50m) score += 8;
+
+        return Math.Clamp((int)Math.Round(score), 0, 100);
     }
 
     public int GetCleanStreak()

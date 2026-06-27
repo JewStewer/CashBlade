@@ -226,26 +226,34 @@
 
     @if (State.WeeklyIncome > 0)
     {
-        var daysRemaining = Math.Max((PeriodRange.To.Date - DateTime.Today).Days + 1, 1);
-        var remainingBudget = PeriodBudget - PeriodSpend;
-        var dailyPace = Math.Max(remainingBudget / daysRemaining, 0);
-        var elapsedDays = Math.Max((DateTime.Today.Date - PeriodRange.From.Date).Days + 1, 1);
-        var projectedSpend = PeriodSpend / elapsedDays * PeriodDays;
-        var paceColor = projectedSpend <= PeriodBudget ? "var(--green)" : "var(--red)";
-        <div class="card" style="margin-top:12px;border-color:@(projectedSpend <= PeriodBudget ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)")">
+        var todayInPeriod = DateTime.Today.Date < PeriodRange.From.Date
+            ? PeriodRange.From.Date
+            : DateTime.Today.Date > PeriodRange.To.Date ? PeriodRange.To.Date : DateTime.Today.Date;
+        var elapsedDays = Math.Clamp((todayInPeriod - PeriodRange.From.Date).Days + 1, 1, PeriodDays);
+        var daysRemaining = Math.Max((PeriodRange.To.Date - todayInPeriod).Days + 1, 1);
+        var spendToDate = State.GetDiscretionarySpendingForPeriod(PeriodRange.From, todayInPeriod);
+        var remainingBudget = PeriodBudget - spendToDate;
+        var dailyRoom = Math.Max(remainingBudget / daysRemaining, 0);
+        var currentDailyAverage = spendToDate / elapsedDays;
+        var projectedSpend = currentDailyAverage * PeriodDays;
+        var expectedSpendToDate = PeriodBudget * elapsedDays / PeriodDays;
+        var paceDelta = spendToDate - expectedSpendToDate;
+        var isOnPace = projectedSpend <= PeriodBudget;
+        var paceColor = isOnPace ? "var(--green)" : "var(--red)";
+        <div class="card" style="margin-top:12px;border-color:@(isOnPace ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
                     <div class="section-title">Spending Pace</div>
                     <div style="font-size:18px;font-weight:700;color:@paceColor">
-                        @(projectedSpend <= PeriodBudget ? "On track" : "Running hot")
+                        @(isOnPace ? "On track" : "Running hot")
                     </div>
                 </div>
                 <div style="text-align:right">
                     <div style="font-size:11px;color:var(--text3)">Daily room</div>
-                    <div style="font-size:16px;font-weight:700">@dailyPace.ToString("C")</div>
+                    <div style="font-size:16px;font-weight:700">@dailyRoom.ToString("C")</div>
                 </div>
             </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:6px;opacity:0.7">Projects your total spend for this @PeriodNounLower if you keep today's average daily pace — "Daily room" is what's left to spend per remaining day and stay on budget.</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px;opacity:0.7">Uses discretionary spend from @PeriodRange.From.ToString("d MMM") to @todayInPeriod.ToString("d MMM"). Daily room is what you can spend each remaining day and still land on budget.</div>
             <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px">
                 <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
                     <div class="stat-label">Left</div>
@@ -256,8 +264,8 @@
                     <div style="font-size:14px;font-weight:700;color:@paceColor">@projectedSpend.ToString("C")</div>
                 </div>
                 <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
-                    <div class="stat-label">Days left</div>
-                    <div style="font-size:14px;font-weight:700">@daysRemaining</div>
+                    <div class="stat-label">Vs pace</div>
+                    <div style="font-size:14px;font-weight:700;color:@(paceDelta <= 0 ? "var(--green)" : "var(--red)")">@paceDelta.ToString("C")</div>
                 </div>
             </div>
         </div>
@@ -316,6 +324,11 @@
             @foreach (var group in State.GetSavingsGoalGroups())
             {
                 var isGroupExpanded = string.Equals(_expandedGoalGroupName, group.Name, StringComparison.OrdinalIgnoreCase);
+                var groupReached = group.TotalRemainingDollars <= 0;
+                var groupWhatIfWeekly = _groupWhatIfWeekly.TryGetValue(group.Name, out var groupWeekly) && groupWeekly > 0
+                    ? groupWeekly
+                    : Math.Max(group.TotalWeeklyContributionDollars, 10m);
+                var groupWhatIfWeeks = GoalMath.WeeksToTarget(group.TotalTargetDollars, group.TotalCurrentDollars, groupWhatIfWeekly);
                 <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
                     <div style="cursor:pointer" @onclick="() => ToggleGoalGroup(group.Name)">
                         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
@@ -330,6 +343,22 @@
                             <span>@(isGroupExpanded ? "Tap to collapse" : "Tap to expand")</span>
                         </div>
                     </div>
+                    @if (!groupReached)
+                    {
+                        <div style="margin-top:8px;padding:8px;background:var(--surface2);border-radius:8px" @onclick:stopPropagation="true">
+                            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px">
+                                <span style="font-size:11px;color:var(--text3)">What if I saved more?</span>
+                                <span style="font-size:12px;font-weight:700;color:var(--purple)">@groupWhatIfWeekly.ToString("C")/wk</span>
+                            </div>
+                            <input type="range" min="10" max="@(Math.Max((double)group.TotalTargetDollars / 4, 100))" step="10"
+                                   value="@groupWhatIfWeekly" style="width:100%"
+                                   @oninput="@((ChangeEventArgs e) => OnGroupWhatIfSliderChanged(group.Name, e))" />
+                            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-top:2px">
+                                <span>@(groupWhatIfWeeks < 0 ? "Choose a weekly amount" : $"All done in ~{groupWhatIfWeeks} week{(groupWhatIfWeeks == 1 ? "" : "s")}")</span>
+                                <span>@group.TotalRemainingDollars.ToString("C") left</span>
+                            </div>
+                        </div>
+                    }
                     @if (isGroupExpanded)
                     {
                         <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px" @onclick:stopPropagation="true">
@@ -1290,6 +1319,7 @@ else if (_tab == "Holiday")
     private Bill? _billDraft;
     private readonly HashSet<int> _celebratedGoalIds = new();
     private readonly Dictionary<int, decimal> _goalWhatIfWeekly = new();
+    private readonly Dictionary<string, decimal> _groupWhatIfWeekly = new(StringComparer.OrdinalIgnoreCase);
 
     private void SelectTopPill(string tab)
     {
@@ -1451,6 +1481,12 @@ else if (_tab == "Holiday")
     {
         if (decimal.TryParse(e.Value?.ToString(), out var weekly))
             _goalWhatIfWeekly[goalId] = weekly;
+    }
+
+    private void OnGroupWhatIfSliderChanged(string groupName, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var weekly))
+            _groupWhatIfWeekly[groupName] = weekly;
     }
 
     private static (string Label, string CssClass)? GoalPaceLabel(SavingsGoal goal)
