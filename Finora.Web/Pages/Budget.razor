@@ -242,6 +242,7 @@
         var paceColor = isOverBudget ? "var(--red)" : isTrendingOver ? "var(--amber)" : "var(--green)";
         var paceTitle = isOverBudget ? "Over budget" : isTrendingOver ? "Slow down" : "On track";
         var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, remainingBudget, dailyRoom, daysRemaining, projectedDelta, PeriodNounLower);
+        var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta);
         <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
@@ -273,6 +274,16 @@
                     <div style="font-size:14px;font-weight:700;color:@paceColor">@projectedSpend.ToString("C")</div>
                 </div>
             </div>
+            @if (paceRecommendations.Count > 0)
+            {
+                <div style="margin-top:10px;padding:9px 10px;background:var(--surface2);border-radius:8px">
+                    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:5px">Recommendations</div>
+                    @foreach (var recommendation in paceRecommendations)
+                    {
+                        <div style="font-size:12px;color:var(--text2);line-height:1.35;margin-top:3px">@recommendation</div>
+                    }
+                </div>
+            }
         </div>
     }
 
@@ -1523,6 +1534,29 @@ else if (_tab == "Holiday")
 
         var projectedUnder = Math.Abs(projectedDelta);
         return $"You have {remainingBudget:C} left, about {dailyRoom:C}/day for the next {daysRemaining} day{(daysRemaining == 1 ? "" : "s")}. At this pace you'll finish about {projectedUnder:C} under budget.";
+    }
+
+    private static IReadOnlyList<string> BuildSpendingPaceRecommendations(decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta)
+    {
+        var recommendations = new List<string>();
+
+        if (remainingBudget < 0)
+        {
+            recommendations.Add("Treat the discretionary budget as paused until the next period; only bills and true essentials should go through.");
+            recommendations.Add("If the overspend came from a bill, recategorise it as Insurance, Rent, Loan, Debt, Phone, Internet, or another bill category so pace ignores it.");
+            return recommendations;
+        }
+
+        if (projectedDelta > 0)
+        {
+            recommendations.Add($"Keep discretionary spending around {dailyRoom:C}/day for the next {daysRemaining} day{(daysRemaining == 1 ? "" : "s")}.");
+            recommendations.Add($"Cut about {projectedDelta:C} from planned discretionary spending to land inside budget.");
+            return recommendations;
+        }
+
+        recommendations.Add($"You can spend about {dailyRoom:C}/day and stay inside budget.");
+        recommendations.Add("Large bills like insurance are excluded here; track them in Bills so this pace stays focused on day-to-day spending.");
+        return recommendations;
     }
 
     private static (string Label, string CssClass)? GoalPaceLabel(SavingsGoal goal)

@@ -2605,6 +2605,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public bool IsBudgetedBillTransaction(Transaction t) =>
         IsBillCategory(t.CategoryName) ||
+        IsBillLikeCategory(t.CategoryName) ||
         MatchesKnownBudgetedPayment(t) ||
         MatchesBillRecord(t);
 
@@ -2628,7 +2629,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             description.Contains("Swoosh Finance", StringComparison.OrdinalIgnoreCase) ||
             description.Contains("State Penalties Enforcement", StringComparison.OrdinalIgnoreCase) ||
             description.Contains("Qantas Insurance", StringComparison.OrdinalIgnoreCase) ||
-            description.Contains("Suncorp Insurance", StringComparison.OrdinalIgnoreCase);
+            description.Contains("Suncorp Insurance", StringComparison.OrdinalIgnoreCase) ||
+            description.Contains("Insurance", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TextContainsToken(string text, string? token) =>
@@ -2766,6 +2768,21 @@ public class AppState(IndexedDbService db, SyncService sync)
         "Groceries", "Fuel", "Medical", "Study"
     };
     public static bool IsBillCategory(string name) => _billCats.Contains(name);
+    private static bool IsBillLikeCategory(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        var normalized = name.Trim();
+        return normalized.Contains("Insurance", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Rent", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Mortgage", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Loan", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Debt", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Utilities", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Electric", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Gas", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Internet", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Phone", StringComparison.OrdinalIgnoreCase);
+    }
     public static bool IsEssentialCategory(string name) => _essentialCats.Contains(name);
 
     // ── Write operations (store locally + queue for sync) ─────────────────────
