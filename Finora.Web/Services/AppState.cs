@@ -64,6 +64,12 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal AffordabilityInstallmentAmount { get; private set; }
     public int AffordabilityInstallmentCount { get; private set; } = 4;
     public int AffordabilityInstallmentFrequencyWeeks { get; private set; } = 2;
+    private const string PaceExcludedCategoriesSettingKey = "SpendingPaceExcludedCategories";
+    private const string PaceExcludedTransactionNamesSettingKey = "SpendingPaceExcludedTransactionNames";
+    private HashSet<string> _paceExcludedCategories = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _paceExcludedTransactionNames = new(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyCollection<string> PaceExcludedCategories => _paceExcludedCategories;
+    public IReadOnlyCollection<string> PaceExcludedTransactionNames => _paceExcludedTransactionNames;
 
     // ── App lock (PIN) ──────────────────────────────────────────────────────────
     private const string AppLockPinHashKey = "AppLockPinHash";
@@ -717,6 +723,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         AffordabilityInstallmentFrequencyWeeks = int.TryParse(GetSetting("AffordabilityInstallmentWeeks"), out var instFreq) && instFreq > 0
             ? instFreq
             : 2;
+        _paceExcludedCategories = BuildPaceExclusionSet(GetSettingJson<List<string>>(PaceExcludedCategoriesSettingKey));
+        _paceExcludedTransactionNames = BuildPaceExclusionSet(GetSettingJson<List<string>>(PaceExcludedTransactionNamesSettingKey));
 
         AppLockEnabled = !string.IsNullOrEmpty(GetSetting(AppLockPinHashKey));
         if (!_lockStateInitialized)
@@ -2606,8 +2614,19 @@ public class AppState(IndexedDbService db, SyncService sync)
     public bool IsBudgetedBillTransaction(Transaction t) =>
         IsBillCategory(t.CategoryName) ||
         IsBillLikeCategory(t.CategoryName) ||
+        IsManuallyExcludedFromPace(t) ||
         MatchesKnownBudgetedPayment(t) ||
         MatchesBillRecord(t);
+
+    public bool IsPaceCategoryExcluded(string? categoryName) =>
+        !string.IsNullOrWhiteSpace(categoryName) && _paceExcludedCategories.Contains(categoryName.Trim());
+
+    public bool IsPaceTransactionNameExcluded(string? transactionName) =>
+        !string.IsNullOrWhiteSpace(transactionName) && _paceExcludedTransactionNames.Contains(transactionName.Trim());
+
+    private bool IsManuallyExcludedFromPace(Transaction t) =>
+        IsPaceCategoryExcluded(t.CategoryName) ||
+        _paceExcludedTransactionNames.Any(name => TextContainsToken(t.Description, name));
 
     private bool MatchesBillRecord(Transaction t)
     {
@@ -2636,6 +2655,13 @@ public class AppState(IndexedDbService db, SyncService sync)
     private static bool TextContainsToken(string text, string? token) =>
         !string.IsNullOrWhiteSpace(token) &&
         text.Contains(token.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static HashSet<string> BuildPaceExclusionSet(IEnumerable<string>? values) =>
+        values?
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+        ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     // ── Daily tracker ─────────────────────────────────────────────────────────
     public List<DailyScore> GetDailyScores(int days = 35)
@@ -3528,6 +3554,56 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    public int GetCategoryUsageCount(int categoryId) =>
+        Transactions.Count(t => t.CategoryId == categoryId);
+
+    public async Task<(bool Ok, string Message)> AddCategoryAsync(string name, CategoryType type)
+    {
+        var clean = name.Trim();
+        if (string.IsNullOrWhiteSpace(clean)) return (false, "Category name is required.");
+        if (Categories.Any(c => string.Equals(c.Name, clean, StringComparison.OrdinalIgnoreCase)))
+            return (false, "That category already exists.");
+
+        var id = Math.Min(Categories.Select(c => c.Id).DefaultIfEmpty(0).Min() - 1, -1);
+        var category = new Category { Id = id, Name = clean, Type = type };
+        Categories.Add(category);
+        await db.PutAsync("categories", category);
+        Compute();
+        OnChange?.Invoke();
+        return (true, $"Added {clean}.");
+    }
+
+    public async Task<(bool Ok, string Message)> DeleteCategoryAsync(int categoryId, int replacementCategoryId)
+    {
+        var category = Categories.FirstOrDefault(c => c.Id == categoryId);
+        if (category is null) return (false, "Category not found.");
+        if (categoryId == replacementCategoryId) return (false, "Pick a different replacement category.");
+
+        var replacement = Categories.FirstOrDefault(c => c.Id == replacementCategoryId);
+        if (replacement is null) return (false, "Replacement category not found.");
+        if (replacement.Type != category.Type) return (false, "Replacement must be the same type.");
+
+        var affected = Transactions.Where(t => t.CategoryId == categoryId).ToList();
+        foreach (var transaction in affected)
+        {
+            transaction.CategoryId = replacement.Id;
+            transaction.CategoryName = replacement.Name;
+            await db.PutAsync("transactions", transaction);
+            QueueUpdatedTransaction(transaction);
+            await db.SetTransactionOverrideAsync(transaction);
+        }
+
+        Categories.RemoveAll(c => c.Id == categoryId);
+        await db.DeleteAsync("categories", categoryId);
+        _paceExcludedCategories.Remove(category.Name);
+        await SaveSettingAsync(PaceExcludedCategoriesSettingKey, System.Text.Json.JsonSerializer.Serialize(_paceExcludedCategories.OrderBy(v => v, StringComparer.OrdinalIgnoreCase)));
+
+        Compute();
+        OnChange?.Invoke();
+        if (affected.Count > 0) ScheduleSyncSoon();
+        return (true, $"Deleted {category.Name}; moved {affected.Count} transaction{(affected.Count == 1 ? "" : "s")} to {replacement.Name}.");
+    }
+
     public async Task DeleteTransactionAsync(int id)
     {
         var deleted = Transactions.FirstOrDefault(t => t.Id == id);
@@ -3838,6 +3914,27 @@ public class AppState(IndexedDbService db, SyncService sync)
         Compute();
         OnChange?.Invoke();
         if (ShouldSyncSetting(key)) ScheduleSyncSoon();
+    }
+
+    public async Task SetSpendingPaceCategoryExcludedAsync(string categoryName, bool excluded)
+    {
+        await SetSpendingPaceExclusionAsync(PaceExcludedCategoriesSettingKey, _paceExcludedCategories, categoryName, excluded);
+    }
+
+    public async Task SetSpendingPaceTransactionNameExcludedAsync(string transactionName, bool excluded)
+    {
+        await SetSpendingPaceExclusionAsync(PaceExcludedTransactionNamesSettingKey, _paceExcludedTransactionNames, transactionName, excluded);
+    }
+
+    private async Task SetSpendingPaceExclusionAsync(string key, HashSet<string> target, string value, bool excluded)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var clean = value.Trim();
+        if (excluded) target.Add(clean);
+        else target.Remove(clean);
+
+        var ordered = target.OrderBy(v => v, StringComparer.OrdinalIgnoreCase).ToList();
+        await SaveSettingAsync(key, System.Text.Json.JsonSerializer.Serialize(ordered));
     }
 
     public async Task SetNoSpendModeAsync(bool enabled)

@@ -290,6 +290,55 @@ else if (_tab == "Data")
         <button class="btn btn-secondary btn-full" @onclick="ExportTransactionsCsv">Export Transactions (CSV)</button>
     </div>
 
+    <!-- Category manager -->
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">Transaction Categories</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Add categories or delete clutter by moving existing transactions into a replacement category.</div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:8px">
+            <input class="form-input" @bind="_newCategoryName" placeholder="New category" />
+            <select class="form-input" @bind="_newCategoryType">
+                <option value="@CategoryType.Expense">Expense</option>
+                <option value="@CategoryType.Income">Income</option>
+            </select>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:8px" @onclick="AddCategory">Add Category</button>
+
+        @if (!string.IsNullOrEmpty(_categoryStatus))
+        {
+            <div style="margin-top:8px;font-size:13px;color:@_categoryStatusColor">@_categoryStatus</div>
+        }
+
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+            @foreach (var category in State.Categories.OrderBy(c => c.Type).ThenBy(c => c.Name))
+            {
+                var usage = State.GetCategoryUsageCount(category.Id);
+                var replacements = State.Categories
+                    .Where(c => c.Type == category.Type && c.Id != category.Id)
+                    .OrderBy(c => c.Name)
+                    .ToList();
+                var selectedReplacement = GetReplacementCategoryId(category, replacements);
+                <div style="padding:9px 10px;background:var(--surface2);border-radius:8px">
+                    <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+                        <div style="min-width:0">
+                            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@category.Name</div>
+                            <div style="font-size:11px;color:var(--text3)">@category.Type · @usage transaction@(usage == 1 ? "" : "s")</div>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" disabled="@(!replacements.Any())" @onclick="() => DeleteCategory(category.Id)">
+                            Delete
+                        </button>
+                    </div>
+                    <select class="form-input" style="margin-top:7px;height:34px;font-size:12px" value="@selectedReplacement" @onchange="(ChangeEventArgs e) => SetReplacementCategory(category.Id, e)">
+                        @foreach (var replacement in replacements)
+                        {
+                            <option value="@replacement.Id">Move to @replacement.Name</option>
+                        }
+                    </select>
+                </div>
+            }
+        </div>
+    </div>
+
     <!-- App lock -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px"><Icon Name="lock" Size="15" /> App Lock</div>
@@ -365,6 +414,10 @@ else if (_tab == "Data")
     private string _newPin = string.Empty;
     private string _confirmPin = string.Empty;
     private string _pinStatus = string.Empty, _pinStatusColor = "var(--text3)";
+    private string _newCategoryName = string.Empty;
+    private CategoryType _newCategoryType = CategoryType.Expense;
+    private string _categoryStatus = string.Empty, _categoryStatusColor = "var(--text3)";
+    private readonly Dictionary<int, int> _replacementCategoryIds = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -700,6 +753,54 @@ else if (_tab == "Data")
     private async Task SetPeriod(string period)
     {
         await State.SaveSettingAsync("SummaryPeriod", period);
+    }
+
+    private async Task AddCategory()
+    {
+        var result = await State.AddCategoryAsync(_newCategoryName, _newCategoryType);
+        _categoryStatus = result.Message;
+        _categoryStatusColor = result.Ok ? "var(--green)" : "var(--red)";
+        if (result.Ok)
+        {
+            _newCategoryName = string.Empty;
+            _replacementCategoryIds.Clear();
+        }
+    }
+
+    private int GetReplacementCategoryId(Category category, IReadOnlyList<Category> replacements)
+    {
+        if (_replacementCategoryIds.TryGetValue(category.Id, out var selected) &&
+            replacements.Any(c => c.Id == selected))
+        {
+            return selected;
+        }
+
+        var fallback = replacements.FirstOrDefault(c => string.Equals(c.Name, "Misc", StringComparison.OrdinalIgnoreCase))
+            ?? replacements.FirstOrDefault();
+        if (fallback is null) return 0;
+        _replacementCategoryIds[category.Id] = fallback.Id;
+        return fallback.Id;
+    }
+
+    private void SetReplacementCategory(int categoryId, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var replacementId))
+            _replacementCategoryIds[categoryId] = replacementId;
+    }
+
+    private async Task DeleteCategory(int categoryId)
+    {
+        var category = State.Categories.FirstOrDefault(c => c.Id == categoryId);
+        if (category is null) return;
+        var replacements = State.Categories.Where(c => c.Type == category.Type && c.Id != category.Id).ToList();
+        var replacementId = GetReplacementCategoryId(category, replacements);
+        var result = await State.DeleteCategoryAsync(categoryId, replacementId);
+        _categoryStatus = result.Message;
+        _categoryStatusColor = result.Ok ? "var(--green)" : "var(--red)";
+        if (result.Ok)
+        {
+            _replacementCategoryIds.Remove(categoryId);
+        }
     }
 
     private async Task ExportTransactionsCsv()
