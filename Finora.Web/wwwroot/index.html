@@ -41,6 +41,16 @@
         document.addEventListener('touchend', () => { financeBladeTouchActive = false; }, { passive: true });
         document.addEventListener('touchcancel', () => { financeBladeTouchActive = false; }, { passive: true });
 
+        // nudgeRepaint's body display:none/'' toggle blurs whatever input is
+        // focused — on iOS this dismisses the keyboard mid-typing (the
+        // accessory toolbar can linger with no keyboard under it, and the
+        // field won't accept input again until the user taps out and back
+        // in). Defer the same way as an in-progress touch gesture.
+        const financeBladeIsTextInput = () => {
+            const el = document.activeElement;
+            return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+        };
+
         window.financeBlade = {
             repairScroll: () => {
                 const page = document.querySelector('.page-content');
@@ -109,7 +119,12 @@
                     document.addEventListener('touchend', () => window.financeBlade.nudgeRepaint(), { once: true, passive: true });
                     return;
                 }
+                if (financeBladeIsTextInput()) {
+                    document.addEventListener('focusout', () => window.financeBlade.nudgeRepaint(), { once: true, passive: true });
+                    return;
+                }
                 const nudgeOnce = () => {
+                    if (financeBladeIsTextInput()) return;
                     const root = document.documentElement;
                     const app = document.getElementById('app');
                     document.body.style.display = 'none';
