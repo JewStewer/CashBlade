@@ -52,7 +52,7 @@ public class DiagnosticsWindow : Window
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var dbPath = Path.Combine(localAppData, "Cashglade", "cashglade.db");
         var logPath = Path.Combine(localAppData, "Cashglade", "startup.log");
-        var exePath = Environment.ProcessPath ?? Assembly.GetExecutingAssembly().Location;
+        var exePath = Environment.ProcessPath ?? AppContext.BaseDirectory;
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown";
         var desktopShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Cashglade.exe - Shortcut.lnk");
         var startMenuShortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Cashglade", "Cashglade.lnk");

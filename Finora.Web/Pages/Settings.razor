@@ -29,6 +29,12 @@
         <button class="btn btn-primary btn-full" @onclick="ForceUpdate" style="display:inline-flex;align-items:center;justify-content:center;gap:6px">
             <Icon Name="rotate-cw" Size="14" /> Clear cache &amp; reload
         </button>
+        <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span style="font-size:12px;color:var(--text3)">@_versionStatus</span>
+            <span class="badge @_versionBadgeClass" style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0">
+                <Icon Name="@_versionBadgeIcon" Size="11" /> @_versionBadgeText
+            </span>
+        </div>
     </div>
 
     <div class="pill-tabs">
@@ -340,6 +346,11 @@ else if (_tab == "Data")
 
     // Push notifications
     private bool _updateDone;
+    private string _latestVersion = string.Empty;
+    private string _versionStatus = "Checking latest version...";
+    private string _versionBadgeText = "Checking";
+    private string _versionBadgeClass = "badge-teal";
+    private string _versionBadgeIcon = "refresh-cw";
     private bool _pushSupported;
     private string _pushPermission = "default";
     private bool _pushSubscribed;
@@ -388,9 +399,58 @@ else if (_tab == "Data")
             _pushPermission = await JS.InvokeAsync<string>("pushNotifications.getPermission");
             var existingSub = await JS.InvokeAsync<string?>("pushNotifications.getSubscription");
             _pushSubscribed = !string.IsNullOrEmpty(existingSub);
+            await RefreshUpdateStatusAsync();
             StateHasChanged();
         }
         catch { _pushSupported = false; }
+    }
+
+    private async Task RefreshUpdateStatusAsync()
+    {
+        try
+        {
+            _latestVersion = await JS.InvokeAsync<string>("eval", @"
+                (async () => {
+                    const url = new URL('manifest.webmanifest', document.baseURI);
+                    url.searchParams.set('v', Date.now().toString());
+                    const res = await fetch(url, { cache: 'no-store' });
+                    if (!res.ok) return '';
+                    const manifest = await res.json();
+                    return manifest.version || '';
+                })()
+            ");
+
+            if (string.IsNullOrWhiteSpace(_latestVersion))
+            {
+                SetVersionUnknown();
+            }
+            else if (string.Equals(_latestVersion, AppInfo.DisplayVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                _versionStatus = "Latest version installed.";
+                _versionBadgeText = "Latest";
+                _versionBadgeClass = "badge-green";
+                _versionBadgeIcon = "check";
+            }
+            else
+            {
+                _versionStatus = $"Update available: {_latestVersion}.";
+                _versionBadgeText = "Update";
+                _versionBadgeClass = "badge-amber";
+                _versionBadgeIcon = "alert-triangle";
+            }
+        }
+        catch
+        {
+            SetVersionUnknown();
+        }
+    }
+
+    private void SetVersionUnknown()
+    {
+        _versionStatus = "Could not check latest version.";
+        _versionBadgeText = "Unknown";
+        _versionBadgeClass = "badge-amber";
+        _versionBadgeIcon = "alert-triangle";
     }
 
     private async Task DoAutoSync()

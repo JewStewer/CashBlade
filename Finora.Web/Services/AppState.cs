@@ -2655,6 +2655,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             var transactionCount = dayTxns?.Count ?? 0;
             var unnecessaryCount = unnecessaryTxns.Count;
             var score = CalculateDailyScore(spending, unnecessary, transactionCount, unnecessaryCount);
+            var explanation = BuildDailyScoreExplanation(spending, unnecessary, transactionCount, unnecessaryCount);
             var grade = spending == 0 ? "-" : score switch
             {
                 100 => "A+", >= 90 => "A", >= 80 => "B", >= 70 => "C", >= 50 => "D", _ => "F"
@@ -2663,7 +2664,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 100 => "#34D399", >= 80 => "#6EE7B7", >= 60 => "#FBBF24", >= 40 => "#F97316", _ => "#F87171"
             };
-            result.Add(new DailyScore(date, spending, unnecessary, score, grade, color));
+            result.Add(new DailyScore(date, spending, unnecessary, score, grade, color, explanation));
         }
         return result;
     }
@@ -2688,6 +2689,23 @@ public class AppState(IndexedDbService db, SyncService sync)
         else if (unnecessary <= 50m) score += 8;
 
         return Math.Clamp((int)Math.Round(score), 0, 100);
+    }
+
+    private static string BuildDailyScoreExplanation(decimal spending, decimal unnecessary, int transactionCount, int unnecessaryCount)
+    {
+        if (spending <= 0 || transactionCount <= 0) return "No spending recorded.";
+        if (unnecessary <= 0 || unnecessaryCount <= 0)
+            return $"{transactionCount} transaction{(transactionCount == 1 ? "" : "s")}, none marked unnecessary.";
+
+        var spendShare = spending > 0 ? unnecessary / spending : 0m;
+        var sizeLabel = unnecessary <= 25m
+            ? "small amount"
+            : unnecessary <= 50m ? "moderate amount" : "larger amount";
+        var activityLabel = transactionCount <= 2
+            ? "light spending day"
+            : transactionCount <= 4 ? "normal spending day" : "busy spending day";
+
+        return $"{unnecessaryCount} unnecessary transaction{(unnecessaryCount == 1 ? "" : "s")}, {unnecessary:C} ({spendShare:P0}) of {spending:C}; {sizeLabel}, {activityLabel}.";
     }
 
     public int GetCleanStreak()

@@ -238,6 +238,7 @@
         var projectedSpend = currentDailyAverage * PeriodDays;
         var expectedSpendToDate = PeriodBudget * elapsedDays / PeriodDays;
         var paceDelta = spendToDate - expectedSpendToDate;
+        var paceDeltaLabel = FormatPaceDelta(paceDelta);
         var isOnPace = projectedSpend <= PeriodBudget;
         var paceColor = isOnPace ? "var(--green)" : "var(--red)";
         <div class="card" style="margin-top:12px;border-color:@(isOnPace ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)")">
@@ -265,7 +266,7 @@
                 </div>
                 <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center">
                     <div class="stat-label">Vs pace</div>
-                    <div style="font-size:14px;font-weight:700;color:@(paceDelta <= 0 ? "var(--green)" : "var(--red)")">@paceDelta.ToString("C")</div>
+                    <div style="font-size:14px;font-weight:700;color:@(paceDelta <= 0 ? "var(--green)" : "var(--red)")">@paceDeltaLabel</div>
                 </div>
             </div>
         </div>
@@ -352,7 +353,7 @@
                             </div>
                             <input type="range" min="10" max="@(Math.Max((double)group.TotalTargetDollars / 4, 100))" step="10"
                                    value="@groupWhatIfWeekly" style="width:100%"
-                                   @oninput="@((ChangeEventArgs e) => OnGroupWhatIfSliderChanged(group.Name, e))" />
+                                   @oninput="@((ChangeEventArgs e) => OnGroupWhatIfSliderChangedAsync(group.Name, e))" />
                             <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-top:2px">
                                 <span>@(groupWhatIfWeeks < 0 ? "Choose a weekly amount" : $"All done in ~{groupWhatIfWeeks} week{(groupWhatIfWeeks == 1 ? "" : "s")}")</span>
                                 <span>@group.TotalRemainingDollars.ToString("C") left</span>
@@ -1351,6 +1352,7 @@ else if (_tab == "Holiday")
         _goalAccountName = State.AffordabilityGoalAccountName;
         _installmentCount = State.AffordabilityInstallmentCount;
         _installmentFrequencyWeeks = State.AffordabilityInstallmentFrequencyWeeks;
+        LoadGroupWhatIfSettings();
     }
 
     private async Task SetBudgetFieldAsync(string field, ChangeEventArgs e)
@@ -1483,10 +1485,32 @@ else if (_tab == "Holiday")
             _goalWhatIfWeekly[goalId] = weekly;
     }
 
-    private void OnGroupWhatIfSliderChanged(string groupName, ChangeEventArgs e)
+    private async Task OnGroupWhatIfSliderChangedAsync(string groupName, ChangeEventArgs e)
     {
         if (decimal.TryParse(e.Value?.ToString(), out var weekly))
+        {
             _groupWhatIfWeekly[groupName] = weekly;
+            await State.SaveSettingAsync(GroupWhatIfSettingKey(groupName), weekly.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
+    private void LoadGroupWhatIfSettings()
+    {
+        foreach (var groupName in State.GetSavingsGoalGroupNames())
+        {
+            var raw = State.GetSetting(GroupWhatIfSettingKey(groupName));
+            if (decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var weekly) && weekly > 0)
+                _groupWhatIfWeekly[groupName] = weekly;
+        }
+    }
+
+    private static string GroupWhatIfSettingKey(string groupName) => $"GoalGroupWhatIfWeekly:{groupName}";
+
+    private static string FormatPaceDelta(decimal paceDelta)
+    {
+        if (Math.Abs(paceDelta) < 0.01m) return "On pace";
+        var amount = Math.Abs(paceDelta).ToString("C");
+        return paceDelta <= 0 ? $"{amount} under" : $"{amount} over";
     }
 
     private static (string Label, string CssClass)? GoalPaceLabel(SavingsGoal goal)

@@ -6,7 +6,8 @@ public record DailyScore(
     decimal UnnecessaryTotal,
     int Score,
     string Grade,
-    string ColorHex)
+    string ColorHex,
+    string Explanation)
 {
     public decimal NecessaryTotal => SpendingTotal - UnnecessaryTotal;
     public bool HasSpending => SpendingTotal > 0;
