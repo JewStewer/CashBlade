@@ -3627,8 +3627,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         var category = Categories.FirstOrDefault(c => c.Id == categoryId);
         if (category is null) return;
 
-        await SaveTransactionCategoryRuleAsync(t, category);
-        await ApplyTransactionCategoryRuleAsync(NormalizeRecurringDescription(t.Description), category, persistTransactionOverrides: true);
+        // Only this transaction changes here — bulk-renaming every transaction that
+        // shares this description is reserved for the explicit "apply to all
+        // matching names" action below, not an implicit side effect of one edit.
+        t.CategoryId = category.Id;
+        t.CategoryName = category.Name;
+        await db.PutAsync("transactions", t);
+        QueueUpdatedTransaction(t);
+        await db.SetTransactionOverrideAsync(t);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();

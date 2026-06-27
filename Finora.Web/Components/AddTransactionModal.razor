@@ -41,7 +41,7 @@
                 <label class="form-label">Category</label>
                 <select class="form-input" @bind="categoryId" @bind:after="() => categoryTouchedByUser = true">
                     <option value="0">Select category…</option>
-                    @foreach (var c in State.Categories)
+                    @foreach (var c in State.Categories.OrderBy(c => c.Name))
                     {
                         <option value="@c.Id">@c.Name</option>
                     }
