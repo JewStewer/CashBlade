@@ -117,6 +117,16 @@ public class AppState(IndexedDbService db, SyncService sync)
     private DateTime _lastConfirmedPushAt;
     private static readonly TimeSpan ConfirmedPushGrace = TimeSpan.FromMinutes(6);
 
+    // LoadAsync() wholesale-replaces each Trip object from IndexedDB, then
+    // ReapplyPushChangesAsync/ReapplyPendingChangesAsync correct it back up a
+    // moment later. A Trip edit (Add/Update/Delete) that lands in that gap reads
+    // the not-yet-corrected object, clones its *whole* nested Budget/Itinerary/
+    // Checklist collections (see CloneTrip) into the pending queue, and that
+    // stale clone then gets replayed last — silently reverting a sibling edit
+    // that had already synced. Gate Trip mutators against the same window so an
+    // edit always sees a fully-settled Trips collection, never a mid-reapply one.
+    private readonly SemaphoreSlim _tripMutationGate = new(1, 1);
+
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
     public void ForceResetSyncGuard() => _syncInProgress = false;
@@ -2405,11 +2415,16 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task<Trip> AddTripAsync(Trip t)
     {
-        var minId = Trips.Count > 0 ? Trips.Min(x => x.Id) : 0;
-        t.Id = Math.Min(minId - 1, -1);
-        Trips.Add(t);
-        _pendingNewTrips.Add(t);
-        await db.PutAsync("trips", t);
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var minId = Trips.Count > 0 ? Trips.Min(x => x.Id) : 0;
+            t.Id = Math.Min(minId - 1, -1);
+            Trips.Add(t);
+            _pendingNewTrips.Add(t);
+            await db.PutAsync("trips", t);
+        }
+        finally { _tripMutationGate.Release(); }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -2418,23 +2433,28 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task UpdateTripAsync(Trip t)
     {
-        var existing = Trips.FirstOrDefault(x => x.Id == t.Id);
-        if (existing is null) return;
-        existing.Name = t.Name;
-        existing.Destination = t.Destination;
-        existing.Notes = t.Notes;
-        existing.StartDate = t.StartDate;
-        existing.EndDate = t.EndDate;
-        existing.SavingsAccountId = t.SavingsAccountId;
-        existing.WeeklyContributionCents = t.WeeklyContributionCents;
-        existing.Itinerary = t.Itinerary;
-        existing.Checklist = t.Checklist;
-        existing.BudgetItems = t.BudgetItems;
-        await db.PutAsync("trips", existing);
-        // Negative-id (not-yet-synced) trips are mutated in place via the
-        // same object reference already queued in _pendingNewTrips.
-        if (existing.Id > 0)
-            QueueUpdatedTrip(existing);
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var existing = Trips.FirstOrDefault(x => x.Id == t.Id);
+            if (existing is null) return;
+            existing.Name = t.Name;
+            existing.Destination = t.Destination;
+            existing.Notes = t.Notes;
+            existing.StartDate = t.StartDate;
+            existing.EndDate = t.EndDate;
+            existing.SavingsAccountId = t.SavingsAccountId;
+            existing.WeeklyContributionCents = t.WeeklyContributionCents;
+            existing.Itinerary = t.Itinerary;
+            existing.Checklist = t.Checklist;
+            existing.BudgetItems = t.BudgetItems;
+            await db.PutAsync("trips", existing);
+            // Negative-id (not-yet-synced) trips are mutated in place via the
+            // same object reference already queued in _pendingNewTrips.
+            if (existing.Id > 0)
+                QueueUpdatedTrip(existing);
+        }
+        finally { _tripMutationGate.Release(); }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -2442,14 +2462,19 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public async Task DeleteTripAsync(int id)
     {
-        var deletedTrip = Trips.FirstOrDefault(t => t.Id == id);
-        Trips.RemoveAll(t => t.Id == id);
-        _pendingNewTrips.RemoveAll(t => t.Id == id);
-        _pendingUpdatedTrips.RemoveAll(t => t.Id == id);
-        if (id > 0) _pendingDeletedTripIds.Add(id);
-        if (deletedTrip is not null && id > 0)
-            await db.SetTripDeleteAsync(deletedTrip);
-        await db.DeleteAsync("trips", id);
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var deletedTrip = Trips.FirstOrDefault(t => t.Id == id);
+            Trips.RemoveAll(t => t.Id == id);
+            _pendingNewTrips.RemoveAll(t => t.Id == id);
+            _pendingUpdatedTrips.RemoveAll(t => t.Id == id);
+            if (id > 0) _pendingDeletedTripIds.Add(id);
+            if (deletedTrip is not null && id > 0)
+                await db.SetTripDeleteAsync(deletedTrip);
+            await db.DeleteAsync("trips", id);
+        }
+        finally { _tripMutationGate.Release(); }
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3409,24 +3434,34 @@ public class AppState(IndexedDbService db, SyncService sync)
             var ok = await sync.AutoSyncAsync();
             if (ok)
             {
-                await LoadAsync();
-                LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
-                // Sync wipes IndexedDB and replaces with server data; reapply any
-                // phone-side changes that weren't pushed so they aren't lost.
-                if (sentPush is not null)
+                // Hold the Trip mutation gate for the whole replace-then-correct
+                // window: LoadAsync() wholesale-replaces Trip objects from
+                // IndexedDB (which may still be stale pending the reapply below),
+                // so a concurrent AddTripAsync/UpdateTripAsync/DeleteTripAsync must
+                // wait rather than clone/queue a half-corrected Trip.
+                await _tripMutationGate.WaitAsync();
+                try
                 {
-                    await ReapplyPushChangesAsync(sentPush);
-                    _lastConfirmedPush = sentPush;
-                    _lastConfirmedPushAt = DateTime.UtcNow;
+                    await LoadAsync();
+                    LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
+                    // Sync wipes IndexedDB and replaces with server data; reapply any
+                    // phone-side changes that weren't pushed so they aren't lost.
+                    if (sentPush is not null)
+                    {
+                        await ReapplyPushChangesAsync(sentPush);
+                        _lastConfirmedPush = sentPush;
+                        _lastConfirmedPushAt = DateTime.UtcNow;
+                    }
+                    else if (_lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace)
+                    {
+                        // Nothing new to push this round, but a recently-confirmed push may
+                        // not have propagated through the PC's reconciliation cycle yet —
+                        // keep defending it until the grace period elapses.
+                        await ReapplyPushChangesAsync(_lastConfirmedPush);
+                    }
+                    await ReapplyPendingChangesAsync();
                 }
-                else if (_lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace)
-                {
-                    // Nothing new to push this round, but a recently-confirmed push may
-                    // not have propagated through the PC's reconciliation cycle yet —
-                    // keep defending it until the grace period elapses.
-                    await ReapplyPushChangesAsync(_lastConfirmedPush);
-                }
-                await ReapplyPendingChangesAsync();
+                finally { _tripMutationGate.Release(); }
             }
             else OnChange?.Invoke();
         }
