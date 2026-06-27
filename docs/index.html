@@ -35,11 +35,17 @@
     <script src="js/push.js"></script>
     <script>
         // Tracked so nudgeRepaint (below) can defer instead of fighting an
-        // in-progress touch-scroll gesture — see the comment on nudgeRepaint.
+        // in-progress touch-scroll gesture or the short momentum phase after
+        // the finger lifts — see the comment on nudgeRepaint.
         let financeBladeTouchActive = false;
+        let financeBladeTouchIdleTimer = 0;
         document.addEventListener('touchstart', () => { financeBladeTouchActive = true; }, { passive: true });
-        document.addEventListener('touchend', () => { financeBladeTouchActive = false; }, { passive: true });
-        document.addEventListener('touchcancel', () => { financeBladeTouchActive = false; }, { passive: true });
+        const financeBladeSetTouchIdleSoon = () => {
+            clearTimeout(financeBladeTouchIdleTimer);
+            financeBladeTouchIdleTimer = setTimeout(() => { financeBladeTouchActive = false; }, 350);
+        };
+        document.addEventListener('touchend', financeBladeSetTouchIdleSoon, { passive: true });
+        document.addEventListener('touchcancel', financeBladeSetTouchIdleSoon, { passive: true });
 
         // nudgeRepaint's body display:none/'' toggle blurs whatever input is
         // focused — on iOS this dismisses the keyboard mid-typing (the
@@ -58,10 +64,13 @@
                 page.style.overflowY = 'auto';
                 page.style.touchAction = 'pan-x pan-y';
                 // Force WebKit to re-evaluate the scrollable layer without
-                // changing the user's position.
+                // changing the user's position or rebuilding the scrolling
+                // element mid-gesture.
                 const y = page.scrollTop;
-                page.style.transform = 'translateZ(0)';
+                page.style.webkitTransform = 'translate3d(0,0,0)';
+                page.style.transform = 'translate3d(0,0,0)';
                 void page.offsetHeight;
+                page.style.webkitTransform = '';
                 page.style.transform = '';
                 page.scrollTop = y;
                 // html/body are position:fixed + overflow:hidden — they should
@@ -130,7 +139,7 @@
             // that snap). Defer until the finger lifts instead of doing that.
             nudgeRepaint: () => {
                 if (financeBladeTouchActive) {
-                    document.addEventListener('touchend', () => window.financeBlade.nudgeRepaint(), { once: true, passive: true });
+                    document.addEventListener('touchend', () => setTimeout(() => window.financeBlade.nudgeRepaint(), 380), { once: true, passive: true });
                     return;
                 }
                 if (financeBladeIsTextInput()) {
@@ -141,11 +150,10 @@
                     if (financeBladeIsTextInput()) return;
                     const root = document.documentElement;
                     const app = document.getElementById('app');
-                    document.body.style.display = 'none';
-                    void document.body.offsetHeight;
-                    document.body.style.display = '';
-                    root.style.transform = 'translateZ(0)';
+                    root.style.webkitTransform = 'translate3d(0,0,0)';
+                    root.style.transform = 'translate3d(0,0,0)';
                     void root.offsetHeight;
+                    root.style.webkitTransform = '';
                     root.style.transform = '';
                     if (app) {
                         app.style.webkitTransform = 'translate3d(0,0,0)';

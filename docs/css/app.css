@@ -130,6 +130,7 @@ button, a, input, select, textarea, [role="button"] {
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     overflow-anchor: none;
     overscroll-behavior-y: contain;
     touch-action: pan-x pan-y;
@@ -1174,6 +1175,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     width: 100%;
     max-height: calc(100dvh - var(--safe-top) - 8px);
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     /* Reserve room so the last form field can scroll clear of the fixed
        .modal-actions bar overlaid on top of it (see below). */
