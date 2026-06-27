@@ -207,6 +207,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
             transaction.TransferId = updated.TransferId;
             transaction.UpTransactionId = updated.UpTransactionId;
             transaction.IsUnnecessary = updated.IsUnnecessary;
+            transaction.IsReimbursement = updated.IsReimbursement;
         }
 
         var deletes = await db.GetPendingTransactionDeletesAsync();

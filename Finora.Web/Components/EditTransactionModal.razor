@@ -45,10 +45,20 @@
                     }
                 </select>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
-                <input type="checkbox" id="editUnnecessary" @bind="unnecessary" style="width:18px;height:18px;accent-color:var(--amber)" />
-                <label for="editUnnecessary" style="font-size:14px;color:var(--text2)">Mark as unnecessary spending</label>
-            </div>
+            @if (isExpense)
+            {
+                <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
+                    <input type="checkbox" id="editUnnecessary" @bind="unnecessary" style="width:18px;height:18px;accent-color:var(--amber)" />
+                    <label for="editUnnecessary" style="font-size:14px;color:var(--text2)">Mark as unnecessary spending</label>
+                </div>
+            }
+            else
+            {
+                <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
+                    <input type="checkbox" id="editReimbursement" @bind="reimbursement" style="width:18px;height:18px;accent-color:var(--blue)" />
+                    <label for="editReimbursement" style="font-size:14px;color:var(--text2)">This is a repayment (don't count as income)</label>
+                </div>
+            }
         </div>
 
         @if (!string.IsNullOrEmpty(error))
@@ -78,6 +88,7 @@
     private int categoryId;
     private bool categoryTouchedByUser;
     private bool unnecessary;
+    private bool reimbursement;
     private string error = string.Empty;
     private bool saving;
 
@@ -90,6 +101,7 @@
         accountId = Transaction.AccountId;
         categoryId = Transaction.CategoryId;
         unnecessary = Transaction.IsUnnecessary;
+        reimbursement = Transaction.IsReimbursement;
     }
 
     // Only re-suggest when the description is actually edited, and only if the
@@ -121,6 +133,7 @@
             AccountId = accountId,
             CategoryId = categoryId,
             IsUnnecessary = unnecessary,
+            IsReimbursement = !isExpense && reimbursement,
             TransferId = Transaction.TransferId,
             UpTransactionId = Transaction.UpTransactionId
         };

@@ -47,10 +47,20 @@
                     }
                 </select>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
-                <input type="checkbox" id="unnecessary" @bind="unnecessary" style="width:18px;height:18px;accent-color:var(--amber)" />
-                <label for="unnecessary" style="font-size:14px;color:var(--text2)">Mark as unnecessary spending</label>
-            </div>
+            @if (isExpense)
+            {
+                <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
+                    <input type="checkbox" id="unnecessary" @bind="unnecessary" style="width:18px;height:18px;accent-color:var(--amber)" />
+                    <label for="unnecessary" style="font-size:14px;color:var(--text2)">Mark as unnecessary spending</label>
+                </div>
+            }
+            else
+            {
+                <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
+                    <input type="checkbox" id="reimbursement" @bind="reimbursement" style="width:18px;height:18px;accent-color:var(--blue)" />
+                    <label for="reimbursement" style="font-size:14px;color:var(--text2)">This is a repayment (don't count as income)</label>
+                </div>
+            }
         </div>
 
         @if (!string.IsNullOrEmpty(error))
@@ -79,6 +89,7 @@
     private int categoryId;
     private bool categoryTouchedByUser;
     private bool unnecessary;
+    private bool reimbursement;
     private string error = string.Empty;
     private bool saving;
 
@@ -114,7 +125,8 @@
             AmountDollars = isExpense ? -amount : amount,
             AccountId = accountId,
             CategoryId = categoryId,
-            IsUnnecessary = unnecessary
+            IsUnnecessary = unnecessary,
+            IsReimbursement = !isExpense && reimbursement
         };
         await State.AddTransactionAsync(t);
         saving = false;

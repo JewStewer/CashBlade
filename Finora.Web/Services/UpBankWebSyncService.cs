@@ -318,6 +318,7 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
             transaction.TransferId = updated.TransferId;
             transaction.UpTransactionId = updated.UpTransactionId;
             transaction.IsUnnecessary = updated.IsUnnecessary;
+            transaction.IsReimbursement = updated.IsReimbursement;
             await db.PutAsync("transactions", transaction);
         }
 

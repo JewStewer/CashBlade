@@ -30,7 +30,7 @@ public static class CategoryIcon
         "Holidays And Travel" => ("send", "rgba(34,211,238,0.15)", "#22D3EE"),
         "Investments" => ("trending-up", "rgba(52,211,153,0.15)", "#34D399"),
         "Life Admin" => ("clipboard", "rgba(148,163,184,0.15)", "#94A3B8"),
-        "Misc" => ("package", "rgba(148,163,184,0.15)", "#94A3B8"),
+        "Misc" => ("help-circle", "rgba(148,163,184,0.15)", "#94A3B8"),
         "Subscription" => ("repeat", "rgba(167,139,250,0.15)", "#A78BFA"),
         "Takeaway" => ("coffee", "rgba(245,158,11,0.15)", "#F59E0B"),
         "Unplanned" => ("alert-circle", "rgba(217,119,6,0.15)", "#D97706"),

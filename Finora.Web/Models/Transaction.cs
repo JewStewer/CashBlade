@@ -16,6 +16,9 @@ public class Transaction
     public Guid? TransferId { get; set; }
     public string? UpTransactionId { get; set; }
     public bool IsUnnecessary { get; set; }
+    // Money paid back to the user (e.g. a friend repaying them) — kept visible
+    // as a normal transaction but excluded from income totals.
+    public bool IsReimbursement { get; set; }
     // Precise Up Bank settlement/creation instant (Kind=Unspecified — never
     // serialised with an offset, so no timezone-shift risk). Null for
     // manually-entered transactions and any Up import predating this field.

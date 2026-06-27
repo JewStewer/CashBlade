@@ -56,6 +56,7 @@ public class TransactionEdit
     public string CategoryName { get; set; } = string.Empty;
     public Guid? TransferId { get; set; }
     public bool IsUnnecessary { get; set; }
+    public bool IsReimbursement { get; set; }
 }
 
 public class TransactionDelete

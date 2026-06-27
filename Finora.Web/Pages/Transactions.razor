@@ -116,6 +116,7 @@
                         var rowBorder = lentUnrepaid ? "border-left:3px solid #818CF8"
                                        : lentRepaid  ? "border-left:3px solid #34D399"
                                        : t.IsUnnecessary ? "border-left:3px solid var(--amber)"
+                                       : t.IsReimbursement ? "border-left:3px solid var(--blue)"
                                        : "";
                     }
                     <div class="list-row" style="cursor:pointer;@rowBorder" @onclick="() => SelectTxn(t.Id)">
@@ -138,6 +139,10 @@
                             else if (t.IsUnnecessary)
                             {
                                 <div style="font-size:10px;color:var(--amber)">unnecessary</div>
+                            }
+                            else if (t.IsReimbursement)
+                            {
+                                <div style="font-size:10px;color:var(--blue)">repayment</div>
                             }
                         </div>
                     </div>
@@ -241,6 +246,21 @@
                                         </button>
                                     }
                                 }
+                                @if (localT.AmountCents > 0 && !State.IsInternalMovement(localT))
+                                {
+                                    <button class="btn btn-sm @(localT.IsReimbursement ? "btn-primary" : "btn-secondary")"
+                                            style="@(localT.IsReimbursement ? "background:rgba(59,130,246,0.2);color:var(--blue);border:1px solid var(--blue)" : "")"
+                                            @onclick="() => DoToggleReimbursement(localT)" @onclick:stopPropagation="true">
+                                        @if (localT.IsReimbursement)
+                                        {
+                                            <span style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="13" /> Repayment</span>
+                                        }
+                                        else
+                                        {
+                                            @("Mark as repayment")
+                                        }
+                                    </button>
+                                }
                                 <button class="btn btn-sm btn-danger" @onclick="() => DoDelete(localT)" @onclick:stopPropagation="true">Delete</button>
                                 <button class="btn btn-sm btn-secondary" style="margin-left:auto" @onclick="() => selectedId = 0" @onclick:stopPropagation="true"><Icon Name="x" Size="13" /></button>
                             </div>
@@ -338,6 +358,12 @@
         selectedId = 0;
     }
 
+    private async Task DoToggleReimbursement(Transaction t)
+    {
+        await State.ToggleReimbursementAsync(t.Id);
+        selectedId = 0;
+    }
+
     private async Task DoDelete(Transaction t)
     {
         await State.DeleteTransactionAsync(t.Id);
@@ -415,7 +441,7 @@
 
         q = filter switch
         {
-            "Income" => q.Where(t => t.AmountCents > 0 && !State.IsInternalMovement(t)),
+            "Income" => q.Where(t => t.AmountCents > 0 && !State.IsInternalMovement(t) && !t.IsReimbursement),
             "Expenses" => q.Where(t => t.AmountCents < 0 && !State.IsInternalMovement(t)),
             "Transfers" => q.Where(t => State.IsInternalMovement(t)),
             // "All" hides internal cover/envelope transfers by default — they're

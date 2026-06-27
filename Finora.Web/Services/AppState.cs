@@ -1650,7 +1650,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         var weeks = Math.Max((to - from).Days / 7.0, 1);
         var total = Transactions
-            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents > 0 && !IsInternalMovement(t))
+            .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents > 0 && !IsInternalMovement(t) && !t.IsReimbursement)
             .Sum(t => t.AmountDollars);
         return (decimal)((double)total / weeks);
     }
@@ -2886,6 +2886,19 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    public async Task ToggleReimbursementAsync(int transactionId)
+    {
+        var t = Transactions.FirstOrDefault(x => x.Id == transactionId);
+        if (t is null) return;
+        t.IsReimbursement = !t.IsReimbursement;
+        await db.PutAsync("transactions", t);
+        QueueUpdatedTransaction(t);
+        await db.SetTransactionOverrideAsync(t);
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
     public async Task UpdateTransactionFullAsync(Transaction updated)
     {
         var t = Transactions.FirstOrDefault(x => x.Id == updated.Id);
@@ -4037,6 +4050,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         target.TransferId = updated.TransferId;
         target.UpTransactionId = updated.UpTransactionId;
         target.IsUnnecessary = updated.IsUnnecessary;
+        target.IsReimbursement = updated.IsReimbursement;
     }
 
     private Category ResolveCategory(string? categoryName, int categoryId, int amountCents)
@@ -4083,7 +4097,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         CategoryId = transaction.CategoryId,
         CategoryName = transaction.CategoryName,
         TransferId = transaction.TransferId,
-        IsUnnecessary = transaction.IsUnnecessary
+        IsUnnecessary = transaction.IsUnnecessary,
+        IsReimbursement = transaction.IsReimbursement
     };
 
     private static TransactionDelete ToTransactionDelete(Transaction transaction) => new()
@@ -4304,6 +4319,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             existing.TransferId = u.TransferId;
             existing.UpTransactionId = u.UpTransactionId;
             existing.IsUnnecessary = u.IsUnnecessary;
+            existing.IsReimbursement = u.IsReimbursement;
         }
         foreach (var edit in push.TransactionEdits)
         {
@@ -4317,6 +4333,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             existing.TransferId = edit.TransferId;
             existing.UpTransactionId = edit.UpTransactionId;
             existing.IsUnnecessary = edit.IsUnnecessary;
+            existing.IsReimbursement = edit.IsReimbursement;
         }
         cloud.Transactions.AddRange(push.NewTransactions);
 
@@ -4837,6 +4854,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             t.TransferId = pt.TransferId;
             t.UpTransactionId = pt.UpTransactionId;
             t.IsUnnecessary = pt.IsUnnecessary;
+            t.IsReimbursement = pt.IsReimbursement;
             await db.PutAsync("transactions", t);
             changed = true;
         }
@@ -4856,7 +4874,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                 CategoryName = edit.CategoryName,
                 TransferId = edit.TransferId,
                 UpTransactionId = edit.UpTransactionId,
-                IsUnnecessary = edit.IsUnnecessary
+                IsUnnecessary = edit.IsUnnecessary,
+                IsReimbursement = edit.IsReimbursement
             };
             ApplyTransactionEdit(t, updated);
             await db.PutAsync("transactions", t);

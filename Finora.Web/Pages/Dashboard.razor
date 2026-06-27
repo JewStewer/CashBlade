@@ -311,7 +311,8 @@ else
         .Where(t => t.Date.Date >= PayCycle.From.Date
             && t.Date.Date <= PayCycle.To.Date
             && t.AmountCents > 0
-            && string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase))
+            && string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase)
+            && !t.IsReimbursement)
         .Sum(t => t.AmountDollars);
     private decimal PayCycleNet => PayCycleIncome - PayCycleSpend;
     private decimal ThisWeek => State.GetWeekSpending(0);
