@@ -105,6 +105,18 @@ public class AppState(IndexedDbService db, SyncService sync)
     private DateTime _syncStartedAt;
     public bool IsSyncing => _syncInProgress || sync.IsSyncing;
 
+    // The PC desktop app only reconciles phone_push into its own database on its
+    // own ~5-minute timer, then re-pushes its (now-stale, pre-reconciliation)
+    // snapshot to the shared finance_sync cloud row. If a pull lands in that
+    // window, it can overwrite an edit the phone already successfully pushed
+    // moments earlier — the edit reappears, then silently reverts on the next
+    // sync even though nothing _pending remains to defend it. Keep replaying the
+    // last confirmed push for a grace period that comfortably outlasts that
+    // window, regardless of whether the pending queues have since drained.
+    private PushPayload? _lastConfirmedPush;
+    private DateTime _lastConfirmedPushAt;
+    private static readonly TimeSpan ConfirmedPushGrace = TimeSpan.FromMinutes(6);
+
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
     public void ForceResetSyncGuard() => _syncInProgress = false;
@@ -3402,7 +3414,18 @@ public class AppState(IndexedDbService db, SyncService sync)
                 // Sync wipes IndexedDB and replaces with server data; reapply any
                 // phone-side changes that weren't pushed so they aren't lost.
                 if (sentPush is not null)
+                {
                     await ReapplyPushChangesAsync(sentPush);
+                    _lastConfirmedPush = sentPush;
+                    _lastConfirmedPushAt = DateTime.UtcNow;
+                }
+                else if (_lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace)
+                {
+                    // Nothing new to push this round, but a recently-confirmed push may
+                    // not have propagated through the PC's reconciliation cycle yet —
+                    // keep defending it until the grace period elapses.
+                    await ReapplyPushChangesAsync(_lastConfirmedPush);
+                }
                 await ReapplyPendingChangesAsync();
             }
             else OnChange?.Invoke();
@@ -3480,6 +3503,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public async Task RepairPendingSyncAsync()
     {
         _syncDebounceCts?.Cancel();
+        _lastConfirmedPush = null;
         await MarkPendingChangesSyncedAsync();
         await db.ClearTransactionOverridesAsync();
         await db.ClearTransactionDeletesAsync();
