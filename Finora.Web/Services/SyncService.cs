@@ -6,6 +6,8 @@ namespace Finora.Web.Services;
 
 public class SyncService(HttpClient http, IndexedDbService db)
 {
+    private const string CategoryManagementRulesSettingKey = "CategoryManagementRules";
+
     private static readonly JsonSerializerOptions _opts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -187,6 +189,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
     private async Task ApplyLocalIntentsAsync(SyncPayload payload)
     {
+        var localSettings = await db.GetAppSettingsAsync();
+
         var overrides = await db.GetPendingTransactionOverridesAsync();
         foreach (var ov in overrides)
         {
@@ -288,11 +292,12 @@ public class SyncService(HttpClient http, IndexedDbService db)
             }
         }
 
+        ApplyManagedCategoryRules(payload, localSettings);
+
         // CategoryLimit:* and other phone-only keys are invisible to WPF, so
         // every WPF push overwrites appSettings without them.  Re-add any local
         // key the incoming snapshot doesn't include so they survive the replaceAll
         // that db.SaveSyncPayloadAsync performs.
-        var localSettings = await db.GetAppSettingsAsync();
         foreach (var local in localSettings)
         {
             if (!payload.AppSettings.Any(s => s.Key == local.Key))
@@ -309,6 +314,89 @@ public class SyncService(HttpClient http, IndexedDbService db)
             var existing = payload.AppSettings.FirstOrDefault(s => s.Key == ov.Setting.Key);
             if (existing is not null) existing.Value = ov.Setting.Value;
             else payload.AppSettings.Add(ov.Setting);
+        }
+    }
+
+    private sealed class CategoryManagementRules
+    {
+        public List<ManagedCategoryRule> AddedCategories { get; set; } = new();
+        public List<DeletedCategoryRule> DeletedCategories { get; set; } = new();
+    }
+
+    private sealed class ManagedCategoryRule
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public CategoryType Type { get; set; } = CategoryType.Expense;
+    }
+
+    private sealed class DeletedCategoryRule
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public CategoryType Type { get; set; } = CategoryType.Expense;
+        public int ReplacementId { get; set; }
+        public string ReplacementName { get; set; } = string.Empty;
+    }
+
+    private void ApplyManagedCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings)
+    {
+        var raw = localSettings.FirstOrDefault(s => s.Key == CategoryManagementRulesSettingKey)?.Value;
+        if (string.IsNullOrWhiteSpace(raw)) return;
+
+        CategoryManagementRules? rules;
+        try { rules = JsonSerializer.Deserialize<CategoryManagementRules>(raw, _opts); }
+        catch { return; }
+        if (rules is null) return;
+
+        foreach (var rule in rules.AddedCategories.Where(r => !string.IsNullOrWhiteSpace(r.Name)))
+        {
+            if (rules.DeletedCategories.Any(d =>
+                d.Type == rule.Type &&
+                string.Equals(d.Name, rule.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            if (payload.Categories.Any(c =>
+                c.Type == rule.Type &&
+                string.Equals(c.Name, rule.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var id = rule.Id < 0 && payload.Categories.All(c => c.Id != rule.Id)
+                ? rule.Id
+                : Math.Min(payload.Categories.Select(c => c.Id).DefaultIfEmpty(0).Min() - 1, -1);
+            payload.Categories.Add(new Category { Id = id, Name = rule.Name.Trim(), Type = rule.Type });
+        }
+
+        foreach (var rule in rules.DeletedCategories.Where(r => !string.IsNullOrWhiteSpace(r.Name) && !string.IsNullOrWhiteSpace(r.ReplacementName)))
+        {
+            var replacement = payload.Categories.FirstOrDefault(c =>
+                    c.Type == rule.Type &&
+                    string.Equals(c.Name, rule.ReplacementName.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? payload.Categories.FirstOrDefault(c => c.Id == rule.ReplacementId && c.Type == rule.Type)
+                ?? payload.Categories.FirstOrDefault(c =>
+                    c.Type == rule.Type &&
+                    !string.Equals(c.Name, rule.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (replacement is null) continue;
+
+            var deletedIds = payload.Categories
+                .Where(c => c.Type == rule.Type &&
+                    (c.Id == rule.Id || string.Equals(c.Name, rule.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
+                .Select(c => c.Id)
+                .ToHashSet();
+
+            foreach (var transaction in payload.Transactions.Where(t =>
+                deletedIds.Contains(t.CategoryId) ||
+                string.Equals(t.CategoryName, rule.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                transaction.CategoryId = replacement.Id;
+                transaction.CategoryName = replacement.Name;
+            }
+
+            payload.Categories.RemoveAll(c => deletedIds.Contains(c.Id));
         }
     }
 

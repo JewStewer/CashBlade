@@ -144,6 +144,8 @@
     private bool _pendingNudge;
     private bool _pushSubscriptionChecked;
     private DateTime _lastUpBankSyncAttemptUtc = DateTime.MinValue;
+    private DateTime _lastSafeSyncAttemptUtc = DateTime.MinValue;
+    private bool _safeSyncInProgress;
     private bool _showAddTxn;
     private bool _showAddBill;
 
@@ -272,10 +274,12 @@
     // so the app stays current without a manual "Sync Now" or the PC running.
     private void StartBackgroundSync()
     {
+        if (_syncTimer is not null) return;
+
         _ = SafeSyncAsync();
 
         _syncCts = new CancellationTokenSource();
-        _syncTimer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        _syncTimer = new PeriodicTimer(TimeSpan.FromMinutes(5));
         _ = RunPeriodicSyncAsync(_syncTimer, _syncCts.Token);
     }
 
@@ -291,6 +295,11 @@
 
     private async Task SafeSyncAsync()
     {
+        if (_safeSyncInProgress) return;
+        if ((DateTime.UtcNow - _lastSafeSyncAttemptUtc).TotalSeconds < 20) return;
+
+        _safeSyncInProgress = true;
+        _lastSafeSyncAttemptUtc = DateTime.UtcNow;
         try
         {
             var upSynced = await SafeUpBankSyncAsync();
@@ -308,6 +317,10 @@
             await InvokeAsync(StateHasChanged);
         }
         catch { /* SyncService records LastError for the Settings page; nothing to do here */ }
+        finally
+        {
+            _safeSyncInProgress = false;
+        }
     }
 
     private async Task<bool> SafeUpBankSyncAsync()

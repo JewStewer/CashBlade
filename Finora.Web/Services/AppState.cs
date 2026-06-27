@@ -357,7 +357,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedTripDeletesAsync();
         await ApplyPersistedBillOverridesAsync();
         await ApplyPersistedSettingOverridesAsync();
-        await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: true);
+        await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: false);
     }
 
     // ── Lent money tracking ──────────────────────────────────────────────────
@@ -3733,7 +3733,16 @@ public class AppState(IndexedDbService db, SyncService sync)
 
             if (_paceExcludedCategories.Remove(rule.Name))
             {
-                await SaveSettingAsync(PaceExcludedCategoriesSettingKey, System.Text.Json.JsonSerializer.Serialize(_paceExcludedCategories.OrderBy(v => v, StringComparer.OrdinalIgnoreCase)));
+                var value = System.Text.Json.JsonSerializer.Serialize(_paceExcludedCategories.OrderBy(v => v, StringComparer.OrdinalIgnoreCase));
+                if (persistTransactionOverrides)
+                    await SaveSettingAsync(PaceExcludedCategoriesSettingKey, value);
+                else
+                {
+                    await db.SaveSettingAsync(PaceExcludedCategoriesSettingKey, value);
+                    var existing = AppSettings.FirstOrDefault(s => s.Key == PaceExcludedCategoriesSettingKey);
+                    if (existing is not null) existing.Value = value;
+                    else AppSettings.Add(new AppSetting { Key = PaceExcludedCategoriesSettingKey, Value = value });
+                }
             }
         }
 
@@ -3905,7 +3914,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private async Task DebouncedSyncAsync(CancellationToken token)
     {
-        try { await Task.Delay(TimeSpan.FromMilliseconds(500), token); }
+        try { await Task.Delay(TimeSpan.FromSeconds(2), token); }
         catch (OperationCanceledException) { return; }
         if (token.IsCancellationRequested) return;
 
