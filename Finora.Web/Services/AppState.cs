@@ -2480,6 +2480,114 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    // Targeted Budget/Itinerary/Checklist item mutators. These always take plain
+    // values (never a whole Trip snapshot from a caller) and do a fresh, gated
+    // lookup of the live Trip right before mutating just the one targeted item.
+    // This closes the race that UpdateTripAsync(trip) was vulnerable to: a Razor
+    // component reading SelectedTrip, mutating one item in place, then handing
+    // the whole Trip back to UpdateTripAsync — if that read happened in the gap
+    // between LoadAsync()'s wholesale replace and the reapply's correction, the
+    // component's clone of the trip carried stale sibling items that could win
+    // a later replay and silently revert an already-synced edit.
+    private async Task MutateTripAsync(int tripId, Action<Trip> mutate)
+    {
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var trip = Trips.FirstOrDefault(x => x.Id == tripId);
+            if (trip is null) return;
+            mutate(trip);
+            await db.PutAsync("trips", trip);
+            if (trip.Id > 0)
+                QueueUpdatedTrip(trip);
+        }
+        finally { _tripMutationGate.Release(); }
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
+    public Task AddBudgetItemAsync(int tripId, TripBudgetItem newItem) =>
+        MutateTripAsync(tripId, trip => trip.BudgetItems.Add(newItem));
+
+    public Task SaveBudgetItemAsync(int tripId, string itemId, string category, decimal plannedDollars, decimal actualDollars, bool paid, string? notes) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.BudgetItems.FirstOrDefault(b => b.Id == itemId);
+            if (item is null) return;
+            item.Category = category;
+            item.PlannedDollars = plannedDollars;
+            item.ActualDollars = actualDollars;
+            item.Paid = paid;
+            item.Notes = notes;
+        });
+
+    public Task ToggleBudgetPaidAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.BudgetItems.FirstOrDefault(b => b.Id == itemId);
+            if (item is null) return;
+            item.Paid = !item.Paid;
+            if (!item.Paid) item.ActualDollars = 0;
+        });
+
+    public Task RemoveBudgetItemAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip => trip.BudgetItems.RemoveAll(b => b.Id == itemId));
+
+    public Task AddItineraryItemAsync(int tripId, TripItineraryItem newItem) =>
+        MutateTripAsync(tripId, trip => trip.Itinerary.Add(newItem));
+
+    public Task SaveItineraryItemAsync(int tripId, string itemId, DateTime date, string? time, string? endTime, string title, decimal amountDollars, string? notes) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.Itinerary.FirstOrDefault(i => i.Id == itemId);
+            if (item is null) return;
+            item.Date = date;
+            item.Time = time;
+            item.EndTime = endTime;
+            item.Title = title;
+            item.AmountDollars = amountDollars;
+            item.Notes = notes;
+        });
+
+    public Task RemoveItineraryItemAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip => trip.Itinerary.RemoveAll(i => i.Id == itemId));
+
+    public Task ApplyChecklistTemplateAsync(int tripId, string[] items) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var existing = new HashSet<string>(trip.Checklist.Select(c => c.Text), StringComparer.OrdinalIgnoreCase);
+            foreach (var text in items)
+            {
+                if (existing.Contains(text)) continue;
+                trip.Checklist.Add(new TripChecklistItem { Text = text, Done = false });
+            }
+        });
+
+    public Task AddChecklistItemAsync(int tripId, TripChecklistItem newItem) =>
+        MutateTripAsync(tripId, trip => trip.Checklist.Add(newItem));
+
+    public Task SaveChecklistItemAsync(int tripId, string itemId, string text, bool done, DateTime? dueDate) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.Checklist.FirstOrDefault(c => c.Id == itemId);
+            if (item is null) return;
+            item.Text = text;
+            item.Done = done;
+            item.DueDate = dueDate;
+        });
+
+    public Task RemoveChecklistItemAsync(int tripId, string itemId) =>
+        MutateTripAsync(tripId, trip => trip.Checklist.RemoveAll(c => c.Id == itemId));
+
+    public Task ToggleChecklistItemAsync(int tripId, string itemId, bool done) =>
+        MutateTripAsync(tripId, trip =>
+        {
+            var item = trip.Checklist.FirstOrDefault(c => c.Id == itemId);
+            if (item is null) return;
+            item.Done = done;
+        });
+
     // Used when a new bill is created from the "Add to Budget as a Bill"
     // installment-plan flow: also create a matching Debt so the remaining
     // balance shows progress as installments are paid off, same as other

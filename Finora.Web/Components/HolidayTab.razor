@@ -752,7 +752,7 @@ else
         var trip = SelectedTrip;
         if (trip is null || string.IsNullOrWhiteSpace(_newBudgetCategory)) return;
 
-        trip.BudgetItems.Add(new TripBudgetItem
+        await State.AddBudgetItemAsync(trip.Id, new TripBudgetItem
         {
             Category = _newBudgetCategory.Trim(),
             PlannedDollars = _newBudgetAmount ?? 0,
@@ -760,7 +760,6 @@ else
             Paid = _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
             Notes = string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim()
         });
-        await State.UpdateTripAsync(trip);
         ToggleBudgetForm();
     }
 
@@ -782,15 +781,13 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null || _editingBudgetId is null || string.IsNullOrWhiteSpace(_newBudgetCategory)) return;
-        var item = trip.BudgetItems.FirstOrDefault(b => b.Id == _editingBudgetId);
-        if (item is null) return;
 
-        item.Category = _newBudgetCategory.Trim();
-        item.PlannedDollars = _newBudgetAmount ?? 0;
-        item.ActualDollars = _newBudgetActual ?? 0;
-        item.Paid = _newBudgetPaid || (_newBudgetActual ?? 0) > 0;
-        item.Notes = string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim();
-        await State.UpdateTripAsync(trip);
+        await State.SaveBudgetItemAsync(trip.Id, _editingBudgetId,
+            _newBudgetCategory.Trim(),
+            _newBudgetAmount ?? 0,
+            _newBudgetActual ?? 0,
+            _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
+            string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim());
         CancelBudgetEdit();
     }
 
@@ -812,23 +809,19 @@ else
     private async Task ToggleBudgetPaid(string id)
     {
         var trip = SelectedTrip;
-        var item = trip?.BudgetItems.FirstOrDefault(b => b.Id == id);
-        if (trip is null || item is null) return;
-        item.Paid = !item.Paid;
+        if (trip is null) return;
         // Untick clears the recorded actual amount too — otherwise the row's "paid"
         // badge and the funded/remaining totals keep counting it (ActualDollars > 0
         // takes priority over Paid in the display logic) until the user reopens Edit
         // and re-saves, which is what made unticking look like it needed an extra step.
-        if (!item.Paid) item.ActualDollars = 0;
-        await State.UpdateTripAsync(trip);
+        await State.ToggleBudgetPaidAsync(trip.Id, id);
     }
 
     private async Task RemoveBudgetItem(string id)
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.BudgetItems.RemoveAll(b => b.Id == id);
-        await State.UpdateTripAsync(trip);
+        await State.RemoveBudgetItemAsync(trip.Id, id);
     }
 
     private void ToggleItineraryForm()
@@ -848,7 +841,7 @@ else
         var trip = SelectedTrip;
         if (trip is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
 
-        trip.Itinerary.Add(new TripItineraryItem
+        await State.AddItineraryItemAsync(trip.Id, new TripItineraryItem
         {
             Date = _newItineraryDate ?? DateTime.Today,
             Time = string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
@@ -857,7 +850,6 @@ else
             AmountDollars = _newItineraryAmount ?? 0,
             Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim()
         });
-        await State.UpdateTripAsync(trip);
         ToggleItineraryForm();
     }
 
@@ -880,16 +872,14 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null || _editingItineraryId is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
-        var item = trip.Itinerary.FirstOrDefault(i => i.Id == _editingItineraryId);
-        if (item is null) return;
 
-        item.Date = _newItineraryDate ?? DateTime.Today;
-        item.Time = string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime;
-        item.EndTime = string.IsNullOrWhiteSpace(_newItineraryEndTime) ? null : _newItineraryEndTime;
-        item.Title = _newItineraryTitle.Trim();
-        item.AmountDollars = _newItineraryAmount ?? 0;
-        item.Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim();
-        await State.UpdateTripAsync(trip);
+        await State.SaveItineraryItemAsync(trip.Id, _editingItineraryId,
+            _newItineraryDate ?? DateTime.Today,
+            string.IsNullOrWhiteSpace(_newItineraryTime) ? null : _newItineraryTime,
+            string.IsNullOrWhiteSpace(_newItineraryEndTime) ? null : _newItineraryEndTime,
+            _newItineraryTitle.Trim(),
+            _newItineraryAmount ?? 0,
+            string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim());
         CancelItineraryEdit();
     }
 
@@ -908,8 +898,7 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.Itinerary.RemoveAll(i => i.Id == id);
-        await State.UpdateTripAsync(trip);
+        await State.RemoveItineraryItemAsync(trip.Id, id);
     }
 
     private void ToggleChecklistForm()
@@ -933,13 +922,7 @@ else
         var trip = SelectedTrip;
         if (trip is null) return;
 
-        var existing = new HashSet<string>(trip.Checklist.Select(c => c.Text), StringComparer.OrdinalIgnoreCase);
-        foreach (var text in items)
-        {
-            if (existing.Contains(text)) continue;
-            trip.Checklist.Add(new TripChecklistItem { Text = text, Done = false });
-        }
-        await State.UpdateTripAsync(trip);
+        await State.ApplyChecklistTemplateAsync(trip.Id, items);
         _showChecklistTemplates = false;
     }
 
@@ -948,13 +931,12 @@ else
         var trip = SelectedTrip;
         if (trip is null || string.IsNullOrWhiteSpace(_newChecklistText)) return;
 
-        trip.Checklist.Add(new TripChecklistItem
+        await State.AddChecklistItemAsync(trip.Id, new TripChecklistItem
         {
             Text = _newChecklistText.Trim(),
             Done = false,
             DueDate = _newChecklistDueDate
         });
-        await State.UpdateTripAsync(trip);
         ToggleChecklistForm();
     }
 
@@ -974,13 +956,9 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null || _editingChecklistId is null || string.IsNullOrWhiteSpace(_newChecklistText)) return;
-        var item = trip.Checklist.FirstOrDefault(c => c.Id == _editingChecklistId);
-        if (item is null) return;
 
-        item.Text = _newChecklistText.Trim();
-        item.Done = _newChecklistDone;
-        item.DueDate = _newChecklistDueDate;
-        await State.UpdateTripAsync(trip);
+        await State.SaveChecklistItemAsync(trip.Id, _editingChecklistId,
+            _newChecklistText.Trim(), _newChecklistDone, _newChecklistDueDate);
         CancelChecklistEdit();
     }
 
@@ -996,16 +974,13 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        trip.Checklist.RemoveAll(c => c.Id == id);
-        await State.UpdateTripAsync(trip);
+        await State.RemoveChecklistItemAsync(trip.Id, id);
     }
 
     private async Task ToggleChecklistItem(string id, ChangeEventArgs e)
     {
         var trip = SelectedTrip;
-        var item = trip?.Checklist.FirstOrDefault(c => c.Id == id);
-        if (trip is null || item is null) return;
-        item.Done = e.Value is bool b && b;
-        await State.UpdateTripAsync(trip);
+        if (trip is null) return;
+        await State.ToggleChecklistItemAsync(trip.Id, id, e.Value is bool b && b);
     }
 }
