@@ -10,6 +10,18 @@
                 <label class="form-label">Name</label>
                 <input class="form-input" @bind="name" placeholder="e.g. Holiday Fund" />
             </div>
+            <div>
+                <label class="form-label">Icon (optional)</label>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    @foreach (var option in EmojiOptions)
+                    {
+                        <button type="button" class="pill @(emoji == option ? "pill-active" : "pill-inactive")"
+                                style="font-size:16px;padding:4px 10px" @onclick="() => emoji = emoji == option ? null : option">
+                            @option
+                        </button>
+                    }
+                </div>
+            </div>
             <div style="display:flex;gap:8px">
                 <div style="flex:1">
                     <label class="form-label">Current Amount ($)</label>
@@ -88,9 +100,12 @@
     private decimal target;
     private DateTime? targetDate;
     private string groupName = string.Empty;
+    private string? emoji;
     private string error = string.Empty;
     private bool saving;
     private bool confirmingDelete;
+
+    private static readonly string[] EmojiOptions = { "🏖️", "🏠", "🚗", "🎓", "💍", "👶", "🐶", "🎮", "💰", "🎁" };
 
     private decimal WeeklyPreview => GoalMath.WeeklyRequired(target, current, targetDate);
 
@@ -102,6 +117,7 @@
         target = Goal.TargetDollars;
         targetDate = Goal.TargetDate;
         groupName = Goal.GroupName ?? string.Empty;
+        emoji = Goal.Emoji;
         confirmingDelete = false;
     }
 
@@ -122,7 +138,8 @@
             TargetDollars = target,
             TargetDate = targetDate,
             WeeklyContributionDollars = WeeklyPreview,
-            GroupName = string.IsNullOrWhiteSpace(groupName) ? null : groupName.Trim()
+            GroupName = string.IsNullOrWhiteSpace(groupName) ? null : groupName.Trim(),
+            Emoji = emoji
         };
 
         if (Goal.Id == 0)

@@ -33,4 +33,13 @@ public static class GoalMath
         if (delta < -0.05) return PaceStatus.BehindPace;
         return PaceStatus.OnPace;
     }
+
+    /// <summary>Weeks until a target is reached at a given weekly contribution. -1 if it would never be reached.</summary>
+    public static int WeeksToTarget(decimal target, decimal current, decimal weeklyContribution)
+    {
+        var remaining = target - current;
+        if (remaining <= 0) return 0;
+        if (weeklyContribution <= 0) return -1;
+        return (int)Math.Ceiling(remaining / weeklyContribution);
+    }
 }

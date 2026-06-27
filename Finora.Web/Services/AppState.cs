@@ -1185,7 +1185,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             TargetDate = goal.TargetDate,
             GroupName = goal.GroupName,
             TargetStartDate = goal.TargetStartDate,
-            TargetStartingBalanceCents = goal.TargetStartingBalanceCents
+            TargetStartingBalanceCents = goal.TargetStartingBalanceCents,
+            Emoji = goal.Emoji
         };
         await UpdateSavingsGoalAsync(updated);
 
@@ -1405,6 +1406,52 @@ public class AppState(IndexedDbService db, SyncService sync)
         return Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0 && !IsInternalMovement(t))
             .Sum(t => Math.Abs(t.AmountDollars));
+    }
+
+    private bool WeekHasTransactions(int weeksAgo)
+    {
+        var today = DateTime.Today;
+        var dow = (int)today.DayOfWeek;
+        var monday = today.AddDays(-(dow == 0 ? 6 : dow - 1));
+        var from = monday.AddDays(-7 * weeksAgo);
+        var to = from.AddDays(6);
+        return Transactions.Any(t => t.Date.Date >= from && t.Date.Date <= to);
+    }
+
+    /// <summary>The lowest-spend completed week in the lookback window (ignoring weeks with no transactions at all).</summary>
+    public (decimal Amount, DateTime WeekStart) GetBestWeekEver(int lookbackWeeks = 52)
+    {
+        var today = DateTime.Today;
+        var dow = (int)today.DayOfWeek;
+        var monday = today.AddDays(-(dow == 0 ? 6 : dow - 1));
+
+        decimal? bestAmount = null;
+        var bestWeekStart = monday;
+        for (var weeksAgo = 1; weeksAgo <= lookbackWeeks; weeksAgo++)
+        {
+            if (!WeekHasTransactions(weeksAgo)) continue;
+            var spend = GetWeekSpending(weeksAgo);
+            if (bestAmount is null || spend < bestAmount)
+            {
+                bestAmount = spend;
+                bestWeekStart = monday.AddDays(-7 * weeksAgo);
+            }
+        }
+        return (bestAmount ?? 0, bestWeekStart);
+    }
+
+    /// <summary>Positive = spending more than last week, negative = spending less.</summary>
+    public decimal SpendDeltaVsLastWeek => GetWeekSpending(0) - GetWeekSpending(1);
+
+    /// <summary>Positive = spending more than last month, negative = spending less.</summary>
+    public decimal SpendDeltaVsLastMonth
+    {
+        get
+        {
+            var trend = GetMonthlyTrend(2);
+            if (trend.Count < 2) return 0;
+            return trend[^1].Spending - trend[^2].Spending;
+        }
     }
 
     /// <summary>Average daily spending over the last N days (excluding today if partial).</summary>
@@ -2111,6 +2158,32 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         catch { }
 
+        try
+        {
+            // Loss-aversion nudge: warn near the end of the week when a multi-week streak
+            // is at risk, rather than only celebrating streaks after the fact.
+            var isoDayOfWeek = (int)DateTime.Today.DayOfWeek == 0 ? 7 : (int)DateTime.Today.DayOfWeek;
+            var daysLeftInWeek = 7 - isoDayOfWeek;
+            if (Streak.CurrentStreakWeeks >= 2 && daysLeftInWeek <= 2 && BudgetSafeToSpendAmount > 0)
+            {
+                var spentSoFar = GetWeekSpending(0);
+                var percentUsed = spentSoFar / BudgetSafeToSpendAmount;
+                if (percentUsed >= 0.8m && percentUsed < 1m)
+                {
+                    var roomLeft = BudgetSafeToSpendAmount - spentSoFar;
+                    signals.Add(new ProactiveInsight
+                    {
+                        Key = $"streak-at-risk:{GetIsoWeekStart(DateTime.Today):yyyyMMdd}",
+                        Severity = ProactiveInsightSeverity.Warning,
+                        Title = $"Don't break your {Streak.CurrentStreakWeeks}-week streak",
+                        Message = $"You have {roomLeft:C} of room left this week — stay under to keep the streak alive.",
+                        ActionUrl = "budget"
+                    });
+                }
+            }
+        }
+        catch { }
+
         SmartSignals = signals
             .OrderByDescending(i => i.Severity)
             .ThenBy(i => i.Title)
@@ -2772,6 +2845,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         existing.WeeklyContributionCents = g.WeeklyContributionCents;
         existing.TargetDate = g.TargetDate;
         existing.GroupName = g.GroupName;
+        existing.Emoji = g.Emoji;
         if (existing.TargetDate is not null && existing.TargetStartDate is null)
         {
             existing.TargetStartDate = DateTime.Today;

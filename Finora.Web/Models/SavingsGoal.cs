@@ -29,4 +29,5 @@ public class SavingsGoal
     // against where the goal started rather than its current (already-progressed) balance.
     public DateTime? TargetStartDate { get; set; }
     public int? TargetStartingBalanceCents { get; set; }
+    public string? Emoji { get; set; }
 }

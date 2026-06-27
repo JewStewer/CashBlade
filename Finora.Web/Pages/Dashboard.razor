@@ -155,6 +155,16 @@ else
                 <strong>@State.Xp.XpIntoLevel/100 XP</strong>
                 <small>@State.Xp.TotalXp total XP</small>
             </button>
+            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("transactions")'>
+                <span>Best Week Ever</span>
+                <strong style="color:var(--green)">@BestWeekEver.Amount.ToString("C")</strong>
+                <small>Week of @BestWeekEver.WeekStart.ToString("dd MMM")</small>
+            </button>
+            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("transactions")'>
+                <span>Vs Last Week</span>
+                <strong style="color:@(State.SpendDeltaVsLastWeek <= 0 ? "var(--green)" : "var(--red)")">@(State.SpendDeltaVsLastWeek <= 0 ? "-" : "+")@Math.Abs(State.SpendDeltaVsLastWeek).ToString("C")</strong>
+                <small>@(State.SpendDeltaVsLastWeek <= 0 ? "Spending less" : "Spending more")</small>
+            </button>
         </div>
 
         @if (State.OutstandingLentDollars > 0)
@@ -293,6 +303,7 @@ else
 
     private (decimal Now, decimal AfterBills, decimal AfterPay) Forecast => State.GetForecastTotals();
     private (DateTime From, DateTime To) PayCycle => State.GetCurrentPayCycle();
+    private (decimal Amount, DateTime WeekStart) BestWeekEver => State.GetBestWeekEver();
     private int DaysToPayday => Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0);
     private string DaysToPaydayLabel => DaysToPayday == 0 ? "Payday today" : $"{DaysToPayday}d to payday";
     private decimal PayCycleSpend => State.GetDiscretionarySpendingForPeriod(PayCycle.From, PayCycle.To);
