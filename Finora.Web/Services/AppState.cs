@@ -2421,10 +2421,17 @@ public class AppState(IndexedDbService db, SyncService sync)
         existing.TargetDate = g.TargetDate;
         existing.GroupName = g.GroupName;
         await db.PutAsync("savingsGoals", existing);
-        // Negative-id (not-yet-synced) goals are mutated in place via the
-        // same object reference already queued in _pendingNewSavingsGoals.
-        if (existing.Id > 0)
-            QueueUpdatedSavingsGoal(existing);
+        // Queue this even for a not-yet-real-id (negative) goal. Once its
+        // first create round-trip clears it from _pendingNewSavingsGoals,
+        // relying on in-place object mutation alone stops working — the
+        // Supabase canonical-store merge (BuildMergedCloudPayloadAsync) only
+        // ever re-applies edits it finds in UpdatedSavingsGoals, matched by
+        // Id, and that already-uploaded record keeps its negative Id forever
+        // unless/until WPF later drains phone_push. Server-side handlers
+        // already filter UpdatedSavingsGoals to Id > 0, so this is a no-op
+        // for them and only feeds the canonical-store merge and the local
+        // reapply-after-reload defense.
+        QueueUpdatedSavingsGoal(existing);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3396,14 +3403,22 @@ public class AppState(IndexedDbService db, SyncService sync)
             var existing = cloud.SavingsGoals.FirstOrDefault(g => g.Id == u.Id);
             if (existing is not null)
             {
+                LogGoal($"MERGE-UPDATE cloud=[{GoalSnapshot(existing)}] incoming=[{GoalSnapshot(u)}]");
                 existing.Name = u.Name;
                 existing.TargetCents = u.TargetCents;
                 existing.CurrentCents = u.CurrentCents;
                 existing.WeeklyContributionCents = u.WeeklyContributionCents;
                 existing.TargetDate = u.TargetDate;
+                existing.GroupName = u.GroupName;
             }
         }
-        cloud.SavingsGoals.AddRange(push.NewSavingsGoals);
+        // AddRange only for goals the canonical snapshot doesn't already have —
+        // a not-yet-real-id goal stays at the same negative Id in cloud.SavingsGoals
+        // across every future round (nothing here ever reconciles it to a real Id
+        // unless/until WPF drains phone_push), so a blind AddRange would duplicate
+        // it the moment it's ever re-queued for any reason.
+        var cloudGoalIds = cloud.SavingsGoals.Select(g => g.Id).ToHashSet();
+        cloud.SavingsGoals.AddRange(push.NewSavingsGoals.Where(g => !cloudGoalIds.Contains(g.Id)));
 
         cloud.Trips.RemoveAll(t => push.DeletedTripIds.Contains(t.Id));
         foreach (var u in push.UpdatedTrips)
