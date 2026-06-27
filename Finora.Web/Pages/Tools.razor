@@ -88,31 +88,31 @@
         }
     </div>
 
-    <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-            <div>
-                <div class="row-title">This week's challenge</div>
-                <div class="row-sub">@State.WeeklyChallenge?.Title</div>
-            </div>
-            @if (State.WeeklyChallenge is not null)
-            {
-                <span class="badge @(WeeklyChallengeOnTrack ? "badge-green" : "badge-amber")">
-                    @(WeeklyChallengeOnTrack ? "On track" : "Over")
+    @foreach (var challenge in State.WeeklyChallenges)
+    {
+        var progress = State.GetWeeklyChallengeProgress(challenge);
+        var onTrack = progress <= challenge.TargetAmount;
+        var percent = challenge.TargetAmount <= 0 ? 0 : (int)Math.Clamp(progress / challenge.TargetAmount * 100m, 0m, 100m);
+        <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <div>
+                    <div class="row-title">@challenge.Title</div>
+                    <div class="row-sub">+@challenge.XpReward XP on success</div>
+                </div>
+                <span class="badge @(onTrack ? "badge-green" : "badge-amber")">
+                    @(onTrack ? "On track" : "Over")
                 </span>
-            }
-        </div>
-        @if (State.WeeklyChallenge is not null)
-        {
-            <div style="font-size:13px;color:var(--text2)">@State.WeeklyChallenge.Description</div>
+            </div>
+            <div style="font-size:13px;color:var(--text2)">@challenge.Description</div>
             <div class="progress-bar" style="height:8px">
-                <div class="progress-fill" style="width:@WeeklyChallengeProgressPercent%;background:@(WeeklyChallengeOnTrack ? "var(--green)" : "var(--red)")"></div>
+                <div class="progress-fill" style="width:@percent%;background:@(onTrack ? "var(--green)" : "var(--red)")"></div>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)">
-                <span>@State.WeeklyChallengeProgress.ToString("C") spent</span>
-                <span>Target @State.WeeklyChallenge.TargetAmount.ToString("C")</span>
+                <span>@progress.ToString("C") spent</span>
+                <span>Target @challenge.TargetAmount.ToString("C")</span>
             </div>
-        }
-    </div>
+        </div>
+    }
 
     <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -430,14 +430,6 @@ else if (_tab == "Cleanup")
         _freezeStatus = bought ? "Freeze purchased." : "Not enough XP yet.";
         _freezeStatusColor = bought ? "var(--green)" : "var(--amber)";
     }
-
-    private int WeeklyChallengeProgressPercent =>
-        State.WeeklyChallenge is null || State.WeeklyChallenge.TargetAmount <= 0
-            ? 0
-            : (int)Math.Clamp(State.WeeklyChallengeProgress / State.WeeklyChallenge.TargetAmount * 100m, 0m, 100m);
-
-    private bool WeeklyChallengeOnTrack =>
-        State.WeeklyChallenge is null || State.WeeklyChallengeProgress <= State.WeeklyChallenge.TargetAmount;
 
     private async Task ToggleRoundUpAsync(ChangeEventArgs e)
     {

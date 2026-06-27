@@ -9,4 +9,6 @@ public class WeeklyChallengeState
     public decimal TargetAmount { get; set; }
     public string? CategoryName { get; set; }
     public bool? Passed { get; set; }
+    public int XpReward { get; set; }
+    public bool XpAwarded { get; set; }
 }

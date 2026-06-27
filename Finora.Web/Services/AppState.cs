@@ -235,20 +235,20 @@ public class AppState(IndexedDbService db, SyncService sync)
     // ── Gamification state ──────────────────────────────────────────────────────
     public StreakState Streak { get; private set; } = new();
     public XpState Xp { get; private set; } = new();
-    public WeeklyChallengeState? WeeklyChallenge { get; private set; }
+    public List<WeeklyChallengeState> WeeklyChallenges { get; private set; } = new();
     public RoundUpState RoundUp { get; private set; } = new();
     public BadgeState Badges { get; private set; } = new();
     public List<BadgeDefinition> UnlockedBadges =>
         BadgeCatalog.All.Where(b => Badges.UnlockedBadgeIds.Contains(b.Id)).ToList();
     public List<BadgeDefinition> LockedBadges =>
         BadgeCatalog.All.Where(b => !Badges.UnlockedBadgeIds.Contains(b.Id)).ToList();
-    public decimal WeeklyChallengeProgress =>
-        WeeklyChallenge is null || string.IsNullOrEmpty(WeeklyChallenge.CategoryName)
+    public decimal GetWeeklyChallengeProgress(WeeklyChallengeState challenge) =>
+        string.IsNullOrEmpty(challenge.CategoryName)
             ? GetWeekSpending(0)
             : Transactions
                 .Where(t => t.Date.Date >= GetIsoWeekStart(DateTime.Today)
                     && t.AmountCents < 0
-                    && string.Equals(t.CategoryName, WeeklyChallenge.CategoryName, StringComparison.OrdinalIgnoreCase))
+                    && string.Equals(t.CategoryName, challenge.CategoryName, StringComparison.OrdinalIgnoreCase))
                 .Sum(t => Math.Abs(t.AmountDollars));
 
     // ── Transactions for display (most recent 100) ────────────────────────────
@@ -1101,40 +1101,59 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (changed) PersistGameStateJson(XpSettingKey, Xp);
     }
 
-    private const string WeeklyChallengeSettingKey = "GameWeeklyChallenge";
+    private const string WeeklyChallengeSettingKey = "GameWeeklyChallengeList";
 
     private void ComputeWeeklyChallenge()
     {
-        WeeklyChallenge = GetSettingJson<WeeklyChallengeState>(WeeklyChallengeSettingKey);
+        WeeklyChallenges = GetSettingJson<List<WeeklyChallengeState>>(WeeklyChallengeSettingKey) ?? new();
         var currentWeekStart = GetIsoWeekStart(DateTime.Today);
-        var cachedCategoryIsStale = WeeklyChallenge is not null
-            && (string.Equals(WeeklyChallenge.CategoryName, "Income", StringComparison.OrdinalIgnoreCase)
-                || TransactionClassification.IsInternalMovementCategory(WeeklyChallenge.CategoryName));
-        if (WeeklyChallenge is not null && WeeklyChallenge.WeekStart.Date == currentWeekStart.Date && !cachedCategoryIsStale) return;
+        var isCurrentWeek = WeeklyChallenges.Count > 0 && WeeklyChallenges[0].WeekStart.Date == currentWeekStart.Date;
+        var staleCategoryNames = WeeklyChallenges
+            .Where(c => string.Equals(c.CategoryName, "Income", StringComparison.OrdinalIgnoreCase)
+                || TransactionClassification.IsInternalMovementCategory(c.CategoryName))
+            .Any();
 
-        // Lock in the outcome of the challenge that's ending before replacing it.
-        // Skip this when we're regenerating mid-week because the cached category was stale —
+        if (isCurrentWeek && !staleCategoryNames) return;
+
+        var xpChanged = false;
+
+        // Lock in the outcome of each challenge that's ending and award XP, before replacing them.
+        // Skip this when we're regenerating mid-week because a cached category was stale —
         // the week hasn't actually ended, so there's no outcome to lock in yet.
-        if (WeeklyChallenge is not null && WeeklyChallenge.Passed is null && WeeklyChallenge.WeekStart.Date != currentWeekStart.Date)
+        if (isCurrentWeek == false)
         {
-            var spentLastWeek = string.IsNullOrEmpty(WeeklyChallenge.CategoryName)
-                ? GetWeekSpending(1)
-                : Transactions
-                    .Where(t => t.Date.Date >= WeeklyChallenge.WeekStart && t.Date.Date < currentWeekStart
-                        && t.AmountCents < 0
-                        && string.Equals(t.CategoryName, WeeklyChallenge.CategoryName, StringComparison.OrdinalIgnoreCase))
-                    .Sum(t => Math.Abs(t.AmountDollars));
-            WeeklyChallenge.Passed = spentLastWeek <= WeeklyChallenge.TargetAmount;
+            foreach (var challenge in WeeklyChallenges)
+            {
+                if (challenge.Passed is null)
+                {
+                    var spentLastWeek = string.IsNullOrEmpty(challenge.CategoryName)
+                        ? GetWeekSpending(1)
+                        : Transactions
+                            .Where(t => t.Date.Date >= challenge.WeekStart && t.Date.Date < currentWeekStart
+                                && t.AmountCents < 0
+                                && string.Equals(t.CategoryName, challenge.CategoryName, StringComparison.OrdinalIgnoreCase))
+                            .Sum(t => Math.Abs(t.AmountDollars));
+                    challenge.Passed = spentLastWeek <= challenge.TargetAmount;
+                }
+                if (challenge.Passed == true && !challenge.XpAwarded)
+                {
+                    Xp.TotalXp += challenge.XpReward;
+                    challenge.XpAwarded = true;
+                    xpChanged = true;
+                }
+            }
         }
 
-        WeeklyChallenge = GenerateWeeklyChallenge(currentWeekStart);
-        PersistGameStateJson(WeeklyChallengeSettingKey, WeeklyChallenge);
+        if (xpChanged) PersistGameStateJson(XpSettingKey, Xp);
+
+        WeeklyChallenges = GenerateWeeklyChallenges(currentWeekStart);
+        PersistGameStateJson(WeeklyChallengeSettingKey, WeeklyChallenges);
     }
 
-    private WeeklyChallengeState GenerateWeeklyChallenge(DateTime weekStart)
+    private List<WeeklyChallengeState> GenerateWeeklyChallenges(DateTime weekStart)
     {
         var lastWeekStart = weekStart.AddDays(-7);
-        var topCategory = Transactions
+        var topCategories = Transactions
             .Where(t => t.Date.Date >= lastWeekStart && t.Date.Date < weekStart
                 && t.AmountCents < 0
                 && !string.Equals(t.CategoryName, "Income", StringComparison.OrdinalIgnoreCase)
@@ -1143,31 +1162,40 @@ public class AppState(IndexedDbService db, SyncService sync)
             .Select(g => new { Category = g.Key, Spent = g.Sum(t => Math.Abs(t.AmountDollars)), Count = g.Count() })
             .Where(g => g.Count >= 2 && g.Spent > 0)
             .OrderByDescending(g => g.Spent)
-            .FirstOrDefault();
+            .Take(2)
+            .ToList();
 
-        if (topCategory is not null)
+        var challenges = new List<WeeklyChallengeState>();
+        var xpRewards = new[] { 25, 20 };
+        for (var i = 0; i < topCategories.Count; i++)
         {
-            var target = Math.Round(topCategory.Spent * 0.9m / 5m) * 5m;
-            return new WeeklyChallengeState
+            var cat = topCategories[i];
+            var target = Math.Round(cat.Spent * 0.9m / 5m) * 5m;
+            challenges.Add(new WeeklyChallengeState
             {
                 WeekStart = weekStart,
-                ChallengeKey = $"beat-category:{topCategory.Category}",
-                Title = $"Beat last week's {topCategory.Category} spend",
-                Description = $"Keep {topCategory.Category} spending under {target:C} this week (last week: {topCategory.Spent:C}).",
+                ChallengeKey = $"beat-category:{cat.Category}",
+                Title = $"Beat last week's {cat.Category} spend",
+                Description = $"Keep {cat.Category} spending under {target:C} this week (last week: {cat.Spent:C}).",
                 TargetAmount = target,
-                CategoryName = topCategory.Category
-            };
+                CategoryName = cat.Category,
+                XpReward = xpRewards[i]
+            });
         }
 
-        return new WeeklyChallengeState
+        // Always include the overall safe-to-spend challenge so there's at least one even with no clear top categories.
+        challenges.Add(new WeeklyChallengeState
         {
             WeekStart = weekStart,
             ChallengeKey = "stay-under-safe-to-spend",
             Title = "Stay under your safe-to-spend amount",
             Description = $"Keep total spending under {BudgetSafeToSpendAmount:C} this week.",
             TargetAmount = BudgetSafeToSpendAmount,
-            CategoryName = null
-        };
+            CategoryName = null,
+            XpReward = 30
+        });
+
+        return challenges;
     }
 
     private const string RoundUpSettingKey = "GameRoundUp";
