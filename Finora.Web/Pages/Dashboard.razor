@@ -71,6 +71,41 @@ else
             </div>
         </section>
 
+        <section class="dashboard-module payday-module">
+            <div class="module-head">
+                <span>Next Payday</span>
+                <strong>@(State.DaysUntilPayday == 0 ? "Today" : $"{State.DaysUntilPayday}d")</strong>
+            </div>
+            <p>@State.NextPayDate.ToString("dd MMM yyyy") &middot; @State.TotalBillsDue.ToString("C") in bills due before then.</p>
+            @if (State.TotalBillShortfall > 0)
+            {
+                <p class="negative">Transfer @State.TotalBillShortfall.ToString("C") now to cover bills before payday.</p>
+            }
+        </section>
+
+        @if (State.BillAccountShortfalls.Count > 0)
+        {
+            <section class="dashboard-module shortfall-module">
+                <div class="module-head">
+                    <span>Short For Upcoming Bills</span>
+                    <strong class="negative">@State.TotalBillShortfall.ToString("C")</strong>
+                </div>
+                <div class="card-list dashboard-list">
+                    @foreach (var s in State.BillAccountShortfalls)
+                    {
+                        <div class="list-row">
+                            <div class="row-icon" style="background:rgba(248,113,113,0.15)">!</div>
+                            <div class="row-main">
+                                <div class="row-title">@s.AccountName</div>
+                                <div class="row-sub">@s.BillCount bill@(s.BillCount == 1 ? "" : "s") due before payday &middot; has @s.CurrentBalance.ToString("C")</div>
+                            </div>
+                            <span class="row-amount neg">Short @s.Needed.ToString("C")</span>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+
         <div class="quick-actions quick-actions-ultimate">
             <button class="quick-action" @onclick="() => showAddTxn = true">
                 <span>+</span>

@@ -44,6 +44,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     // ── Settings ──────────────────────────────────────────────────────────────
     public DateTime NextPayDate { get; private set; } = DateTime.Today;
+    public int DaysUntilPayday => Math.Max((NextPayDate.Date - DateTime.Today).Days, 0);
     public string SummaryPeriod { get; private set; } = "Weekly";
     public bool NoSpendMode { get; private set; }
 
@@ -173,6 +174,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     // ── Bills for current period ──────────────────────────────────────────────
     public List<Bill> BillsDueBeforePayday { get; private set; } = new();
     public decimal TotalBillsDue { get; private set; }
+    public List<BillAccountShortfall> BillAccountShortfalls { get; private set; } = new();
+    public decimal TotalBillShortfall => BillAccountShortfalls.Sum(s => s.Needed);
 
     // ── Transactions for display (most recent 100) ────────────────────────────
     public List<Transaction> RecentTransactions { get; private set; } = new();
@@ -887,6 +890,26 @@ public class AppState(IndexedDbService db, SyncService sync)
             .ToList();
 
         TotalBillsDue = BillsDueBeforePayday.Sum(b => b.AmountDollars);
+
+        // Per bill-account: bills due strictly before payday vs the account's current balance.
+        BillAccountShortfalls = Bills
+            .Where(b => !IsBillPaid(b) && b.EffectiveDueDate.Date < NextPayDate.Date)
+            .GroupBy(b => b.AccountId)
+            .Select(g =>
+            {
+                var balance = GetAccountBalance(g.Key);
+                var due = g.Sum(b => b.AmountDollars);
+                return new BillAccountShortfall
+                {
+                    AccountName = g.First().AccountName,
+                    CurrentBalance = balance,
+                    DueBeforePayday = due,
+                    BillCount = g.Count()
+                };
+            })
+            .Where(s => s.Needed > 0)
+            .OrderByDescending(s => s.Needed)
+            .ToList();
     }
 
     public string? GetSetting(string key) =>
