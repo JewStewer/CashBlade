@@ -234,6 +234,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         WeeklyBudgets.Count > 0 ||
         Trips.Count > 0;
 
+    // Suppresses LoadAsync's own OnChange while SyncAndReloadAsync is mid
+    // replace-then-correct: LoadAsync() wholesale-replaces Trips from IndexedDB
+    // (which may briefly be stale, pending the reapply that runs right after),
+    // so firing OnChange here gives subscribers like HolidayTab a render of the
+    // not-yet-corrected snapshot — visible to the user as a value reverting for
+    // about a second before silently fixing itself. SyncAndReloadAsync fires its
+    // own OnChange once the reapply is done, so nothing is lost by skipping this one.
+    private bool _suppressLoadOnChange;
+
     public async Task LoadAsync()
     {
         await LoadStoresAsync();
@@ -250,7 +259,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         Compute();
         IsLoaded = true;
-        OnChange?.Invoke();
+        if (!_suppressLoadOnChange) OnChange?.Invoke();
     }
 
     private async Task LoadStoresAsync()
@@ -3568,7 +3577,9 @@ public class AppState(IndexedDbService db, SyncService sync)
                 await _tripMutationGate.WaitAsync();
                 try
                 {
-                    await LoadAsync();
+                    _suppressLoadOnChange = true;
+                    try { await LoadAsync(); }
+                    finally { _suppressLoadOnChange = false; }
                     LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
                     // Sync wipes IndexedDB and replaces with server data; reapply any
                     // phone-side changes that weren't pushed so they aren't lost.
