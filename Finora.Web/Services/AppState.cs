@@ -3642,10 +3642,32 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (!stillPending)
                 await db.ClearTripOverrideAsync(sent.Id);
         }
+
+        // Mirrors the above for trips still at a negative (not-yet-adopted) id.
+        // A confirming pull may have adopted the trip onto a new positive id in
+        // the same round, so fall back to content-matching (ignoring id) via
+        // SameTripAdoptionCandidate before giving up on confirmation.
+        foreach (var sent in sentPush.NewTrips)
+        {
+            var pulled = pulledTripsBeforeOverrides.FirstOrDefault(t => t.Id == sent.Id)
+                ?? pulledTripsBeforeOverrides.FirstOrDefault(t => SameTripAdoptionCandidate(t, sent));
+            var confirmed = pulled is not null && SameTripFields(pulled, sent);
+            LogTrip($"CONFIRM-NEW trip={sent.Id} confirmed={confirmed} pulled=[{ItinSnapshot(pulled)}] sent=[{ItinSnapshot(sent)}]");
+            if (!confirmed) continue;
+
+            _pendingNewTrips.RemoveAll(p => p.Id == sent.Id && SameTripFields(p, sent));
+            var stillPendingNew = _pendingNewTrips.Any(p => p.Id == sent.Id);
+            if (!stillPendingNew)
+                await db.ClearTripOverrideAsync(sent.Id);
+        }
     }
 
     private static bool SameTripContent(Trip left, Trip right) =>
-        left.Id == right.Id &&
+        left.Id == right.Id && SameTripFields(left, right);
+
+    // Ignores Id — a NewTrips entry confirmed via adoption is compared against
+    // the freshly-adopted (positive id) pulled trip, which never shares left.Id.
+    private static bool SameTripFields(Trip left, Trip right) =>
         string.Equals(left.Name, right.Name, StringComparison.Ordinal) &&
         string.Equals(left.Destination, right.Destination, StringComparison.Ordinal) &&
         string.Equals(left.Notes, right.Notes, StringComparison.Ordinal) &&
@@ -4953,22 +4975,15 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewSavingsGoals.RemoveRange(0, push.NewSavingsGoals.Count);
                     _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
                     _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
-                    // Reference-based removal: if QueueNewTripEditAsync queued a newer clone for
-                    // this trip while the push above was in flight, that clone is a different
-                    // object and must survive so the edit isn't lost — count-based removal would
-                    // have dropped it here even though it was never actually sent. The persisted
-                    // override row must survive too: if a newer clone is still pending for this
-                    // trip id, clearing the row here deletes the only on-disk record of the edit
-                    // that wasn't sent in this push, so a stale pull has nothing left to defend
-                    // it with and the edit silently reverts.
-                    foreach (var t in push.NewTrips)
-                    {
-                        _pendingNewTrips.Remove(t);
-                        var stillPending = _pendingNewTrips.Any(p => p.Id == t.Id);
-                        LogTrip($"CLEAR-CHECK-NEW trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
-                        if (!stillPending)
-                            await db.ClearTripOverrideAsync(t.Id);
-                    }
+                    // _pendingNewTrips is NOT cleared here, on the same logic as
+                    // _pendingUpdatedTrips below: pushedToCanonicalStore only means the
+                    // PC's phone_push inbox (or Supabase) accepted the write, not that
+                    // it has actually been reconciled into the data the next pull will
+                    // return — that can lag minutes behind on PC sync. Clearing here
+                    // would drop the only on-disk record of the edit before a pull can
+                    // possibly reflect it, silently reverting it. ClearConfirmedTripUpdatesAsync
+                    // clears both queues once a freshly-pulled snapshot actually confirms.
+                    LogTrip($"CLEAR-DEFER-NEW trips=[{string.Join(" || ", push.NewTrips.Select(t => ItinSnapshot(t)))}]");
                     LogTrip($"CLEAR-DEFER trips=[{string.Join(" || ", push.UpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
