@@ -571,6 +571,146 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    // ── Persistent bill full-edit overrides (survive cloud replace until pushed) ──
+    public async Task<List<PendingBillEditOverride>> GetPendingBillEditOverridesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingBillEditOverride>("billEditOverrides");
+        }
+        catch (JSException)
+        {
+            return new List<PendingBillEditOverride>();
+        }
+    }
+
+    public async Task SetBillEditOverrideAsync(Bill bill)
+    {
+        try
+        {
+            await PutAsync("billEditOverrides", new PendingBillEditOverride { Id = bill.Id, Bill = bill });
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearBillEditOverrideAsync(int billId)
+    {
+        try
+        {
+            await DeleteAsync("billEditOverrides", billId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    // ── Persistent debt edits (survive cloud replace until pushed) ────────────
+    public async Task<List<PendingDebtOverride>> GetPendingDebtOverridesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingDebtOverride>("debtOverrides");
+        }
+        catch (JSException)
+        {
+            return new List<PendingDebtOverride>();
+        }
+    }
+
+    public async Task SetDebtOverrideAsync(Debt debt)
+    {
+        try
+        {
+            await PutAsync("debtOverrides", new PendingDebtOverride { Id = debt.Id, Debt = debt });
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearDebtOverrideAsync(int debtId)
+    {
+        try
+        {
+            await DeleteAsync("debtOverrides", debtId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    // ── Persistent account goal edits (survive cloud replace until pushed) ────
+    public async Task<List<PendingAccountOverride>> GetPendingAccountOverridesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingAccountOverride>("accountOverrides");
+        }
+        catch (JSException)
+        {
+            return new List<PendingAccountOverride>();
+        }
+    }
+
+    public async Task SetAccountOverrideAsync(Account account)
+    {
+        try
+        {
+            await PutAsync("accountOverrides", new PendingAccountOverride { Id = account.Id, Account = account });
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearAccountOverrideAsync(int accountId)
+    {
+        try
+        {
+            await DeleteAsync("accountOverrides", accountId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    // ── Persistent savings goal edits (survive cloud replace until pushed) ────
+    public async Task<List<PendingSavingsGoalOverride>> GetPendingSavingsGoalOverridesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingSavingsGoalOverride>("savingsGoalOverrides");
+        }
+        catch (JSException)
+        {
+            return new List<PendingSavingsGoalOverride>();
+        }
+    }
+
+    public async Task SetSavingsGoalOverrideAsync(SavingsGoal goal)
+    {
+        try
+        {
+            await PutAsync("savingsGoalOverrides", new PendingSavingsGoalOverride { Id = goal.Id, Goal = goal });
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearSavingsGoalOverrideAsync(int goalId)
+    {
+        try
+        {
+            await DeleteAsync("savingsGoalOverrides", goalId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     public async Task SaveSettingAsync(string key, string value)
     {
         var settings = await GetAppSettingsAsync();
@@ -681,6 +821,30 @@ public class PendingTransactionOverride
 {
     public int Id { get; set; } // = Transaction Id
     public Transaction Transaction { get; set; } = new();
+}
+
+public class PendingBillEditOverride
+{
+    public int Id { get; set; } // = Bill Id
+    public Bill Bill { get; set; } = new();
+}
+
+public class PendingDebtOverride
+{
+    public int Id { get; set; } // = Debt Id
+    public Debt Debt { get; set; } = new();
+}
+
+public class PendingAccountOverride
+{
+    public int Id { get; set; } // = Account Id
+    public Account Account { get; set; } = new();
+}
+
+public class PendingSavingsGoalOverride
+{
+    public int Id { get; set; } // = SavingsGoal Id
+    public SavingsGoal Goal { get; set; } = new();
 }
 
 public class PendingTripOverride

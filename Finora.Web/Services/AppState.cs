@@ -405,6 +405,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedTripDeletesAsync();
         await ApplyPersistedTripOverridesAsync();
         await ApplyPersistedBillOverridesAsync();
+        await ApplyPersistedBillEditOverridesAsync();
+        await ApplyPersistedDebtOverridesAsync();
+        await ApplyPersistedAccountOverridesAsync();
+        await ApplyPersistedSavingsGoalOverridesAsync();
         await ApplyPersistedSettingOverridesAsync();
         await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: false);
         await ApplyTransactionCategoryRulesAsync(persistTransactionOverrides: false);
@@ -592,6 +596,95 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
     }
 
+    private async Task ApplyPersistedBillEditOverridesAsync()
+    {
+        var overrides = await db.GetPendingBillEditOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var bill = ov.Bill;
+            var existing = Bills.FirstOrDefault(b => b.Id == bill.Id);
+            if (existing is null) continue;
+            existing.Name = bill.Name;
+            existing.AccountId = bill.AccountId;
+            existing.AccountName = Accounts.FirstOrDefault(a => a.Id == bill.AccountId)?.Name ?? existing.AccountName;
+            existing.AmountDollars = bill.AmountDollars;
+            existing.DueDate = bill.DueDate;
+            existing.Frequency = bill.Frequency;
+            existing.IsAutoPay = bill.IsAutoPay;
+            await db.PutAsync("bills", existing);
+
+            // Re-queue for push — a bill edit made locally but never confirmed
+            // pushed (e.g. iOS killed the app mid-sync) must survive an app
+            // restart and a stale pull, same as transaction/setting overrides.
+            _pendingUpdatedBills.RemoveAll(b => b.Id == existing.Id);
+            _pendingUpdatedBills.Add(existing);
+        }
+    }
+
+    private async Task ApplyPersistedDebtOverridesAsync()
+    {
+        var overrides = await db.GetPendingDebtOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var debt = ov.Debt;
+            var existing = Debts.FirstOrDefault(d => d.Id == debt.Id);
+            if (existing is null) continue;
+            existing.Name = debt.Name;
+            existing.BalanceCents = debt.BalanceCents;
+            existing.MinimumPaymentCents = debt.MinimumPaymentCents;
+            existing.PaymentPeriod = debt.PaymentPeriod;
+            existing.InterestRate = debt.InterestRate;
+            existing.OriginalBalanceCents = debt.OriginalBalanceCents;
+            await db.PutAsync("debts", existing);
+
+            _pendingUpdatedDebts.RemoveAll(d => d.Id == existing.Id);
+            _pendingUpdatedDebts.Add(existing);
+        }
+    }
+
+    private async Task ApplyPersistedAccountOverridesAsync()
+    {
+        var overrides = await db.GetPendingAccountOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var account = ov.Account;
+            var existing = Accounts.FirstOrDefault(a => a.Id == account.Id);
+            if (existing is null) continue;
+            existing.TargetCents = account.TargetCents;
+            existing.TargetDate = account.TargetDate;
+            existing.TargetStartDate = account.TargetStartDate;
+            existing.TargetStartingBalanceCents = account.TargetStartingBalanceCents;
+            await db.PutAsync("accounts", existing);
+
+            _pendingUpdatedAccounts.RemoveAll(a => a.Id == existing.Id);
+            _pendingUpdatedAccounts.Add(existing);
+        }
+    }
+
+    private async Task ApplyPersistedSavingsGoalOverridesAsync()
+    {
+        var overrides = await db.GetPendingSavingsGoalOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var goal = ov.Goal;
+            var existing = SavingsGoals.FirstOrDefault(g => g.Id == goal.Id);
+            if (existing is null) continue;
+            existing.Name = goal.Name;
+            existing.TargetCents = goal.TargetCents;
+            existing.CurrentCents = goal.CurrentCents;
+            existing.WeeklyContributionCents = goal.WeeklyContributionCents;
+            existing.TargetDate = goal.TargetDate;
+            existing.GroupName = goal.GroupName;
+            existing.Emoji = goal.Emoji;
+            existing.TargetStartDate = goal.TargetStartDate;
+            existing.TargetStartingBalanceCents = goal.TargetStartingBalanceCents;
+            await db.PutAsync("savingsGoals", existing);
+
+            _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == existing.Id);
+            _pendingUpdatedSavingsGoals.Add(existing);
+        }
+    }
+
     private async Task ApplyPersistedSettingOverridesAsync()
     {
         var overrides = await db.GetPendingSettingOverridesAsync();
@@ -641,6 +734,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 _pendingDeletedBillIds.Add(id);
                 await db.DeleteAsync("bills", id);
                 await db.ClearBillOverrideAsync(id);
+                await db.ClearBillEditOverrideAsync(id);
             }
             _pendingDeletedBills.RemoveAll(d => SameBillDelete(d, deleteIntent));
             _pendingDeletedBills.Add(deleteIntent);
@@ -668,6 +762,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 _pendingDeletedDebtIds.RemoveAll(x => x == id);
                 _pendingDeletedDebtIds.Add(id);
+                await db.ClearDebtOverrideAsync(id);
             }
         }
     }
@@ -704,6 +799,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 // persisted), so the very next LoadStoresAsync() call reads it
                 // straight back out of the DB and the goal looks "revived".
                 await db.DeleteAsync("savingsGoals", id);
+                await db.ClearSavingsGoalOverrideAsync(id);
             }
         }
     }
@@ -3026,6 +3122,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.PutAsync("bills", existing);
         if (b.Id > 0 && !_pendingUpdatedBills.Any(x => x.Id == b.Id))
             _pendingUpdatedBills.Add(existing);
+        // Persist so a full bill edit survives an app restart (e.g. iOS
+        // evicting a backgrounded PWA) before this push is confirmed —
+        // without this the next sync pull silently reverts the edit.
+        // ApplyPersistedBillEditOverridesAsync re-seeds the in-memory queue
+        // from this on the next load.
+        if (b.Id > 0)
+            await db.SetBillEditOverrideAsync(existing);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3054,6 +3157,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         await db.DeleteAsync("bills", id);
         await db.ClearBillOverrideAsync(id);
+        await db.ClearBillEditOverrideAsync(id);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3086,7 +3190,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         // Negative-id (not-yet-synced) debts are mutated in place via the
         // same object reference already queued in _pendingNewDebts.
         if (existing.Id > 0)
-            QueueUpdatedDebt(existing);
+            await QueueUpdatedDebt(existing);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3122,6 +3226,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (deletedDebt is not null && id > 0)
             await db.SetDebtDeleteAsync(deletedDebt);
         await db.DeleteAsync("debts", id);
+        await db.ClearDebtOverrideAsync(id);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3174,7 +3279,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         // already filter UpdatedSavingsGoals to Id > 0, so this is a no-op
         // for them and only feeds the canonical-store merge and the local
         // reapply-after-reload defense.
-        QueueUpdatedSavingsGoal(existing);
+        await QueueUpdatedSavingsGoal(existing);
         if (contributionCents > 0)
             await RecordSavingsGoalContributionAsync(existing.Name, contributionCents);
         Compute();
@@ -3227,6 +3332,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (deletedGoal is not null)
             await db.SetSavingsGoalDeleteAsync(deletedGoal);
         await db.DeleteAsync("savingsGoals", id);
+        await db.ClearSavingsGoalOverrideAsync(id);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3511,7 +3617,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         account.TargetStartDate = DateTime.Today;
         account.TargetStartingBalanceDollars = GetAccountBalance(accountId);
         await db.PutAsync("accounts", account);
-        QueueUpdatedAccount(account);
+        await QueueUpdatedAccount(account);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3526,7 +3632,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         account.TargetDollars = targetDollars;
         account.TargetDate = targetDate;
         await db.PutAsync("accounts", account);
-        QueueUpdatedAccount(account);
+        await QueueUpdatedAccount(account);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3541,28 +3647,36 @@ public class AppState(IndexedDbService db, SyncService sync)
         account.TargetStartDate = null;
         account.TargetStartingBalanceCents = null;
         await db.PutAsync("accounts", account);
-        QueueUpdatedAccount(account);
+        await QueueUpdatedAccount(account);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
     }
 
-    private void QueueUpdatedAccount(Account a)
+    private async Task QueueUpdatedAccount(Account a)
     {
         _pendingUpdatedAccounts.RemoveAll(x => x.Id == a.Id);
         _pendingUpdatedAccounts.Add(a);
+        // Persist so an account goal edit survives an app restart (e.g. iOS
+        // evicting a backgrounded PWA) before this push is confirmed —
+        // without this the next sync pull silently reverts the edit.
+        // ApplyPersistedAccountOverridesAsync re-seeds the in-memory queue
+        // from this on the next load.
+        await db.SetAccountOverrideAsync(a);
     }
 
-    private void QueueUpdatedDebt(Debt d)
+    private async Task QueueUpdatedDebt(Debt d)
     {
         _pendingUpdatedDebts.RemoveAll(x => x.Id == d.Id);
         _pendingUpdatedDebts.Add(d);
+        await db.SetDebtOverrideAsync(d);
     }
 
-    private void QueueUpdatedSavingsGoal(SavingsGoal g)
+    private async Task QueueUpdatedSavingsGoal(SavingsGoal g)
     {
         _pendingUpdatedSavingsGoals.RemoveAll(x => x.Id == g.Id);
         _pendingUpdatedSavingsGoals.Add(g);
+        await db.SetSavingsGoalOverrideAsync(g);
     }
 
     private async Task QueueUpdatedTripAsync(Trip t)
@@ -3702,7 +3816,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 existingDebt.BalanceCents += phonePayment.AmountCents;
                 await db.PutAsync("debts", existingDebt);
-                QueueUpdatedDebt(existingDebt);
+                await QueueUpdatedDebt(existingDebt);
             }
 
             DebtPayments.Remove(phonePayment);
@@ -3743,7 +3857,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         debt.BalanceCents = Math.Max(0, debt.BalanceCents - paymentCents);
         await db.PutAsync("debts", debt);
-        QueueUpdatedDebt(debt);
+        await QueueUpdatedDebt(debt);
 
         var minId = DebtPayments.Count > 0 ? DebtPayments.Min(x => x.Id) : 0;
         var payment = new DebtPayment
@@ -4903,7 +5017,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var b in push.NewBills)
                         _pendingNewBills.Remove(b);
                     foreach (var b in push.UpdatedBills)
+                    {
                         _pendingUpdatedBills.Remove(b);
+                        if (!_pendingUpdatedBills.Any(p => p.Id == b.Id))
+                            await db.ClearBillEditOverrideAsync(b.Id);
+                    }
                     foreach (var id in push.DeletedBillIds)
                         _pendingDeletedBillIds.Remove(id);
                     foreach (var d in push.DeletedBills)
@@ -4914,7 +5032,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var d in push.NewDebts)
                         _pendingNewDebts.Remove(d);
                     foreach (var d in push.UpdatedDebts)
+                    {
                         _pendingUpdatedDebts.Remove(d);
+                        if (!_pendingUpdatedDebts.Any(p => p.Id == d.Id))
+                            await db.ClearDebtOverrideAsync(d.Id);
+                    }
                     foreach (var id in push.DeletedDebtIds)
                         _pendingDeletedDebtIds.Remove(id);
                     foreach (var p in push.NewDebtPayments)
@@ -4923,7 +5045,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                         _pendingDeletedDebtPaymentIds.Remove(id);
 
                     foreach (var a in push.UpdatedAccounts)
+                    {
                         _pendingUpdatedAccounts.Remove(a);
+                        if (!_pendingUpdatedAccounts.Any(p => p.Id == a.Id))
+                            await db.ClearAccountOverrideAsync(a.Id);
+                    }
 
                     foreach (var s in push.UpdatedSettings)
                     {
@@ -4946,7 +5072,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var g in push.NewSavingsGoals)
                         _pendingNewSavingsGoals.Remove(g);
                     foreach (var g in push.UpdatedSavingsGoals)
+                    {
                         _pendingUpdatedSavingsGoals.Remove(g);
+                        if (!_pendingUpdatedSavingsGoals.Any(p => p.Id == g.Id))
+                            await db.ClearSavingsGoalOverrideAsync(g.Id);
+                    }
                     foreach (var id in push.DeletedSavingsGoalIds)
                         _pendingDeletedSavingsGoalIds.Remove(id);
 
