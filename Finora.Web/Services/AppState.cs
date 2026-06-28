@@ -210,8 +210,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         TripDebugLog.Add($"{DateTime.Now:HH:mm:ss.fff} {msg}");
         if (TripDebugLog.Count > 300) TripDebugLog.RemoveAt(0);
     }
-    private static string ItinSnapshot(Trip? t) =>
-        t is null ? "null" : string.Join(" | ", t.Itinerary.Select(i => $"{i.Title}={i.AmountDollars:0.00}#{(i.Id.Length >= 6 ? i.Id[..6] : i.Id)}"));
+    private static string ItinSnapshot(Trip? t)
+    {
+        if (t is null) return "null";
+        var itin = string.Join(",", t.Itinerary.Select(i => $"{i.Title}={i.AmountDollars:0.00}#{(i.Id.Length >= 6 ? i.Id[..6] : i.Id)}"));
+        var check = string.Join(",", t.Checklist.Select(c => $"{c.Text}:{(c.Done ? "Y" : "N")}#{(c.Id.Length >= 6 ? c.Id[..6] : c.Id)}"));
+        var budget = string.Join(",", t.BudgetItems.Select(b => $"{b.Category}:{(b.Paid ? "Y" : "N")}={b.ActualCents}#{(b.Id.Length >= 6 ? b.Id[..6] : b.Id)}"));
+        return $"itin=[{itin}] checklist=[{check}] budget=[{budget}]";
+    }
 
     // Diagnostic trail for the savings-goal delete-then-reappear bug: records
     // every load, delete, and tombstone-defense decision so a repro can be
@@ -383,7 +389,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         WeeklyBudgets = await db.GetWeeklyBudgetsAsync();
         AppSettings = await db.GetAppSettingsAsync();
         Trips = await db.GetTripsAsync();
-        foreach (var t in Trips) LogTrip($"LOAD trip={t.Id} itin=[{ItinSnapshot(t)}]");
+        foreach (var t in Trips) LogTrip($"LOAD trip={t.Id} {ItinSnapshot(t)}");
         LentTransactions = await db.GetLentTransactionsAsync();
         NormaliseLentRepayments();
         await RemoveInvalidLentTransactionsAsync();
@@ -724,6 +730,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             trip.Itinerary = updated.Itinerary;
             trip.Checklist = updated.Checklist;
             trip.BudgetItems = updated.BudgetItems;
+            LogTrip($"OVERRIDE-APPLY trip={trip.Id} {ItinSnapshot(trip)}");
             await db.PutAsync("trips", trip);
 
             // Re-queue for push — a trip edit made locally but never confirmed
@@ -3316,9 +3323,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             var trip = Trips.FirstOrDefault(x => x.Id == tripId);
             if (trip is null) return;
-            LogTrip($"MUTATE trip={tripId} before=[{ItinSnapshot(trip)}]");
+            LogTrip($"MUTATE trip={tripId} before {ItinSnapshot(trip)}");
             mutate(trip);
-            LogTrip($"MUTATE trip={tripId} after=[{ItinSnapshot(trip)}]");
+            LogTrip($"MUTATE trip={tripId} after {ItinSnapshot(trip)}");
             await db.PutAsync("trips", trip);
             if (trip.Id > 0)
                 await QueueUpdatedTripAsync(trip);
@@ -3512,6 +3519,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         // this same list) must not silently pick up changes made after it was sent.
         var clone = CloneTrip(t);
         _pendingUpdatedTrips.Add(clone);
+        LogTrip($"QUEUE trip={t.Id} {ItinSnapshot(clone)}");
 
         // Persist the clone too — _pendingUpdatedTrips is in-memory only and is
         // lost if the WASM runtime restarts (e.g. iOS evicting a backgrounded
@@ -4618,6 +4626,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _syncInProgress = true;
         _syncStartedAt  = DateTime.UtcNow;
         OnChange?.Invoke();
+        LogTrip($"SYNC-START pendingTrips=[{string.Join(" || ", _pendingUpdatedTrips.Select(t => ItinSnapshot(t)))}]");
         try
         {
             // Push any phone-side changes — Wi-Fi first, Supabase as fallback
@@ -4659,7 +4668,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     DeletedTripIds = new List<int>(_pendingDeletedTripIds)
                 };
                 foreach (var t in push.UpdatedTrips)
-                    LogTrip($"PUSH-BUILD trip={t.Id} itin=[{ItinSnapshot(t)}]");
+                    LogTrip($"PUSH-BUILD trip={t.Id} {ItinSnapshot(t)}");
 
                 bool pushedToPc = false;
                 if (sync.HasLocalSync)
@@ -4766,7 +4775,9 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var t in push.UpdatedTrips)
                     {
                         _pendingUpdatedTrips.Remove(t);
-                        if (!_pendingUpdatedTrips.Any(p => p.Id == t.Id))
+                        var stillPending = _pendingUpdatedTrips.Any(p => p.Id == t.Id);
+                        LogTrip($"CLEAR-CHECK trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
+                        if (!stillPending)
                             await db.ClearTripOverrideAsync(t.Id);
                     }
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
@@ -4801,9 +4812,9 @@ public class AppState(IndexedDbService db, SyncService sync)
                         // checklist item) before the server has actually reconciled it,
                         // letting the next stale pull silently revert it. Merge instead of
                         // replace so still-in-grace entities keep being defended.
-                        var defended = _lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace
-                            ? MergeConfirmedPush(sentPush, _lastConfirmedPush)
-                            : sentPush;
+                        var merging = _lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace;
+                        var defended = merging ? MergeConfirmedPush(sentPush, _lastConfirmedPush!) : sentPush;
+                        LogTrip($"DEFEND merging={merging} defendedTrips=[{string.Join(" || ", defended.UpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                         await ReapplyPushChangesAsync(defended);
                         _lastConfirmedPush = defended;
                         _lastConfirmedPushAt = DateTime.UtcNow;
@@ -4813,8 +4824,10 @@ public class AppState(IndexedDbService db, SyncService sync)
                         // Nothing new to push this round, but a recently-confirmed push may
                         // not have propagated through the PC's reconciliation cycle yet —
                         // keep defending it until the grace period elapses.
+                        LogTrip($"DEFEND-STALE lastConfirmedTrips=[{string.Join(" || ", _lastConfirmedPush.UpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                         await ReapplyPushChangesAsync(_lastConfirmedPush);
                     }
+                    LogTrip($"REAPPLY-PENDING pendingTrips=[{string.Join(" || ", _pendingUpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                     await ReapplyPendingChangesAsync();
                 }
                 finally { _tripMutationGate.Release(); }
@@ -5334,7 +5347,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             var trip = Trips.FirstOrDefault(x => x.Id == ut.Id);
             if (trip is null) continue;
-            LogTrip($"REAPPLY trip={ut.Id} current=[{ItinSnapshot(trip)}] incoming=[{ItinSnapshot(ut)}]");
+            LogTrip($"REAPPLY trip={ut.Id} current {ItinSnapshot(trip)} incoming {ItinSnapshot(ut)}");
             trip.Name = ut.Name;
             trip.Destination = ut.Destination;
             trip.Notes = ut.Notes;
