@@ -512,6 +512,52 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    // ── Persistent trip edits (survive cloud replace until pushed) ────────────
+    public async Task<List<PendingTripOverride>> GetPendingTripOverridesAsync()
+    {
+        try
+        {
+            return await GetAllAsync<PendingTripOverride>("tripOverrides");
+        }
+        catch (JSException)
+        {
+            return new List<PendingTripOverride>();
+        }
+    }
+
+    public async Task SetTripOverrideAsync(Trip trip)
+    {
+        try
+        {
+            await PutAsync("tripOverrides", new PendingTripOverride { Id = trip.Id, Trip = trip });
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearTripOverrideAsync(int tripId)
+    {
+        try
+        {
+            await DeleteAsync("tripOverrides", tripId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearTripOverridesAsync()
+    {
+        try
+        {
+            await ClearAsync("tripOverrides");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     public async Task SaveSettingAsync(string key, string value)
     {
         var settings = await GetAppSettingsAsync();
@@ -622,6 +668,12 @@ public class PendingTransactionOverride
 {
     public int Id { get; set; } // = Transaction Id
     public Transaction Transaction { get; set; } = new();
+}
+
+public class PendingTripOverride
+{
+    public int Id { get; set; } // = Trip Id
+    public Trip Trip { get; set; } = new();
 }
 
 public class PendingSettingOverride

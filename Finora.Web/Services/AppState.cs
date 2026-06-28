@@ -396,6 +396,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await ApplyPersistedDebtDeletesAsync();
         await ApplyPersistedSavingsGoalDeletesAsync();
         await ApplyPersistedTripDeletesAsync();
+        await ApplyPersistedTripOverridesAsync();
         await ApplyPersistedBillOverridesAsync();
         await ApplyPersistedSettingOverridesAsync();
         await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: false);
@@ -697,6 +698,39 @@ public class AppState(IndexedDbService db, SyncService sync)
                 // straight back out of the DB and the goal looks "revived".
                 await db.DeleteAsync("savingsGoals", id);
             }
+        }
+    }
+
+    private async Task ApplyPersistedTripOverridesAsync()
+    {
+        var overrides = await db.GetPendingTripOverridesAsync();
+        foreach (var ov in overrides)
+        {
+            var updated = ov.Trip;
+            var trip = Trips.FirstOrDefault(t => t.Id == updated.Id);
+            if (trip is null)
+            {
+                await db.ClearTripOverrideAsync(updated.Id);
+                continue;
+            }
+
+            trip.Name = updated.Name;
+            trip.Destination = updated.Destination;
+            trip.Notes = updated.Notes;
+            trip.StartDate = updated.StartDate;
+            trip.EndDate = updated.EndDate;
+            trip.SavingsAccountId = updated.SavingsAccountId;
+            trip.WeeklyContributionCents = updated.WeeklyContributionCents;
+            trip.Itinerary = updated.Itinerary;
+            trip.Checklist = updated.Checklist;
+            trip.BudgetItems = updated.BudgetItems;
+            await db.PutAsync("trips", trip);
+
+            // Re-queue for push — a trip edit made locally but never confirmed
+            // pushed (e.g. iOS killed the app mid-sync) must survive an app
+            // restart and a stale pull, same as transaction/setting overrides.
+            _pendingUpdatedTrips.RemoveAll(t => t.Id == trip.Id);
+            _pendingUpdatedTrips.Add(CloneTrip(trip));
         }
     }
 
@@ -3237,7 +3271,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             // Negative-id (not-yet-synced) trips are mutated in place via the
             // same object reference already queued in _pendingNewTrips.
             if (existing.Id > 0)
-                QueueUpdatedTrip(existing);
+                await QueueUpdatedTripAsync(existing);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3258,6 +3292,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             if (deletedTrip is not null && id > 0)
                 await db.SetTripDeleteAsync(deletedTrip);
             await db.DeleteAsync("trips", id);
+            await db.ClearTripOverrideAsync(id);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3286,7 +3321,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             LogTrip($"MUTATE trip={tripId} after=[{ItinSnapshot(trip)}]");
             await db.PutAsync("trips", trip);
             if (trip.Id > 0)
-                QueueUpdatedTrip(trip);
+                await QueueUpdatedTripAsync(trip);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3469,13 +3504,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedSavingsGoals.Add(g);
     }
 
-    private void QueueUpdatedTrip(Trip t)
+    private async Task QueueUpdatedTripAsync(Trip t)
     {
         _pendingUpdatedTrips.RemoveAll(x => x.Id == t.Id);
         // Snapshot a clone, not the live object — t keeps mutating in place as the
         // user makes further edits, and an in-flight push payload (built earlier from
         // this same list) must not silently pick up changes made after it was sent.
-        _pendingUpdatedTrips.Add(CloneTrip(t));
+        var clone = CloneTrip(t);
+        _pendingUpdatedTrips.Add(clone);
+
+        // Persist the clone too — _pendingUpdatedTrips is in-memory only and is
+        // lost if the WASM runtime restarts (e.g. iOS evicting a backgrounded
+        // PWA) before this edit is pushed. Without this, the next sync pulls
+        // the still-stale server copy with nothing left to defend it, silently
+        // reverting the edit. ApplyPersistedTripOverridesAsync re-seeds the
+        // in-memory queue from this on the next load.
+        await db.SetTripOverrideAsync(clone);
     }
 
     private static Trip CloneTrip(Trip t) => new()
@@ -4702,7 +4746,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     // trip while the push above was in flight, that clone is a different object
                     // and must survive so the edit isn't lost — count-based removal would have
                     // dropped it here even though it was never actually sent.
-                    foreach (var t in push.UpdatedTrips) _pendingUpdatedTrips.Remove(t);
+                    foreach (var t in push.UpdatedTrips)
+                    {
+                        _pendingUpdatedTrips.Remove(t);
+                        await db.ClearTripOverrideAsync(t.Id);
+                    }
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
             }
@@ -4826,6 +4874,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearDebtDeletesAsync();
         await db.ClearSavingsGoalDeletesAsync();
         await db.ClearTripDeletesAsync();
+        await db.ClearTripOverridesAsync();
         await db.ClearSettingOverridesAsync();
         LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
         await LoadAsync();
