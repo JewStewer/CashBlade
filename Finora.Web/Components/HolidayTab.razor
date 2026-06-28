@@ -287,12 +287,12 @@ else
     @if (_showBudgetForm)
     {
         <div style="padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
-            <input class="form-input" @bind="_newBudgetCategory" placeholder="Category (e.g. Flights, hotel, food)" />
+            <input class="form-input" @bind="_newBudgetCategory" @bind:event="oninput" placeholder="Category (e.g. Flights, hotel, food)" />
             <div style="display:flex;gap:8px">
-                <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetAmount" placeholder="Planned" />
-                <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetActual" placeholder="Paid/spent" />
+                <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetAmount" @bind:event="oninput" placeholder="Planned" />
+                <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetActual" @bind:event="oninput" placeholder="Paid/spent" />
             </div>
-            <input class="form-input" @bind="_newBudgetNotes" placeholder="Notes (booking ref, due date, link)" />
+            <input class="form-input" @bind="_newBudgetNotes" @bind:event="oninput" placeholder="Notes (booking ref, due date, link)" />
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
                 <input type="checkbox" @bind="_newBudgetPaid" style="width:18px;height:18px;accent-color:var(--teal)" />
                 Paid or booked
@@ -312,12 +312,12 @@ else
                 @if (_editingBudgetId == item.Id)
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
-                        <input class="form-input" @bind="_newBudgetCategory" placeholder="Category" />
+                        <input class="form-input" @bind="_newBudgetCategory" @bind:event="oninput" placeholder="Category" />
                         <div style="display:flex;gap:8px">
-                            <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetAmount" placeholder="Planned" />
-                            <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetActual" placeholder="Paid/spent" />
+                            <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetAmount" @bind:event="oninput" placeholder="Planned" />
+                            <input class="form-input" style="flex:1" type="number" step="0.01" min="0" @bind="_newBudgetActual" @bind:event="oninput" placeholder="Paid/spent" />
                         </div>
-                        <input class="form-input" @bind="_newBudgetNotes" placeholder="Notes" />
+                        <input class="form-input" @bind="_newBudgetNotes" @bind:event="oninput" placeholder="Notes" />
                         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
                             <input type="checkbox" @bind="_newBudgetPaid" style="width:18px;height:18px;accent-color:var(--teal)" />
                             Paid or booked
@@ -331,7 +331,7 @@ else
                 else
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
-                        <input type="checkbox" checked="@item.Paid" @onchange="() => ToggleBudgetPaid(item.Id)" style="width:18px;height:18px;accent-color:var(--teal)" />
+                        <input type="checkbox" checked="@item.Paid" @onchange="(ChangeEventArgs e) => ToggleBudgetPaid(item.Id, e)" style="width:18px;height:18px;accent-color:var(--teal)" />
                         <div style="flex:1">
                             <div style="font-size:14px;font-weight:600">@item.Category</div>
                             @if (!string.IsNullOrWhiteSpace(item.Notes))
@@ -806,14 +806,24 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null || _editingBudgetId is null || string.IsNullOrWhiteSpace(_newBudgetCategory)) return;
-
-        await State.SaveBudgetItemAsync(trip.Id, _editingBudgetId,
-            _newBudgetCategory.Trim(),
-            _newBudgetAmount ?? 0,
-            _newBudgetActual ?? 0,
-            _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
-            string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim());
+        var editingId = _editingBudgetId;
+        var category = _newBudgetCategory.Trim();
+        var planned = _newBudgetAmount ?? 0;
+        var actual = _newBudgetActual ?? 0;
+        var paid = _newBudgetPaid || actual > 0;
+        var notes = string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim();
+        var item = trip.BudgetItems.FirstOrDefault(b => b.Id == editingId);
+        if (item is not null)
+        {
+            item.Category = category;
+            item.PlannedDollars = planned;
+            item.ActualDollars = actual;
+            item.Paid = paid;
+            item.Notes = notes;
+        }
         await CancelBudgetEdit();
+
+        await State.SaveBudgetItemAsync(trip.Id, editingId, category, planned, actual, paid, notes);
     }
 
     private async Task CancelBudgetEdit()
@@ -832,15 +842,23 @@ else
         _newBudgetNotes = string.Empty;
     }
 
-    private async Task ToggleBudgetPaid(string id)
+    private async Task ToggleBudgetPaid(string id, ChangeEventArgs e)
     {
         var trip = SelectedTrip;
         if (trip is null) return;
+        var paid = e.Value is bool paidValue && paidValue;
+        var item = trip.BudgetItems.FirstOrDefault(b => b.Id == id);
+        if (item is not null)
+        {
+            item.Paid = paid;
+            if (!paid) item.ActualDollars = 0;
+            StateHasChanged();
+        }
         // Untick clears the recorded actual amount too — otherwise the row's "paid"
         // badge and the funded/remaining totals keep counting it (ActualDollars > 0
         // takes priority over Paid in the display logic) until the user reopens Edit
         // and re-saves, which is what made unticking look like it needed an extra step.
-        await State.ToggleBudgetPaidAsync(trip.Id, id);
+        await State.SetBudgetPaidAsync(trip.Id, id, paid);
     }
 
     private async Task RemoveBudgetItem(string id)
@@ -1023,6 +1041,13 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null) return;
-        await State.ToggleChecklistItemAsync(trip.Id, id, e.Value is bool b && b);
+        var done = e.Value is bool doneValue && doneValue;
+        var item = trip.Checklist.FirstOrDefault(c => c.Id == id);
+        if (item is not null)
+        {
+            item.Done = done;
+            StateHasChanged();
+        }
+        await State.ToggleChecklistItemAsync(trip.Id, id, done);
     }
 }

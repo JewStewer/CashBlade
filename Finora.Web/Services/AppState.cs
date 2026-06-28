@@ -3360,12 +3360,12 @@ public class AppState(IndexedDbService db, SyncService sync)
             item.Notes = notes;
         });
 
-    public Task ToggleBudgetPaidAsync(int tripId, string itemId) =>
+    public Task SetBudgetPaidAsync(int tripId, string itemId, bool paid) =>
         MutateTripAsync(tripId, trip =>
         {
             var item = trip.BudgetItems.FirstOrDefault(b => b.Id == itemId);
             if (item is null) return;
-            item.Paid = !item.Paid;
+            item.Paid = paid;
             if (!item.Paid) item.ActualDollars = 0;
         });
 
