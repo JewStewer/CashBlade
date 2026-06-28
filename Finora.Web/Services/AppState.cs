@@ -4745,11 +4745,16 @@ public class AppState(IndexedDbService db, SyncService sync)
                     // Reference-based removal: if QueueUpdatedTrip queued a newer clone for this
                     // trip while the push above was in flight, that clone is a different object
                     // and must survive so the edit isn't lost — count-based removal would have
-                    // dropped it here even though it was never actually sent.
+                    // dropped it here even though it was never actually sent. The persisted
+                    // override row must survive too: if a newer clone is still pending for this
+                    // trip ID, clearing the row here deletes the only on-disk record of the edit
+                    // that wasn't sent in this push, so a stale pull has nothing left to defend
+                    // it with and the edit silently reverts.
                     foreach (var t in push.UpdatedTrips)
                     {
                         _pendingUpdatedTrips.Remove(t);
-                        await db.ClearTripOverrideAsync(t.Id);
+                        if (!_pendingUpdatedTrips.Any(p => p.Id == t.Id))
+                            await db.ClearTripOverrideAsync(t.Id);
                     }
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
