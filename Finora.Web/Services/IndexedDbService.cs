@@ -151,10 +151,23 @@ public class IndexedDbService(IJSRuntime js)
 
             if (IsTripRicher(local, incoming))
             {
-                var index = p.Trips.IndexOf(incoming);
-                p.Trips[index] = local;
+                CopyTripFields(local, incoming);
             }
         }
+    }
+
+    private static void CopyTripFields(Trip source, Trip target)
+    {
+        target.Name = source.Name;
+        target.Destination = source.Destination;
+        target.Notes = source.Notes;
+        target.StartDate = source.StartDate;
+        target.EndDate = source.EndDate;
+        target.SavingsAccountId = source.SavingsAccountId;
+        target.WeeklyContributionCents = source.WeeklyContributionCents;
+        target.Itinerary = source.Itinerary;
+        target.Checklist = source.Checklist;
+        target.BudgetItems = source.BudgetItems;
     }
 
     // A not-yet-synced (negative Id) savings goal stops appearing in any

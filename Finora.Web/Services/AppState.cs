@@ -299,6 +299,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     // Id the server assigned it, so UI holding the old Id (e.g. a selected-
     // trip detail view) can follow the rename instead of losing its place.
     public event Action<int, int>? OnTripIdAdopted;
+    private readonly Dictionary<int, int> _adoptedTripIds = new();
 
     // ── Account balances computed from transactions ───────────────────────────
     public Dictionary<int, decimal> AccountBalances { get; private set; } = new();
@@ -3262,7 +3263,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         await _tripMutationGate.WaitAsync();
         try
         {
-            var existing = Trips.FirstOrDefault(x => x.Id == t.Id);
+            var tripId = ResolveTripId(t.Id);
+            var existing = Trips.FirstOrDefault(x => x.Id == tripId);
             if (existing is null) return;
             existing.Name = t.Name;
             existing.Destination = t.Destination;
@@ -3279,6 +3281,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             // same object reference already queued in _pendingNewTrips.
             if (existing.Id > 0)
                 await QueueUpdatedTripAsync(existing);
+            else if (!_pendingNewTrips.Any(x => x.Id == existing.Id))
+                _pendingNewTrips.Add(existing);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3291,6 +3295,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await _tripMutationGate.WaitAsync();
         try
         {
+            id = ResolveTripId(id);
             var deletedTrip = Trips.FirstOrDefault(t => t.Id == id);
             Trips.RemoveAll(t => t.Id == id);
             _pendingNewTrips.RemoveAll(t => t.Id == id);
@@ -3321,6 +3326,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         await _tripMutationGate.WaitAsync();
         try
         {
+            tripId = ResolveTripId(tripId);
             var trip = Trips.FirstOrDefault(x => x.Id == tripId);
             if (trip is null) return;
             LogTrip($"MUTATE trip={tripId} before {ItinSnapshot(trip)}");
@@ -3329,6 +3335,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             await db.PutAsync("trips", trip);
             if (trip.Id > 0)
                 await QueueUpdatedTripAsync(trip);
+            else if (!_pendingNewTrips.Any(x => x.Id == trip.Id))
+                _pendingNewTrips.Add(trip);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3528,6 +3536,51 @@ public class AppState(IndexedDbService db, SyncService sync)
         // reverting the edit. ApplyPersistedTripOverridesAsync re-seeds the
         // in-memory queue from this on the next load.
         await db.SetTripOverrideAsync(clone);
+    }
+
+    private int ResolveTripId(int tripId)
+    {
+        while (tripId < 0 && _adoptedTripIds.TryGetValue(tripId, out var adoptedId))
+            tripId = adoptedId;
+        return tripId;
+    }
+
+    private void AdoptTripId(int oldId, int newId)
+    {
+        if (oldId == newId || oldId > 0 || newId <= 0) return;
+        _adoptedTripIds[oldId] = newId;
+        OnTripIdAdopted?.Invoke(oldId, newId);
+    }
+
+    private void AdoptPulledTripIds(List<Trip> negativeTripsBeforeLoad)
+    {
+        foreach (var local in negativeTripsBeforeLoad)
+        {
+            var adopted = Trips.FirstOrDefault(t => SameTripAdoptionCandidate(t, local));
+            if (adopted is not null)
+                AdoptTripId(local.Id, adopted.Id);
+        }
+    }
+
+    private static bool SameTripAdoptionCandidate(Trip serverTrip, Trip localTrip) =>
+        serverTrip.Id > 0 &&
+        localTrip.Id < 0 &&
+        string.Equals(serverTrip.Name.Trim(), localTrip.Name.Trim(), StringComparison.OrdinalIgnoreCase) &&
+        string.Equals((serverTrip.Destination ?? "").Trim(), (localTrip.Destination ?? "").Trim(), StringComparison.OrdinalIgnoreCase) &&
+        serverTrip.StartDate?.Date == localTrip.StartDate?.Date;
+
+    private static void CopyTripFields(Trip source, Trip target)
+    {
+        target.Name = source.Name;
+        target.Destination = source.Destination;
+        target.Notes = source.Notes;
+        target.StartDate = source.StartDate;
+        target.EndDate = source.EndDate;
+        target.SavingsAccountId = source.SavingsAccountId;
+        target.WeeklyContributionCents = source.WeeklyContributionCents;
+        target.Itinerary = source.Itinerary;
+        target.Checklist = source.Checklist;
+        target.BudgetItems = source.BudgetItems;
     }
 
     private static Trip CloneTrip(Trip t) => new()
@@ -4566,7 +4619,19 @@ public class AppState(IndexedDbService db, SyncService sync)
                 existing.BudgetItems = u.BudgetItems;
             }
         }
-        cloud.Trips.AddRange(push.NewTrips);
+        foreach (var t in push.NewTrips)
+        {
+            if (cloud.Trips.Any(x => x.Id == t.Id)) continue;
+
+            var adopted = cloud.Trips.FirstOrDefault(x => SameTripAdoptionCandidate(x, t));
+            if (adopted is not null)
+            {
+                CopyTripFields(t, adopted);
+                continue;
+            }
+
+            cloud.Trips.Add(t);
+        }
 
         cloud.SyncedAt = DateTime.UtcNow;
         return cloud;
@@ -4796,9 +4861,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                 await _tripMutationGate.WaitAsync();
                 try
                 {
+                    var tripsBeforeLoad = Trips.Where(t => t.Id < 0).Select(CloneTrip).ToList();
                     _suppressLoadOnChange = true;
                     try { await LoadAsync(); }
                     finally { _suppressLoadOnChange = false; }
+                    AdoptPulledTripIds(tripsBeforeLoad);
                     LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
                     // Sync wipes IndexedDB and replaces with server data; reapply any
                     // phone-side changes that weren't pushed so they aren't lost.
@@ -5320,19 +5387,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             if (Trips.Any(x => x.Id == t.Id)) continue;
 
-            var adopted = Trips.FirstOrDefault(x => x.Id > 0
-                && x.Name == t.Name && x.Destination == t.Destination && x.StartDate == t.StartDate);
+            var adopted = Trips.FirstOrDefault(x => SameTripAdoptionCandidate(x, t));
             if (adopted is not null)
             {
-                adopted.Notes = t.Notes;
-                adopted.EndDate = t.EndDate;
-                adopted.SavingsAccountId = t.SavingsAccountId;
-                adopted.WeeklyContributionCents = t.WeeklyContributionCents;
-                adopted.Itinerary = t.Itinerary;
-                adopted.Checklist = t.Checklist;
-                adopted.BudgetItems = t.BudgetItems;
+                CopyTripFields(t, adopted);
                 await db.PutAsync("trips", adopted);
-                OnTripIdAdopted?.Invoke(t.Id, adopted.Id);
+                AdoptTripId(t.Id, adopted.Id);
                 changed = true;
                 continue;
             }
