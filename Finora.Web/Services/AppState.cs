@@ -3291,6 +3291,27 @@ public class AppState(IndexedDbService db, SyncService sync)
         ScheduleSyncSoon();
     }
 
+    public async Task SaveTripSnapshotAsync(Trip t)
+    {
+        await _tripMutationGate.WaitAsync();
+        try
+        {
+            var tripId = ResolveTripId(t.Id);
+            var existing = Trips.FirstOrDefault(x => x.Id == tripId);
+            if (existing is null) return;
+            CopyTripFields(t, existing);
+            await db.PutAsync("trips", existing);
+            if (existing.Id > 0)
+                await QueueUpdatedTripAsync(existing);
+            else if (!_pendingNewTrips.Any(x => x.Id == existing.Id))
+                _pendingNewTrips.Add(existing);
+        }
+        finally { _tripMutationGate.Release(); }
+        Compute();
+        OnChange?.Invoke();
+        ScheduleSyncSoon();
+    }
+
     public async Task DeleteTripAsync(int id)
     {
         await _tripMutationGate.WaitAsync();

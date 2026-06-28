@@ -823,7 +823,7 @@ else
         }
         await CancelBudgetEdit();
 
-        await State.SaveBudgetItemAsync(trip.Id, editingId, category, planned, actual, paid, notes);
+        await State.SaveTripSnapshotAsync(trip);
     }
 
     private async Task CancelBudgetEdit()
@@ -858,7 +858,7 @@ else
         // badge and the funded/remaining totals keep counting it (ActualDollars > 0
         // takes priority over Paid in the display logic) until the user reopens Edit
         // and re-saves, which is what made unticking look like it needed an extra step.
-        await State.SetBudgetPaidAsync(trip.Id, id, paid);
+        await State.SaveTripSnapshotAsync(trip);
     }
 
     private async Task RemoveBudgetItem(string id)
@@ -1048,6 +1048,6 @@ else
             item.Done = done;
             StateHasChanged();
         }
-        await State.ToggleChecklistItemAsync(trip.Id, id, done);
+        await State.SaveTripSnapshotAsync(trip);
     }
 }
