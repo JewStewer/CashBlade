@@ -298,19 +298,11 @@ public class SyncService(HttpClient http, IndexedDbService db)
         foreach (var ov in tripOverrides)
         {
             var updated = ov.Trip;
-            var trip = payload.Trips.FirstOrDefault(t => t.Id == updated.Id);
+            var trip = payload.Trips.FirstOrDefault(t => t.Id == updated.Id)
+                ?? payload.Trips.FirstOrDefault(t => SameTripAdoptionCandidate(t, updated));
             if (trip is null) continue;
 
-            trip.Name = updated.Name;
-            trip.Destination = updated.Destination;
-            trip.Notes = updated.Notes;
-            trip.StartDate = updated.StartDate;
-            trip.EndDate = updated.EndDate;
-            trip.SavingsAccountId = updated.SavingsAccountId;
-            trip.WeeklyContributionCents = updated.WeeklyContributionCents;
-            trip.Itinerary = updated.Itinerary;
-            trip.Checklist = updated.Checklist;
-            trip.BudgetItems = updated.BudgetItems;
+            CopyTripFields(updated, trip);
         }
 
         ApplyManagedCategoryRules(payload, localSettings);
@@ -539,6 +531,27 @@ public class SyncService(HttpClient http, IndexedDbService db)
         if (deleted.StartDate.HasValue && trip.StartDate.HasValue)
             return trip.StartDate == deleted.StartDate;
         return string.Equals(trip.Destination?.Trim() ?? "", deleted.Destination?.Trim() ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SameTripAdoptionCandidate(Trip serverTrip, Trip localTrip) =>
+        serverTrip.Id > 0 &&
+        localTrip.Id < 0 &&
+        string.Equals(serverTrip.Name.Trim(), localTrip.Name.Trim(), StringComparison.OrdinalIgnoreCase) &&
+        string.Equals((serverTrip.Destination ?? "").Trim(), (localTrip.Destination ?? "").Trim(), StringComparison.OrdinalIgnoreCase) &&
+        serverTrip.StartDate?.Date == localTrip.StartDate?.Date;
+
+    private static void CopyTripFields(Trip source, Trip target)
+    {
+        target.Name = source.Name;
+        target.Destination = source.Destination;
+        target.Notes = source.Notes;
+        target.StartDate = source.StartDate;
+        target.EndDate = source.EndDate;
+        target.SavingsAccountId = source.SavingsAccountId;
+        target.WeeklyContributionCents = source.WeeklyContributionCents;
+        target.Itinerary = source.Itinerary;
+        target.Checklist = source.Checklist;
+        target.BudgetItems = source.BudgetItems;
     }
 
     private static Transaction? FindPayloadTransaction(List<Transaction> transactions, Transaction updated)

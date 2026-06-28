@@ -714,25 +714,26 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var ov in overrides)
         {
             var updated = ov.Trip;
-            var trip = Trips.FirstOrDefault(t => t.Id == updated.Id);
+            var trip = Trips.FirstOrDefault(t => t.Id == updated.Id)
+                ?? Trips.FirstOrDefault(t => SameTripAdoptionCandidate(t, updated));
             if (trip is null)
             {
                 await db.ClearTripOverrideAsync(updated.Id);
                 continue;
             }
 
-            trip.Name = updated.Name;
-            trip.Destination = updated.Destination;
-            trip.Notes = updated.Notes;
-            trip.StartDate = updated.StartDate;
-            trip.EndDate = updated.EndDate;
-            trip.SavingsAccountId = updated.SavingsAccountId;
-            trip.WeeklyContributionCents = updated.WeeklyContributionCents;
-            trip.Itinerary = updated.Itinerary;
-            trip.Checklist = updated.Checklist;
-            trip.BudgetItems = updated.BudgetItems;
+            var oldId = updated.Id;
+            if (oldId != trip.Id)
+                AdoptTripId(oldId, trip.Id);
+
+            CopyTripFields(updated, trip);
             LogTrip($"OVERRIDE-APPLY trip={trip.Id} {ItinSnapshot(trip)}");
             await db.PutAsync("trips", trip);
+            if (oldId != trip.Id)
+            {
+                await db.ClearTripOverrideAsync(oldId);
+                await db.SetTripOverrideAsync(CloneTrip(trip));
+            }
 
             // Re-queue for push — a trip edit made locally but never confirmed
             // pushed (e.g. iOS killed the app mid-sync) must survive an app
