@@ -710,10 +710,32 @@ else
             .OrderBy(x => x.Date)
             .ThenBy(x => x.Time ?? string.Empty);
 
-    private static IEnumerable<TripChecklistItem> GetOrderedChecklist(Trip trip) =>
-        trip.Checklist
-            .OrderBy(x => x.Done)
-            .ThenBy(x => x.DueDate ?? DateTime.MaxValue);
+    // Caches the sort position of each item the first time a trip's checklist is
+    // viewed (unchecked-first, soonest-due-first) and only recomputes it when an
+    // item is added/removed or a different trip is selected — NOT on every
+    // toggle. Re-sorting live on every toggle made a just-ticked item jump to the
+    // bottom immediately, with a different (still-unchecked) item sliding into
+    // the screen position the user was watching — indistinguishable, at a glance,
+    // from the tick having silently reverted.
+    private int _checklistOrderTripId = -1;
+    private int _checklistOrderCount = -1;
+    private Dictionary<string, int>? _checklistOrderCache;
+
+    private IEnumerable<TripChecklistItem> GetOrderedChecklist(Trip trip)
+    {
+        if (_checklistOrderCache is null || _checklistOrderTripId != trip.Id || _checklistOrderCount != trip.Checklist.Count)
+        {
+            _checklistOrderCache = trip.Checklist
+                .OrderBy(x => x.Done)
+                .ThenBy(x => x.DueDate ?? DateTime.MaxValue)
+                .Select((x, i) => (x.Id, i))
+                .ToDictionary(p => p.Id, p => p.i);
+            _checklistOrderTripId = trip.Id;
+            _checklistOrderCount = trip.Checklist.Count;
+        }
+
+        return trip.Checklist.OrderBy(x => _checklistOrderCache.TryGetValue(x.Id, out var i) ? i : int.MaxValue);
+    }
 
     private static int DueSoonCount(Trip trip) =>
         trip.Checklist.Count(c => !c.Done && c.DueDate is not null && c.DueDate.Value.Date <= DateTime.Today.AddDays(7));
