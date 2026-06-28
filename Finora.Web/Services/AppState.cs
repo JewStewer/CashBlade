@@ -4689,13 +4689,26 @@ public class AppState(IndexedDbService db, SyncService sync)
                 }
 
                 // Consider the push successful if either phone_push (Supabase) or the PC
-                // received it — both give WPF a path to reconcile.  PushFullSyncAsync
-                // (the direct finance_sync update) is best-effort: failing it should not
-                // permanently block the pending-changes queue or leave the badge stuck.
+                // received it — both give WPF a path to reconcile. sentPush drives the
+                // in-memory ReapplyPushChangesAsync defense below for this session, which
+                // we want even when the canonical write fails (see pushedToCanonicalStore).
                 var pushed = pushedToCloud || pushedToPc;
                 if (pushed)
-                {
                     sentPush = push;
+
+                // Only clear persisted overrides/tombstones and drop entries from the
+                // pending queues once finance_sync — the snapshot AutoSyncAsync actually
+                // pulls from — has genuinely been updated. phone_push being accepted is
+                // not enough: PushFullSyncAsync's merge is the thing that determines what
+                // the next pull sees, and it can fail (or, if HasCloudSync is false here,
+                // pushedToCanonicalStore already equals pushedToPc). Clearing on phone_push
+                // acceptance alone deletes the only on-disk record of an edit before the
+                // pull that depends on it can possibly reflect it — the in-memory
+                // ReapplyPushChangesAsync defense doesn't survive an app restart (iOS
+                // backgrounding the PWA mid-session evicts the WASM runtime), so once that
+                // record is gone a later stale pull silently reverts the edit.
+                if (pushedToCanonicalStore)
+                {
                     foreach (var t in push.UpdatedTransactions)
                         await db.ClearTransactionOverrideAsync(t.Id);
                     foreach (var d in push.DeletedTransactions)
