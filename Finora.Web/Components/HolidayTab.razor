@@ -345,6 +345,11 @@ else
                             {
                                 <div style="font-size:11px;color:var(--green)">@displayPaid.ToString("C") paid</div>
                             }
+                            @{ var allocated = State.GetAllocatedDollars(trip, item.Id); }
+                            @if (allocated > 0)
+                            {
+                                <div style="font-size:11px;color:var(--text3)">@allocated.ToString("C") allocated of @item.PlannedDollars.ToString("C")</div>
+                            }
                         </div>
                         <button class="btn btn-secondary btn-sm" @onclick="() => StartBudgetEdit(item.Id)">Edit</button>
                         <button class="btn btn-icon" @onclick="() => RemoveBudgetItem(item.Id)">x</button>
@@ -442,7 +447,18 @@ else
                 <input class="form-input" style="flex:1" type="time" value="@_newItineraryEndTime" @oninput="(ChangeEventArgs e) => _newItineraryEndTime = e.Value?.ToString()" />
             </div>
             <input class="form-input" @bind="_newItineraryTitle" placeholder="e.g. Flight to Tokyo" />
+            <select class="form-input" @bind="_newItineraryBudgetItemId">
+                <option value="">No budget link (manual amount)</option>
+                @foreach (var b in trip.BudgetItems)
+                {
+                    <option value="@b.Id">@b.Category</option>
+                }
+            </select>
             <input class="form-input" type="number" step="0.01" min="0" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
+            @if (!string.IsNullOrEmpty(_newItineraryBudgetItemId))
+            {
+                <div style="font-size:11px;color:var(--text3)">@GetRemainingUnallocated(trip, _newItineraryBudgetItemId, null).ToString("C") unallocated in this category</div>
+            }
             <input class="form-input" @bind="_newItineraryNotes" placeholder="Notes (optional)" />
             <div style="display:flex;gap:8px">
                 <button class="btn btn-secondary" style="flex:1" @onclick="ToggleItineraryForm">Cancel</button>
@@ -465,7 +481,18 @@ else
                             <input class="form-input" style="flex:1" type="time" value="@_newItineraryEndTime" @oninput="(ChangeEventArgs e) => _newItineraryEndTime = e.Value?.ToString()" />
                         </div>
                         <input class="form-input" @bind="_newItineraryTitle" placeholder="Title" />
+                        <select class="form-input" @bind="_newItineraryBudgetItemId">
+                            <option value="">No budget link (manual amount)</option>
+                            @foreach (var b in trip.BudgetItems)
+                            {
+                                <option value="@b.Id">@b.Category</option>
+                            }
+                        </select>
                         <input class="form-input" type="number" step="0.01" min="0" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
+                        @if (!string.IsNullOrEmpty(_newItineraryBudgetItemId))
+                        {
+                            <div style="font-size:11px;color:var(--text3)">@GetRemainingUnallocated(trip, _newItineraryBudgetItemId, _editingItineraryId).ToString("C") unallocated in this category</div>
+                        }
                         <input class="form-input" @bind="_newItineraryNotes" placeholder="Notes" />
                         <div style="display:flex;gap:8px">
                             <button class="btn btn-secondary" style="flex:1" @onclick="CancelItineraryEdit">Cancel</button>
@@ -487,7 +514,14 @@ else
                             <div style="font-size:14px;font-weight:600">@item.Title</div>
                             @if (item.AmountDollars > 0)
                             {
-                                <div style="font-size:11px;color:var(--green);font-weight:700;margin-top:2px">@item.AmountDollars.ToString("C")</div>
+                                <div style="font-size:11px;color:var(--green);font-weight:700;margin-top:2px">
+                                    @item.AmountDollars.ToString("C")
+                                    @{ var linkedCategory = string.IsNullOrEmpty(item.BudgetItemId) ? null : trip.BudgetItems.FirstOrDefault(b => b.Id == item.BudgetItemId)?.Category; }
+                                    @if (linkedCategory is not null)
+                                    {
+                                        <span style="color:var(--text3);font-weight:400"> · @linkedCategory</span>
+                                    }
+                                </div>
                             }
                             @if (!string.IsNullOrWhiteSpace(item.Notes))
                             {
@@ -650,6 +684,7 @@ else
     private string _newItineraryTitle = string.Empty;
     private string _newItineraryNotes = string.Empty;
     private decimal? _newItineraryAmount;
+    private string? _newItineraryBudgetItemId;
     private string? _editingItineraryId;
 
     private bool _showChecklistForm;
@@ -670,6 +705,15 @@ else
 
     private static decimal PlannedTotal(Trip trip) => trip.BudgetItems.Sum(b => b.PlannedDollars);
     private static decimal PaidTotal(Trip trip) => trip.BudgetItems.Where(b => b.Paid).Sum(b => b.ActualDollars > 0 ? b.ActualDollars : b.PlannedDollars);
+
+    private decimal GetRemainingUnallocated(Trip trip, string budgetItemId, string? excludeItineraryId)
+    {
+        var planned = trip.BudgetItems.FirstOrDefault(b => b.Id == budgetItemId)?.PlannedDollars ?? 0;
+        var allocated = trip.Itinerary
+            .Where(i => i.BudgetItemId == budgetItemId && i.Id != excludeItineraryId)
+            .Sum(i => i.AmountDollars);
+        return planned - allocated;
+    }
     private decimal SavingsBalance(Trip trip)
     {
         if (trip.SavingsAccountId is null || !State.Accounts.Any(a => a.Id == trip.SavingsAccountId.Value)) return 0;
@@ -878,6 +922,7 @@ else
         _newItineraryTitle = string.Empty;
         _newItineraryNotes = string.Empty;
         _newItineraryAmount = null;
+        _newItineraryBudgetItemId = null;
     }
 
     private async Task AddItineraryItem()
@@ -892,7 +937,8 @@ else
             EndTime = string.IsNullOrWhiteSpace(_newItineraryEndTime) ? null : _newItineraryEndTime,
             Title = _newItineraryTitle.Trim(),
             AmountDollars = _newItineraryAmount ?? 0,
-            Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim()
+            Notes = string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim(),
+            BudgetItemId = string.IsNullOrEmpty(_newItineraryBudgetItemId) ? null : _newItineraryBudgetItemId
         });
         ToggleItineraryForm();
     }
@@ -910,6 +956,7 @@ else
         _newItineraryTitle = item.Title;
         _newItineraryNotes = item.Notes ?? string.Empty;
         _newItineraryAmount = item.AmountDollars;
+        _newItineraryBudgetItemId = item.BudgetItemId;
         await RepairScrollAfterKeyboardAsync();
     }
 
@@ -924,7 +971,8 @@ else
             string.IsNullOrWhiteSpace(_newItineraryEndTime) ? null : _newItineraryEndTime,
             _newItineraryTitle.Trim(),
             _newItineraryAmount ?? 0,
-            string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim());
+            string.IsNullOrWhiteSpace(_newItineraryNotes) ? null : _newItineraryNotes.Trim(),
+            string.IsNullOrEmpty(_newItineraryBudgetItemId) ? null : _newItineraryBudgetItemId);
         await CancelItineraryEdit();
     }
 
@@ -937,6 +985,7 @@ else
         _newItineraryTitle = string.Empty;
         _newItineraryNotes = string.Empty;
         _newItineraryAmount = null;
+        _newItineraryBudgetItemId = null;
         await RepairScrollAfterKeyboardAsync();
     }
 

@@ -738,8 +738,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             // Re-queue for push — a trip edit made locally but never confirmed
             // pushed (e.g. iOS killed the app mid-sync) must survive an app
             // restart and a stale pull, same as transaction/setting overrides.
-            _pendingUpdatedTrips.RemoveAll(t => t.Id == trip.Id);
-            _pendingUpdatedTrips.Add(CloneTrip(trip));
+            // Route by id sign: a still-unadopted trip was never seen by the
+            // server, so it must go out as NewTrips, not UpdatedTrips, or the
+            // server-side merge has nothing matching to update.
+            if (trip.Id > 0)
+            {
+                _pendingUpdatedTrips.RemoveAll(t => t.Id == trip.Id);
+                _pendingUpdatedTrips.Add(CloneTrip(trip));
+            }
+            else
+            {
+                _pendingNewTrips.RemoveAll(t => t.Id == trip.Id);
+                _pendingNewTrips.Add(CloneTrip(trip));
+            }
         }
     }
 
@@ -3278,12 +3289,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             existing.Checklist = t.Checklist;
             existing.BudgetItems = t.BudgetItems;
             await db.PutAsync("trips", existing);
-            // Negative-id (not-yet-synced) trips are mutated in place via the
-            // same object reference already queued in _pendingNewTrips.
             if (existing.Id > 0)
                 await QueueUpdatedTripAsync(existing);
-            else if (!_pendingNewTrips.Any(x => x.Id == existing.Id))
-                _pendingNewTrips.Add(existing);
+            else
+                await QueueNewTripEditAsync(existing);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3303,8 +3312,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             await db.PutAsync("trips", existing);
             if (existing.Id > 0)
                 await QueueUpdatedTripAsync(existing);
-            else if (!_pendingNewTrips.Any(x => x.Id == existing.Id))
-                _pendingNewTrips.Add(existing);
+            else
+                await QueueNewTripEditAsync(existing);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3357,8 +3366,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             await db.PutAsync("trips", trip);
             if (trip.Id > 0)
                 await QueueUpdatedTripAsync(trip);
-            else if (!_pendingNewTrips.Any(x => x.Id == trip.Id))
-                _pendingNewTrips.Add(trip);
+            else
+                await QueueNewTripEditAsync(trip);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3391,12 +3400,20 @@ public class AppState(IndexedDbService db, SyncService sync)
         });
 
     public Task RemoveBudgetItemAsync(int tripId, string itemId) =>
-        MutateTripAsync(tripId, trip => trip.BudgetItems.RemoveAll(b => b.Id == itemId));
+        MutateTripAsync(tripId, trip =>
+        {
+            trip.BudgetItems.RemoveAll(b => b.Id == itemId);
+            // Orphan rather than delete linked schedule entries — the activity
+            // and its amount are still real, only the budget category backing it
+            // is gone, so fall back to a manually-tracked amount.
+            foreach (var i in trip.Itinerary.Where(i => i.BudgetItemId == itemId))
+                i.BudgetItemId = null;
+        });
 
     public Task AddItineraryItemAsync(int tripId, TripItineraryItem newItem) =>
         MutateTripAsync(tripId, trip => trip.Itinerary.Add(newItem));
 
-    public Task SaveItineraryItemAsync(int tripId, string itemId, DateTime date, string? time, string? endTime, string title, decimal amountDollars, string? notes) =>
+    public Task SaveItineraryItemAsync(int tripId, string itemId, DateTime date, string? time, string? endTime, string title, decimal amountDollars, string? notes, string? budgetItemId) =>
         MutateTripAsync(tripId, trip =>
         {
             var item = trip.Itinerary.FirstOrDefault(i => i.Id == itemId);
@@ -3407,7 +3424,14 @@ public class AppState(IndexedDbService db, SyncService sync)
             item.Title = title;
             item.AmountDollars = amountDollars;
             item.Notes = notes;
+            item.BudgetItemId = budgetItemId;
         });
+
+    // Sum of itinerary amounts currently allocated against a budget item —
+    // lets the UI show "$X allocated of $Y planned" instead of the schedule
+    // and budget totals silently drifting apart from independent manual entry.
+    public decimal GetAllocatedDollars(Trip trip, string budgetItemId) =>
+        trip.Itinerary.Where(i => i.BudgetItemId == budgetItemId).Sum(i => i.AmountDollars);
 
     public Task RemoveItineraryItemAsync(int tripId, string itemId) =>
         MutateTripAsync(tripId, trip => trip.Itinerary.RemoveAll(i => i.Id == itemId));
@@ -3560,6 +3584,20 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.SetTripOverrideAsync(clone);
     }
 
+    // Mirrors QueueUpdatedTripAsync for trips still stuck at a negative
+    // (not-yet-adopted) id. _pendingNewTrips previously relied on the live
+    // Trip object reference staying queued, which is silently orphaned the
+    // moment LoadAsync() wholesale-replaces Trips with freshly deserialized
+    // objects — losing the edit with no override to restore it on reload.
+    private async Task QueueNewTripEditAsync(Trip t)
+    {
+        _pendingNewTrips.RemoveAll(x => x.Id == t.Id);
+        var clone = CloneTrip(t);
+        _pendingNewTrips.Add(clone);
+        LogTrip($"QUEUE-NEW trip={t.Id} {ItinSnapshot(clone)}");
+        await db.SetTripOverrideAsync(clone);
+    }
+
     private int ResolveTripId(int tripId)
     {
         while (tripId < 0 && _adoptedTripIds.TryGetValue(tripId, out var adoptedId))
@@ -3603,76 +3641,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         target.Itinerary = source.Itinerary;
         target.Checklist = source.Checklist;
         target.BudgetItems = source.BudgetItems;
-    }
-
-    private async Task ClearConfirmedTripUpdatesAsync(List<Trip> pulledTripsBeforeOverrides, PushPayload sentPush)
-    {
-        foreach (var sent in sentPush.UpdatedTrips)
-        {
-            var pulled = pulledTripsBeforeOverrides.FirstOrDefault(t => t.Id == sent.Id);
-            var confirmed = pulled is not null && SameTripContent(pulled, sent);
-            LogTrip($"CONFIRM trip={sent.Id} confirmed={confirmed} pulled=[{ItinSnapshot(pulled)}] sent=[{ItinSnapshot(sent)}]");
-            if (!confirmed) continue;
-
-            _pendingUpdatedTrips.RemoveAll(p => p.Id == sent.Id && SameTripContent(p, sent));
-            var stillPending = _pendingUpdatedTrips.Any(p => p.Id == sent.Id);
-            if (!stillPending)
-                await db.ClearTripOverrideAsync(sent.Id);
-        }
-    }
-
-    private static bool SameTripContent(Trip left, Trip right) =>
-        left.Id == right.Id &&
-        string.Equals(left.Name, right.Name, StringComparison.Ordinal) &&
-        string.Equals(left.Destination, right.Destination, StringComparison.Ordinal) &&
-        string.Equals(left.Notes, right.Notes, StringComparison.Ordinal) &&
-        left.StartDate == right.StartDate &&
-        left.EndDate == right.EndDate &&
-        left.SavingsAccountId == right.SavingsAccountId &&
-        left.WeeklyContributionCents == right.WeeklyContributionCents &&
-        SameItinerary(left.Itinerary, right.Itinerary) &&
-        SameChecklist(left.Checklist, right.Checklist) &&
-        SameBudgetItems(left.BudgetItems, right.BudgetItems);
-
-    private static bool SameItinerary(List<TripItineraryItem> left, List<TripItineraryItem> right)
-    {
-        if (left.Count != right.Count) return false;
-        var rightById = right.ToDictionary(i => i.Id, StringComparer.Ordinal);
-        foreach (var l in left)
-        {
-            if (!rightById.TryGetValue(l.Id, out var r)) return false;
-            if (l.Date != r.Date || l.Time != r.Time || l.EndTime != r.EndTime ||
-                l.Title != r.Title || l.Notes != r.Notes || l.AmountCents != r.AmountCents)
-                return false;
-        }
-        return true;
-    }
-
-    private static bool SameChecklist(List<TripChecklistItem> left, List<TripChecklistItem> right)
-    {
-        if (left.Count != right.Count) return false;
-        var rightById = right.ToDictionary(c => c.Id, StringComparer.Ordinal);
-        foreach (var l in left)
-        {
-            if (!rightById.TryGetValue(l.Id, out var r)) return false;
-            if (l.Text != r.Text || l.Done != r.Done || l.DueDate != r.DueDate)
-                return false;
-        }
-        return true;
-    }
-
-    private static bool SameBudgetItems(List<TripBudgetItem> left, List<TripBudgetItem> right)
-    {
-        if (left.Count != right.Count) return false;
-        var rightById = right.ToDictionary(b => b.Id, StringComparer.Ordinal);
-        foreach (var l in left)
-        {
-            if (!rightById.TryGetValue(l.Id, out var r)) return false;
-            if (l.Category != r.Category || l.PlannedCents != r.PlannedCents ||
-                l.ActualCents != r.ActualCents || l.Paid != r.Paid || l.Notes != r.Notes)
-                return false;
-        }
-        return true;
     }
 
     private static Trip CloneTrip(Trip t) => new()
@@ -4713,7 +4681,17 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         foreach (var t in push.NewTrips)
         {
-            if (cloud.Trips.Any(x => x.Id == t.Id)) continue;
+            // A trip stuck at the same negative Id (never adopted) is pushed as
+            // "new" again on every round once it has further edits — update the
+            // existing canonical entry in place instead of skipping it, or the
+            // cloud snapshot freezes at whatever it looked like on the very first
+            // push and every later edit silently reverts on the next pull.
+            var existingSameId = cloud.Trips.FirstOrDefault(x => x.Id == t.Id);
+            if (existingSameId is not null)
+            {
+                CopyTripFields(t, existingSameId);
+                continue;
+            }
 
             var adopted = cloud.Trips.FirstOrDefault(x => SameTripAdoptionCandidate(x, t));
             if (adopted is not null)
@@ -4920,16 +4898,41 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewSavingsGoals.RemoveRange(0, push.NewSavingsGoals.Count);
                     _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
                     _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
-                    _pendingNewTrips.RemoveRange(0, push.NewTrips.Count);
-                    // Reference-based removal: if QueueUpdatedTrip queued a newer clone for this
-                    // trip while the push above was in flight, that clone is a different object
-                    // and must survive so the edit isn't lost — count-based removal would have
-                    // dropped it here even though it was never actually sent. The persisted
-                    // override row must survive too: if a newer clone is still pending for this
-                    // trip ID, clearing the row here deletes the only on-disk record of the edit
-                    // that wasn't sent in this push, so a stale pull has nothing left to defend
-                    // it with and the edit silently reverts.
-                    LogTrip($"CLEAR-DEFER trips=[{string.Join(" || ", push.UpdatedTrips.Select(t => ItinSnapshot(t)))}]");
+                    // pushedToCanonicalStore means the phone's own write was just
+                    // accepted directly into finance_sync (the canonical snapshot
+                    // AutoSyncAsync pulls from) — when HasCloudSync that's PushFullSyncAsync
+                    // succeeding, not merely phone_push/PC accepting a mailbox copy. The
+                    // phone is the writer in that path, so there is nothing further to
+                    // "confirm" by re-fetching the cloud: trust it immediately. When cloud
+                    // sync isn't configured, pushedToCanonicalStore falls back to the PC
+                    // accepting the push directly — still a genuine write, just on the
+                    // background/local-only path the PC case is meant to be.
+                    //
+                    // Reference-based removal: if QueueNewTripEditAsync/QueueUpdatedTripAsync
+                    // queued a newer clone for this trip while the push above was in flight,
+                    // that clone is a different object and must survive so the edit isn't lost
+                    // — count-based removal would have dropped it here even though it was
+                    // never actually sent. The persisted override row must survive too: if a
+                    // newer clone is still pending for this trip id, clearing the row here
+                    // deletes the only on-disk record of the edit that wasn't sent in this
+                    // push, so a stale pull has nothing left to defend it with and the edit
+                    // silently reverts.
+                    foreach (var t in push.NewTrips)
+                    {
+                        _pendingNewTrips.Remove(t);
+                        var stillPending = _pendingNewTrips.Any(p => p.Id == t.Id);
+                        LogTrip($"CLEAR-CHECK-NEW trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
+                        if (!stillPending)
+                            await db.ClearTripOverrideAsync(t.Id);
+                    }
+                    foreach (var t in push.UpdatedTrips)
+                    {
+                        _pendingUpdatedTrips.Remove(t);
+                        var stillPending = _pendingUpdatedTrips.Any(p => p.Id == t.Id);
+                        LogTrip($"CLEAR-CHECK-UPDATED trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
+                        if (!stillPending)
+                            await db.ClearTripOverrideAsync(t.Id);
+                    }
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
             }
@@ -4946,15 +4949,10 @@ public class AppState(IndexedDbService db, SyncService sync)
                 await _tripMutationGate.WaitAsync();
                 try
                 {
-                    var cloudTripsForConfirmation = sync.HasCloudSync
-                        ? (await sync.FetchCloudPayloadAsync())?.Trips ?? new List<Trip>()
-                        : new List<Trip>();
                     var tripsBeforeLoad = Trips.Where(t => t.Id < 0).Select(CloneTrip).ToList();
                     _suppressLoadOnChange = true;
                     try { await LoadAsync(); }
                     finally { _suppressLoadOnChange = false; }
-                    if (sentPush is not null)
-                        await ClearConfirmedTripUpdatesAsync(cloudTripsForConfirmation, sentPush);
                     AdoptPulledTripIds(tripsBeforeLoad);
                     LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
                     // Sync wipes IndexedDB and replaces with server data; reapply any
@@ -5475,7 +5473,20 @@ public class AppState(IndexedDbService db, SyncService sync)
         // it's no longer in any pending queue.
         foreach (var t in push.NewTrips)
         {
-            if (Trips.Any(x => x.Id == t.Id)) continue;
+            // Still stuck at the same negative Id (never adopted) — overwrite the
+            // existing entry with this freshly defended/pushed clone's fields
+            // instead of skipping, or a pending edit captured in this push gets
+            // silently dropped every time the trip is already present locally
+            // (which it always is, once created).
+            var existingSameId = Trips.FirstOrDefault(x => x.Id == t.Id);
+            if (existingSameId is not null)
+            {
+                LogTrip($"REAPPLY-NEW trip={t.Id} current {ItinSnapshot(existingSameId)} incoming {ItinSnapshot(t)}");
+                CopyTripFields(t, existingSameId);
+                await db.PutAsync("trips", existingSameId);
+                changed = true;
+                continue;
+            }
 
             var adopted = Trips.FirstOrDefault(x => SameTripAdoptionCandidate(x, t));
             if (adopted is not null)

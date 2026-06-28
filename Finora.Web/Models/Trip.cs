@@ -36,6 +36,10 @@ public class TripItineraryItem
         get => AmountCents / 100m;
         set => AmountCents = (int)Math.Round(value * 100m);
     }
+    // When set, AmountCents is an allocation drawn from this TripBudgetItem
+    // rather than an independently-typed figure, so schedule and budget totals
+    // can't drift apart. Null means the amount was typed directly (legacy/manual).
+    public string? BudgetItemId { get; set; }
 }
 
 public class TripChecklistItem
