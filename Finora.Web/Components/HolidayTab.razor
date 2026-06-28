@@ -717,25 +717,11 @@ else
     // bottom immediately, with a different (still-unchecked) item sliding into
     // the screen position the user was watching — indistinguishable, at a glance,
     // from the tick having silently reverted.
-    private int _checklistOrderTripId = -1;
-    private int _checklistOrderCount = -1;
-    private Dictionary<string, int>? _checklistOrderCache;
-
-    private IEnumerable<TripChecklistItem> GetOrderedChecklist(Trip trip)
-    {
-        if (_checklistOrderCache is null || _checklistOrderTripId != trip.Id || _checklistOrderCount != trip.Checklist.Count)
-        {
-            _checklistOrderCache = trip.Checklist
-                .OrderBy(x => x.Done)
-                .ThenBy(x => x.DueDate ?? DateTime.MaxValue)
-                .Select((x, i) => (x.Id, i))
-                .ToDictionary(p => p.Id, p => p.i);
-            _checklistOrderTripId = trip.Id;
-            _checklistOrderCount = trip.Checklist.Count;
-        }
-
-        return trip.Checklist.OrderBy(x => _checklistOrderCache.TryGetValue(x.Id, out var i) ? i : int.MaxValue);
-    }
+    private static IEnumerable<TripChecklistItem> GetOrderedChecklist(Trip trip) =>
+        trip.Checklist
+            .OrderBy(x => x.Done)
+            .ThenBy(x => x.DueDate ?? DateTime.MaxValue)
+            .ThenBy(x => x.Text, StringComparer.OrdinalIgnoreCase);
 
     private static int DueSoonCount(Trip trip) =>
         trip.Checklist.Count(c => !c.Done && c.DueDate is not null && c.DueDate.Value.Date <= DateTime.Today.AddDays(7));

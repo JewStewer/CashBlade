@@ -4924,13 +4924,15 @@ public class AppState(IndexedDbService db, SyncService sync)
                 await _tripMutationGate.WaitAsync();
                 try
                 {
-                    var pulledTripsBeforeOverrides = await db.GetTripsAsync();
+                    var cloudTripsForConfirmation = sync.HasCloudSync
+                        ? (await sync.FetchCloudPayloadAsync())?.Trips ?? new List<Trip>()
+                        : new List<Trip>();
                     var tripsBeforeLoad = Trips.Where(t => t.Id < 0).Select(CloneTrip).ToList();
                     _suppressLoadOnChange = true;
                     try { await LoadAsync(); }
                     finally { _suppressLoadOnChange = false; }
                     if (sentPush is not null)
-                        await ClearConfirmedTripUpdatesAsync(pulledTripsBeforeOverrides, sentPush);
+                        await ClearConfirmedTripUpdatesAsync(cloudTripsForConfirmation, sentPush);
                     AdoptPulledTripIds(tripsBeforeLoad);
                     LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
                     // Sync wipes IndexedDB and replaces with server data; reapply any

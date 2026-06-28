@@ -294,6 +294,25 @@ public class SyncService(HttpClient http, IndexedDbService db)
             }
         }
 
+        var tripOverrides = await db.GetPendingTripOverridesAsync();
+        foreach (var ov in tripOverrides)
+        {
+            var updated = ov.Trip;
+            var trip = payload.Trips.FirstOrDefault(t => t.Id == updated.Id);
+            if (trip is null) continue;
+
+            trip.Name = updated.Name;
+            trip.Destination = updated.Destination;
+            trip.Notes = updated.Notes;
+            trip.StartDate = updated.StartDate;
+            trip.EndDate = updated.EndDate;
+            trip.SavingsAccountId = updated.SavingsAccountId;
+            trip.WeeklyContributionCents = updated.WeeklyContributionCents;
+            trip.Itinerary = updated.Itinerary;
+            trip.Checklist = updated.Checklist;
+            trip.BudgetItems = updated.BudgetItems;
+        }
+
         ApplyManagedCategoryRules(payload, localSettings);
         ApplyTransactionCategoryRules(payload, localSettings);
 
