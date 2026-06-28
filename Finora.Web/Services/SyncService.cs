@@ -294,6 +294,51 @@ public class SyncService(HttpClient http, IndexedDbService db)
             }
         }
 
+        var billOverrides = await db.GetPendingBillEditOverridesAsync();
+        foreach (var ov in billOverrides)
+        {
+            var updated = ov.Bill;
+            if (deletedBills.Any(d => SameBillDelete(updated, d.ToBillDelete()))) continue;
+            var bill = payload.Bills.FirstOrDefault(b => b.Id == updated.Id)
+                ?? payload.Bills.FirstOrDefault(b => SameBillDelete(b, ToBillDelete(updated)));
+            if (bill is null) payload.Bills.Add(updated);
+            else CopyBillFields(updated, bill);
+        }
+
+        var debtOverrides = await db.GetPendingDebtOverridesAsync();
+        foreach (var ov in debtOverrides)
+        {
+            var updated = ov.Debt;
+            if (deletedDebts.Any(d => SameDebtDelete(updated, d))) continue;
+            var debt = payload.Debts.FirstOrDefault(d => d.Id == updated.Id)
+                ?? payload.Debts.FirstOrDefault(d => SameDebtSnapshot(d, updated));
+            if (debt is null) payload.Debts.Add(updated);
+            else CopyDebtFields(updated, debt);
+        }
+
+        var savingsGoalOverrides = await db.GetPendingSavingsGoalOverridesAsync();
+        foreach (var ov in savingsGoalOverrides)
+        {
+            var updated = ov.Goal;
+            if (deletedSavingsGoals.Any(d => SameSavingsGoalDelete(updated, d))) continue;
+            var goal = payload.SavingsGoals.FirstOrDefault(g => g.Id == updated.Id)
+                ?? payload.SavingsGoals.FirstOrDefault(g => SameSavingsGoalSnapshot(g, updated));
+            if (goal is null) payload.SavingsGoals.Add(updated);
+            else CopySavingsGoalFields(updated, goal);
+        }
+
+        var accountOverrides = await db.GetPendingAccountOverridesAsync();
+        foreach (var ov in accountOverrides)
+        {
+            var updated = ov.Account;
+            var account = payload.Accounts.FirstOrDefault(a => a.Id == updated.Id);
+            if (account is null) continue;
+            account.TargetCents = updated.TargetCents;
+            account.TargetDate = updated.TargetDate;
+            account.TargetStartDate = updated.TargetStartDate;
+            account.TargetStartingBalanceCents = updated.TargetStartingBalanceCents;
+        }
+
         var tripOverrides = await db.GetPendingTripOverridesAsync();
         foreach (var ov in tripOverrides)
         {
@@ -482,6 +527,30 @@ public class SyncService(HttpClient http, IndexedDbService db)
         return Math.Abs((bill.DueDate.Date - deleted.DueDate.Date).TotalDays) <= 7;
     }
 
+    private static BillDelete ToBillDelete(Bill bill) => new()
+    {
+        Id = bill.Id,
+        Name = bill.Name,
+        AccountId = bill.AccountId,
+        AccountName = bill.AccountName,
+        AmountCents = bill.AmountCents,
+        DueDate = bill.DueDate,
+        Frequency = bill.Frequency
+    };
+
+    private static void CopyBillFields(Bill source, Bill target)
+    {
+        target.Name = source.Name;
+        target.AccountId = source.AccountId;
+        target.AccountName = source.AccountName;
+        target.AmountDollars = source.AmountDollars;
+        target.DueDate = source.DueDate;
+        target.Frequency = source.Frequency;
+        target.IsAutoPay = source.IsAutoPay;
+        target.IsPaid = source.IsPaid;
+        target.DebtId = source.DebtId;
+    }
+
     private static bool SameDebtDelete(Debt debt, PendingDebtDelete deleted)
     {
         if (debt.Id > 0 && deleted.Id > 0 && debt.Id == deleted.Id
@@ -496,6 +565,25 @@ public class SyncService(HttpClient http, IndexedDbService db)
         if (deleted.OriginalBalanceCents > 0 && debt.OriginalBalanceCents > 0)
             return debt.OriginalBalanceCents == deleted.OriginalBalanceCents;
         return debt.BalanceCents == deleted.BalanceCents;
+    }
+
+    private static void CopyDebtFields(Debt source, Debt target)
+    {
+        target.Name = source.Name;
+        target.BalanceCents = source.BalanceCents;
+        target.MinimumPaymentCents = source.MinimumPaymentCents;
+        target.PaymentPeriod = source.PaymentPeriod;
+        target.InterestRate = source.InterestRate;
+        target.OriginalBalanceCents = source.OriginalBalanceCents;
+    }
+
+    private static bool SameDebtSnapshot(Debt left, Debt right)
+    {
+        if (left.Id > 0 && right.Id > 0 && left.Id == right.Id) return true;
+        if (!string.Equals(left.Name.Trim(), right.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (left.OriginalBalanceCents > 0 && right.OriginalBalanceCents > 0)
+            return left.OriginalBalanceCents == right.OriginalBalanceCents;
+        return left.BalanceCents == right.BalanceCents;
     }
 
     private static bool SameSavingsGoalDelete(SavingsGoal goal, PendingSavingsGoalDelete deleted)
@@ -515,6 +603,29 @@ public class SyncService(HttpClient http, IndexedDbService db)
         if (deleted.TargetCents > 0 && goal.TargetCents > 0)
             return goal.TargetCents == deleted.TargetCents;
         return goal.CurrentCents == deleted.CurrentCents;
+    }
+
+    private static void CopySavingsGoalFields(SavingsGoal source, SavingsGoal target)
+    {
+        target.Name = source.Name;
+        target.TargetCents = source.TargetCents;
+        target.CurrentCents = source.CurrentCents;
+        target.WeeklyContributionCents = source.WeeklyContributionCents;
+        target.TargetDate = source.TargetDate;
+        target.TargetStartDate = source.TargetStartDate;
+        target.TargetStartingBalanceCents = source.TargetStartingBalanceCents;
+        target.GroupName = source.GroupName;
+        target.Emoji = source.Emoji;
+    }
+
+    private static bool SameSavingsGoalSnapshot(SavingsGoal left, SavingsGoal right)
+    {
+        if (left.Id > 0 && right.Id > 0 && left.Id == right.Id) return true;
+        if (!string.Equals(left.Name.Trim(), right.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.Equals((left.GroupName ?? "").Trim(), (right.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (left.TargetCents > 0 && right.TargetCents > 0)
+            return left.TargetCents == right.TargetCents;
+        return left.CurrentCents == right.CurrentCents;
     }
 
     private static bool SameTripDelete(Trip trip, PendingTripDelete deleted)
