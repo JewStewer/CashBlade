@@ -447,19 +447,23 @@ else
                 <input class="form-input" style="flex:1" type="time" value="@_newItineraryEndTime" @oninput="(ChangeEventArgs e) => _newItineraryEndTime = e.Value?.ToString()" />
             </div>
             <input class="form-input" @bind="_newItineraryTitle" placeholder="e.g. Flight to Tokyo" />
-            <select class="form-input" @bind="_newItineraryBudgetItemId">
+            <select class="form-input" value="@_newItineraryBudgetItemId" @onchange="(ChangeEventArgs e) => OnItineraryBudgetLinkChanged(e.Value?.ToString(), trip, null)">
                 <option value="">No budget link (manual amount)</option>
                 @foreach (var b in trip.BudgetItems)
                 {
                     <option value="@b.Id">@b.Category</option>
                 }
             </select>
-            <input class="form-input" type="number" step="0.01" min="0" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
+            <input class="form-input" type="number" step="0.01" min="0" max="@(string.IsNullOrEmpty(_newItineraryBudgetItemId) ? (decimal?)null : GetRemainingUnallocated(trip, _newItineraryBudgetItemId, null))" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
             @if (!string.IsNullOrEmpty(_newItineraryBudgetItemId))
             {
                 <div style="font-size:11px;color:var(--text3)">@GetRemainingUnallocated(trip, _newItineraryBudgetItemId, null).ToString("C") unallocated in this category</div>
             }
             <input class="form-input" @bind="_newItineraryNotes" placeholder="Notes (optional)" />
+            @if (!string.IsNullOrEmpty(_itineraryError))
+            {
+                <div style="font-size:12px;color:var(--red)">@_itineraryError</div>
+            }
             <div style="display:flex;gap:8px">
                 <button class="btn btn-secondary" style="flex:1" @onclick="ToggleItineraryForm">Cancel</button>
                 <button class="btn btn-primary" style="flex:1" @onclick="AddItineraryItem">Add</button>
@@ -481,19 +485,23 @@ else
                             <input class="form-input" style="flex:1" type="time" value="@_newItineraryEndTime" @oninput="(ChangeEventArgs e) => _newItineraryEndTime = e.Value?.ToString()" />
                         </div>
                         <input class="form-input" @bind="_newItineraryTitle" placeholder="Title" />
-                        <select class="form-input" @bind="_newItineraryBudgetItemId">
+                        <select class="form-input" value="@_newItineraryBudgetItemId" @onchange="(ChangeEventArgs e) => OnItineraryBudgetLinkChanged(e.Value?.ToString(), trip, _editingItineraryId)">
                             <option value="">No budget link (manual amount)</option>
                             @foreach (var b in trip.BudgetItems)
                             {
                                 <option value="@b.Id">@b.Category</option>
                             }
                         </select>
-                        <input class="form-input" type="number" step="0.01" min="0" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
+                        <input class="form-input" type="number" step="0.01" min="0" max="@(string.IsNullOrEmpty(_newItineraryBudgetItemId) ? (decimal?)null : GetRemainingUnallocated(trip, _newItineraryBudgetItemId, _editingItineraryId))" @bind="_newItineraryAmount" placeholder="Cost (optional)" />
                         @if (!string.IsNullOrEmpty(_newItineraryBudgetItemId))
                         {
                             <div style="font-size:11px;color:var(--text3)">@GetRemainingUnallocated(trip, _newItineraryBudgetItemId, _editingItineraryId).ToString("C") unallocated in this category</div>
                         }
                         <input class="form-input" @bind="_newItineraryNotes" placeholder="Notes" />
+                        @if (!string.IsNullOrEmpty(_itineraryError))
+                        {
+                            <div style="font-size:12px;color:var(--red)">@_itineraryError</div>
+                        }
                         <div style="display:flex;gap:8px">
                             <button class="btn btn-secondary" style="flex:1" @onclick="CancelItineraryEdit">Cancel</button>
                             <button class="btn btn-primary" style="flex:1" @onclick="SaveItineraryEdit">Save</button>
@@ -686,6 +694,7 @@ else
     private decimal? _newItineraryAmount;
     private string? _newItineraryBudgetItemId;
     private string? _editingItineraryId;
+    private string? _itineraryError;
 
     private bool _showChecklistForm;
     private bool _showChecklistTemplates;
@@ -713,6 +722,19 @@ else
             .Where(i => i.BudgetItemId == budgetItemId && i.Id != excludeItineraryId)
             .Sum(i => i.AmountDollars);
         return planned - allocated;
+    }
+
+    // Auto-fills the cost with what's left in the chosen category so the schedule
+    // amount starts in sync with the budget instead of needing to be retyped from
+    // memory — the same drift this whole linking feature exists to prevent.
+    private void OnItineraryBudgetLinkChanged(string? budgetItemId, Trip trip, string? excludeItineraryId)
+    {
+        _newItineraryBudgetItemId = string.IsNullOrEmpty(budgetItemId) ? null : budgetItemId;
+        _itineraryError = null;
+        if (_newItineraryBudgetItemId is not null)
+        {
+            _newItineraryAmount = Math.Max(GetRemainingUnallocated(trip, _newItineraryBudgetItemId, excludeItineraryId), 0);
+        }
     }
     private decimal SavingsBalance(Trip trip)
     {
@@ -923,12 +945,25 @@ else
         _newItineraryNotes = string.Empty;
         _newItineraryAmount = null;
         _newItineraryBudgetItemId = null;
+        _itineraryError = null;
     }
 
     private async Task AddItineraryItem()
     {
         var trip = SelectedTrip;
         if (trip is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
+
+        var amount = _newItineraryAmount ?? 0;
+        if (!string.IsNullOrEmpty(_newItineraryBudgetItemId))
+        {
+            var remaining = GetRemainingUnallocated(trip, _newItineraryBudgetItemId, null);
+            if (amount > remaining)
+            {
+                _itineraryError = $"That's more than the {remaining:C} left unallocated in this category.";
+                return;
+            }
+        }
+        _itineraryError = null;
 
         await State.AddItineraryItemAsync(trip.Id, new TripItineraryItem
         {
@@ -957,6 +992,7 @@ else
         _newItineraryNotes = item.Notes ?? string.Empty;
         _newItineraryAmount = item.AmountDollars;
         _newItineraryBudgetItemId = item.BudgetItemId;
+        _itineraryError = null;
         await RepairScrollAfterKeyboardAsync();
     }
 
@@ -964,6 +1000,17 @@ else
     {
         var trip = SelectedTrip;
         if (trip is null || _editingItineraryId is null || string.IsNullOrWhiteSpace(_newItineraryTitle)) return;
+
+        if (!string.IsNullOrEmpty(_newItineraryBudgetItemId))
+        {
+            var remaining = GetRemainingUnallocated(trip, _newItineraryBudgetItemId, _editingItineraryId);
+            if ((_newItineraryAmount ?? 0) > remaining)
+            {
+                _itineraryError = $"That's more than the {remaining:C} left unallocated in this category.";
+                return;
+            }
+        }
+        _itineraryError = null;
 
         await State.SaveItineraryItemAsync(trip.Id, _editingItineraryId,
             _newItineraryDate ?? DateTime.Today,
@@ -986,6 +1033,7 @@ else
         _newItineraryNotes = string.Empty;
         _newItineraryAmount = null;
         _newItineraryBudgetItemId = null;
+        _itineraryError = null;
         await RepairScrollAfterKeyboardAsync();
     }
 
