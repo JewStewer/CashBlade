@@ -3583,6 +3583,76 @@ public class AppState(IndexedDbService db, SyncService sync)
         target.BudgetItems = source.BudgetItems;
     }
 
+    private async Task ClearConfirmedTripUpdatesAsync(List<Trip> pulledTripsBeforeOverrides, PushPayload sentPush)
+    {
+        foreach (var sent in sentPush.UpdatedTrips)
+        {
+            var pulled = pulledTripsBeforeOverrides.FirstOrDefault(t => t.Id == sent.Id);
+            var confirmed = pulled is not null && SameTripContent(pulled, sent);
+            LogTrip($"CONFIRM trip={sent.Id} confirmed={confirmed} pulled=[{ItinSnapshot(pulled)}] sent=[{ItinSnapshot(sent)}]");
+            if (!confirmed) continue;
+
+            _pendingUpdatedTrips.RemoveAll(p => p.Id == sent.Id && SameTripContent(p, sent));
+            var stillPending = _pendingUpdatedTrips.Any(p => p.Id == sent.Id);
+            if (!stillPending)
+                await db.ClearTripOverrideAsync(sent.Id);
+        }
+    }
+
+    private static bool SameTripContent(Trip left, Trip right) =>
+        left.Id == right.Id &&
+        string.Equals(left.Name, right.Name, StringComparison.Ordinal) &&
+        string.Equals(left.Destination, right.Destination, StringComparison.Ordinal) &&
+        string.Equals(left.Notes, right.Notes, StringComparison.Ordinal) &&
+        left.StartDate == right.StartDate &&
+        left.EndDate == right.EndDate &&
+        left.SavingsAccountId == right.SavingsAccountId &&
+        left.WeeklyContributionCents == right.WeeklyContributionCents &&
+        SameItinerary(left.Itinerary, right.Itinerary) &&
+        SameChecklist(left.Checklist, right.Checklist) &&
+        SameBudgetItems(left.BudgetItems, right.BudgetItems);
+
+    private static bool SameItinerary(List<TripItineraryItem> left, List<TripItineraryItem> right)
+    {
+        if (left.Count != right.Count) return false;
+        var rightById = right.ToDictionary(i => i.Id, StringComparer.Ordinal);
+        foreach (var l in left)
+        {
+            if (!rightById.TryGetValue(l.Id, out var r)) return false;
+            if (l.Date != r.Date || l.Time != r.Time || l.EndTime != r.EndTime ||
+                l.Title != r.Title || l.Notes != r.Notes || l.AmountCents != r.AmountCents)
+                return false;
+        }
+        return true;
+    }
+
+    private static bool SameChecklist(List<TripChecklistItem> left, List<TripChecklistItem> right)
+    {
+        if (left.Count != right.Count) return false;
+        var rightById = right.ToDictionary(c => c.Id, StringComparer.Ordinal);
+        foreach (var l in left)
+        {
+            if (!rightById.TryGetValue(l.Id, out var r)) return false;
+            if (l.Text != r.Text || l.Done != r.Done || l.DueDate != r.DueDate)
+                return false;
+        }
+        return true;
+    }
+
+    private static bool SameBudgetItems(List<TripBudgetItem> left, List<TripBudgetItem> right)
+    {
+        if (left.Count != right.Count) return false;
+        var rightById = right.ToDictionary(b => b.Id, StringComparer.Ordinal);
+        foreach (var l in left)
+        {
+            if (!rightById.TryGetValue(l.Id, out var r)) return false;
+            if (l.Category != r.Category || l.PlannedCents != r.PlannedCents ||
+                l.ActualCents != r.ActualCents || l.Paid != r.Paid || l.Notes != r.Notes)
+                return false;
+        }
+        return true;
+    }
+
     private static Trip CloneTrip(Trip t) => new()
     {
         Id = t.Id,
@@ -4837,14 +4907,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     // trip ID, clearing the row here deletes the only on-disk record of the edit
                     // that wasn't sent in this push, so a stale pull has nothing left to defend
                     // it with and the edit silently reverts.
-                    foreach (var t in push.UpdatedTrips)
-                    {
-                        _pendingUpdatedTrips.Remove(t);
-                        var stillPending = _pendingUpdatedTrips.Any(p => p.Id == t.Id);
-                        LogTrip($"CLEAR-CHECK trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
-                        if (!stillPending)
-                            await db.ClearTripOverrideAsync(t.Id);
-                    }
+                    LogTrip($"CLEAR-DEFER trips=[{string.Join(" || ", push.UpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
             }
@@ -4861,10 +4924,13 @@ public class AppState(IndexedDbService db, SyncService sync)
                 await _tripMutationGate.WaitAsync();
                 try
                 {
+                    var pulledTripsBeforeOverrides = await db.GetTripsAsync();
                     var tripsBeforeLoad = Trips.Where(t => t.Id < 0).Select(CloneTrip).ToList();
                     _suppressLoadOnChange = true;
                     try { await LoadAsync(); }
                     finally { _suppressLoadOnChange = false; }
+                    if (sentPush is not null)
+                        await ClearConfirmedTripUpdatesAsync(pulledTripsBeforeOverrides, sentPush);
                     AdoptPulledTripIds(tripsBeforeLoad);
                     LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
                     // Sync wipes IndexedDB and replaces with server data; reapply any
