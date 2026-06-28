@@ -551,7 +551,7 @@ else
             {
                 @if (_editingChecklistId == item.Id)
                 {
-                    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+                    <div @key="item.Id" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
                         <input class="form-input" @bind="_newChecklistText" placeholder="Task" />
                         <input class="form-input" type="date" @bind="_newChecklistDueDate" @bind:event="oninput" />
                         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
@@ -566,7 +566,7 @@ else
                 }
                 else
                 {
-                    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+                    <div @key="item.Id" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
                         <input type="checkbox" checked="@item.Done" @onchange="(ChangeEventArgs e) => ToggleChecklistItem(item.Id, e)" style="width:18px;height:18px;accent-color:var(--teal)" />
                         <div style="flex:1">
                             <div style="font-size:14px;text-decoration:@(item.Done ? "line-through" : "none");color:@(item.Done ? "var(--text3)" : "var(--text)")">@item.Text</div>
