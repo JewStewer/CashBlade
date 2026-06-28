@@ -1,7 +1,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Cashglade"
            Manufacturer="Cashglade"
-           Version="1.0.3.0"
+           Version="1.0.4.0"
            UpgradeCode="C2C68088-24C4-4C8F-BEAF-3300E35C8038"
            Scope="perUser">
     <MajorUpgrade DowngradeErrorMessage="A newer version of Cashglade is already installed." />

@@ -606,6 +606,17 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    public async Task ClearBillEditOverridesAsync()
+    {
+        try
+        {
+            await ClearAsync("billEditOverrides");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     // ── Persistent debt edits (survive cloud replace until pushed) ────────────
     public async Task<List<PendingDebtOverride>> GetPendingDebtOverridesAsync()
     {
@@ -635,6 +646,17 @@ public class IndexedDbService(IJSRuntime js)
         try
         {
             await DeleteAsync("debtOverrides", debtId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearDebtOverridesAsync()
+    {
+        try
+        {
+            await ClearAsync("debtOverrides");
         }
         catch (JSException)
         {
@@ -676,6 +698,17 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    public async Task ClearAccountOverridesAsync()
+    {
+        try
+        {
+            await ClearAsync("accountOverrides");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     // ── Persistent savings goal edits (survive cloud replace until pushed) ────
     public async Task<List<PendingSavingsGoalOverride>> GetPendingSavingsGoalOverridesAsync()
     {
@@ -705,6 +738,17 @@ public class IndexedDbService(IJSRuntime js)
         try
         {
             await DeleteAsync("savingsGoalOverrides", goalId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task ClearSavingsGoalOverridesAsync()
+    {
+        try
+        {
+            await ClearAsync("savingsGoalOverrides");
         }
         catch (JSException)
         {

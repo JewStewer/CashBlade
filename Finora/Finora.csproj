@@ -11,9 +11,9 @@
     <Company>Evergrove</Company>
     <Product>Evergrove</Product>
     <ApplicationIcon>Assets\financeblade-app.ico</ApplicationIcon>
-    <Version>1.0.10</Version>
-    <FileVersion>1.0.10.0</FileVersion>
-    <AssemblyVersion>1.0.10.0</AssemblyVersion>
+    <Version>1.0.11</Version>
+    <FileVersion>1.0.11.0</FileVersion>
+    <AssemblyVersion>1.0.11.0</AssemblyVersion>
     <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**;..\Standalone\**;..\.dotnet-home\**</DefaultItemExcludes>
   </PropertyGroup>
 

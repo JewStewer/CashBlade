@@ -602,22 +602,39 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var ov in overrides)
         {
             var bill = ov.Bill;
-            var existing = Bills.FirstOrDefault(b => b.Id == bill.Id);
-            if (existing is null) continue;
-            existing.Name = bill.Name;
-            existing.AccountId = bill.AccountId;
-            existing.AccountName = Accounts.FirstOrDefault(a => a.Id == bill.AccountId)?.Name ?? existing.AccountName;
-            existing.AmountDollars = bill.AmountDollars;
-            existing.DueDate = bill.DueDate;
-            existing.Frequency = bill.Frequency;
-            existing.IsAutoPay = bill.IsAutoPay;
+            var existing = Bills.FirstOrDefault(b => b.Id == bill.Id)
+                ?? Bills.FirstOrDefault(b => SameBillSnapshot(b, bill));
+            if (existing is null)
+            {
+                Bills.Add(bill);
+                await db.PutAsync("bills", bill);
+                if (bill.Id < 0 && !_pendingNewBills.Any(b => b.Id == bill.Id))
+                    _pendingNewBills.Add(bill);
+                continue;
+            }
+
+            CopyBillFields(bill, existing);
+            existing.AccountName = Accounts.FirstOrDefault(a => a.Id == existing.AccountId)?.Name ?? existing.AccountName;
             await db.PutAsync("bills", existing);
+            if (bill.Id != existing.Id)
+            {
+                await db.ClearBillEditOverrideAsync(bill.Id);
+                await db.SetBillEditOverrideAsync(existing);
+            }
 
             // Re-queue for push — a bill edit made locally but never confirmed
             // pushed (e.g. iOS killed the app mid-sync) must survive an app
             // restart and a stale pull, same as transaction/setting overrides.
-            _pendingUpdatedBills.RemoveAll(b => b.Id == existing.Id);
-            _pendingUpdatedBills.Add(existing);
+            if (existing.Id < 0)
+            {
+                if (!_pendingNewBills.Any(b => b.Id == existing.Id))
+                    _pendingNewBills.Add(existing);
+            }
+            else
+            {
+                _pendingUpdatedBills.RemoveAll(b => b.Id == existing.Id);
+                _pendingUpdatedBills.Add(existing);
+            }
         }
     }
 
@@ -627,18 +644,35 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var ov in overrides)
         {
             var debt = ov.Debt;
-            var existing = Debts.FirstOrDefault(d => d.Id == debt.Id);
-            if (existing is null) continue;
-            existing.Name = debt.Name;
-            existing.BalanceCents = debt.BalanceCents;
-            existing.MinimumPaymentCents = debt.MinimumPaymentCents;
-            existing.PaymentPeriod = debt.PaymentPeriod;
-            existing.InterestRate = debt.InterestRate;
-            existing.OriginalBalanceCents = debt.OriginalBalanceCents;
-            await db.PutAsync("debts", existing);
+            var existing = Debts.FirstOrDefault(d => d.Id == debt.Id)
+                ?? Debts.FirstOrDefault(d => SameDebtSnapshot(d, debt));
+            if (existing is null)
+            {
+                Debts.Add(debt);
+                await db.PutAsync("debts", debt);
+                if (debt.Id < 0 && !_pendingNewDebts.Any(d => d.Id == debt.Id))
+                    _pendingNewDebts.Add(debt);
+                continue;
+            }
 
-            _pendingUpdatedDebts.RemoveAll(d => d.Id == existing.Id);
-            _pendingUpdatedDebts.Add(existing);
+            CopyDebtFields(debt, existing);
+            await db.PutAsync("debts", existing);
+            if (debt.Id != existing.Id)
+            {
+                await db.ClearDebtOverrideAsync(debt.Id);
+                await db.SetDebtOverrideAsync(existing);
+            }
+
+            if (existing.Id < 0)
+            {
+                if (!_pendingNewDebts.Any(d => d.Id == existing.Id))
+                    _pendingNewDebts.Add(existing);
+            }
+            else
+            {
+                _pendingUpdatedDebts.RemoveAll(d => d.Id == existing.Id);
+                _pendingUpdatedDebts.Add(existing);
+            }
         }
     }
 
@@ -667,21 +701,35 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var ov in overrides)
         {
             var goal = ov.Goal;
-            var existing = SavingsGoals.FirstOrDefault(g => g.Id == goal.Id);
-            if (existing is null) continue;
-            existing.Name = goal.Name;
-            existing.TargetCents = goal.TargetCents;
-            existing.CurrentCents = goal.CurrentCents;
-            existing.WeeklyContributionCents = goal.WeeklyContributionCents;
-            existing.TargetDate = goal.TargetDate;
-            existing.GroupName = goal.GroupName;
-            existing.Emoji = goal.Emoji;
-            existing.TargetStartDate = goal.TargetStartDate;
-            existing.TargetStartingBalanceCents = goal.TargetStartingBalanceCents;
-            await db.PutAsync("savingsGoals", existing);
+            var existing = SavingsGoals.FirstOrDefault(g => g.Id == goal.Id)
+                ?? SavingsGoals.FirstOrDefault(g => SameSavingsGoalSnapshot(g, goal));
+            if (existing is null)
+            {
+                SavingsGoals.Add(goal);
+                await db.PutAsync("savingsGoals", goal);
+                if (goal.Id < 0 && !_pendingNewSavingsGoals.Any(g => g.Id == goal.Id))
+                    _pendingNewSavingsGoals.Add(goal);
+                continue;
+            }
 
-            _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == existing.Id);
-            _pendingUpdatedSavingsGoals.Add(existing);
+            CopySavingsGoalFields(goal, existing);
+            await db.PutAsync("savingsGoals", existing);
+            if (goal.Id != existing.Id)
+            {
+                await db.ClearSavingsGoalOverrideAsync(goal.Id);
+                await db.SetSavingsGoalOverrideAsync(existing);
+            }
+
+            if (existing.Id < 0)
+            {
+                if (!_pendingNewSavingsGoals.Any(g => g.Id == existing.Id))
+                    _pendingNewSavingsGoals.Add(existing);
+            }
+            else
+            {
+                _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == existing.Id);
+                _pendingUpdatedSavingsGoals.Add(existing);
+            }
         }
     }
 
@@ -3103,6 +3151,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Bills.Add(b);
         _pendingNewBills.Add(b);
         await db.PutAsync("bills", b);
+        await db.SetBillEditOverrideAsync(b);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3127,8 +3176,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         // without this the next sync pull silently reverts the edit.
         // ApplyPersistedBillEditOverridesAsync re-seeds the in-memory queue
         // from this on the next load.
-        if (b.Id > 0)
-            await db.SetBillEditOverrideAsync(existing);
+        await db.SetBillEditOverrideAsync(existing);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3170,6 +3218,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         Debts.Add(d);
         _pendingNewDebts.Add(d);
         await db.PutAsync("debts", d);
+        await db.SetDebtOverrideAsync(d);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3191,6 +3240,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         // same object reference already queued in _pendingNewDebts.
         if (existing.Id > 0)
             await QueueUpdatedDebt(existing);
+        else
+            await db.SetDebtOverrideAsync(existing);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -3244,6 +3295,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         SavingsGoals.Add(g);
         _pendingNewSavingsGoals.Add(g);
         await db.PutAsync("savingsGoals", g);
+        await db.SetSavingsGoalOverrideAsync(g);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
@@ -4469,6 +4521,73 @@ public class AppState(IndexedDbService db, SyncService sync)
         return Math.Abs((left.DueDate.Date - right.DueDate.Date).TotalDays) <= 7;
     }
 
+    private static void CopyBillFields(Bill source, Bill target)
+    {
+        target.Name = source.Name;
+        target.AccountId = source.AccountId;
+        target.AccountName = source.AccountName;
+        target.AmountDollars = source.AmountDollars;
+        target.DueDate = source.DueDate;
+        target.Frequency = source.Frequency;
+        target.IsAutoPay = source.IsAutoPay;
+        target.IsPaid = source.IsPaid;
+        target.DebtId = source.DebtId;
+    }
+
+    private static bool SameBillSnapshot(Bill left, Bill right)
+    {
+        if (left.Id > 0 && right.Id > 0 && left.Id == right.Id) return true;
+        if (left.AmountCents != right.AmountCents) return false;
+        if (left.Frequency != right.Frequency) return false;
+        if (!string.Equals(left.Name.Trim(), right.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        var leftAccount = string.IsNullOrWhiteSpace(left.AccountName) ? left.AccountId.ToString() : left.AccountName.Trim();
+        var rightAccount = string.IsNullOrWhiteSpace(right.AccountName) ? right.AccountId.ToString() : right.AccountName.Trim();
+        if (!string.Equals(leftAccount, rightAccount, StringComparison.OrdinalIgnoreCase) && left.AccountId != right.AccountId) return false;
+        return Math.Abs((left.DueDate.Date - right.DueDate.Date).TotalDays) <= 7;
+    }
+
+    private static void CopyDebtFields(Debt source, Debt target)
+    {
+        target.Name = source.Name;
+        target.BalanceCents = source.BalanceCents;
+        target.MinimumPaymentCents = source.MinimumPaymentCents;
+        target.PaymentPeriod = source.PaymentPeriod;
+        target.InterestRate = source.InterestRate;
+        target.OriginalBalanceCents = source.OriginalBalanceCents;
+    }
+
+    private static bool SameDebtSnapshot(Debt left, Debt right)
+    {
+        if (left.Id > 0 && right.Id > 0 && left.Id == right.Id) return true;
+        if (!string.Equals(left.Name.Trim(), right.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (left.OriginalBalanceCents > 0 && right.OriginalBalanceCents > 0)
+            return left.OriginalBalanceCents == right.OriginalBalanceCents;
+        return left.BalanceCents == right.BalanceCents;
+    }
+
+    private static void CopySavingsGoalFields(SavingsGoal source, SavingsGoal target)
+    {
+        target.Name = source.Name;
+        target.TargetCents = source.TargetCents;
+        target.CurrentCents = source.CurrentCents;
+        target.WeeklyContributionCents = source.WeeklyContributionCents;
+        target.TargetDate = source.TargetDate;
+        target.TargetStartDate = source.TargetStartDate;
+        target.TargetStartingBalanceCents = source.TargetStartingBalanceCents;
+        target.GroupName = source.GroupName;
+        target.Emoji = source.Emoji;
+    }
+
+    private static bool SameSavingsGoalSnapshot(SavingsGoal left, SavingsGoal right)
+    {
+        if (left.Id > 0 && right.Id > 0 && left.Id == right.Id) return true;
+        if (!string.Equals(left.Name.Trim(), right.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.Equals((left.GroupName ?? "").Trim(), (right.GroupName ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (left.TargetCents > 0 && right.TargetCents > 0)
+            return left.TargetCents == right.TargetCents;
+        return left.CurrentCents == right.CurrentCents;
+    }
+
     private static bool SameDebtDelete(Debt debt, PendingDebtDelete deleted)
     {
         if (debt.Id > 0 && deleted.Id > 0 && debt.Id == deleted.Id
@@ -5187,10 +5306,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingUpdatedTrips.Clear();
         _pendingDeletedTripIds.Clear();
         await db.ClearBillOverridesAsync();
+        await db.ClearBillEditOverridesAsync();
         await db.ClearBillDeletesAsync();
         await db.ClearDebtDeletesAsync();
+        await db.ClearDebtOverridesAsync();
         await db.ClearSavingsGoalDeletesAsync();
+        await db.ClearSavingsGoalOverridesAsync();
         await db.ClearTripDeletesAsync();
+        await db.ClearAccountOverridesAsync();
         OnChange?.Invoke();
     }
 
@@ -5233,11 +5356,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearTransactionOverridesAsync();
         await db.ClearTransactionDeletesAsync();
         await db.ClearBillOverridesAsync();
+        await db.ClearBillEditOverridesAsync();
         await db.ClearBillDeletesAsync();
         await db.ClearDebtDeletesAsync();
+        await db.ClearDebtOverridesAsync();
         await db.ClearSavingsGoalDeletesAsync();
+        await db.ClearSavingsGoalOverridesAsync();
         await db.ClearTripDeletesAsync();
         await db.ClearTripOverridesAsync();
+        await db.ClearAccountOverridesAsync();
         await db.ClearSettingOverridesAsync();
         LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
         await LoadAsync();
