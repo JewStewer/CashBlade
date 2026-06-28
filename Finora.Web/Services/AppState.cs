@@ -4775,8 +4775,19 @@ public class AppState(IndexedDbService db, SyncService sync)
                     // phone-side changes that weren't pushed so they aren't lost.
                     if (sentPush is not null)
                     {
-                        await ReapplyPushChangesAsync(sentPush);
-                        _lastConfirmedPush = sentPush;
+                        // An unrelated edit (e.g. a bill toggle) can trigger a push of its
+                        // own while an earlier push is still within its grace window —
+                        // that new push's lists are empty for every entity type it didn't
+                        // touch. Replacing _lastConfirmedPush wholesale with it would drop
+                        // the defense for the earlier entity (e.g. a just-ticked trip
+                        // checklist item) before the server has actually reconciled it,
+                        // letting the next stale pull silently revert it. Merge instead of
+                        // replace so still-in-grace entities keep being defended.
+                        var defended = _lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace
+                            ? MergeConfirmedPush(sentPush, _lastConfirmedPush)
+                            : sentPush;
+                        await ReapplyPushChangesAsync(defended);
+                        _lastConfirmedPush = defended;
                         _lastConfirmedPushAt = DateTime.UtcNow;
                     }
                     else if (_lastConfirmedPush is not null && DateTime.UtcNow - _lastConfirmedPushAt < ConfirmedPushGrace)
@@ -4878,6 +4889,45 @@ public class AppState(IndexedDbService db, SyncService sync)
         await db.ClearSettingOverridesAsync();
         LastSyncChangeSummary = "Pending phone-side sync intents were cleared. Existing finance data was left alone.";
         await LoadAsync();
+    }
+
+    private static PushPayload MergeConfirmedPush(PushPayload newer, PushPayload older) => new()
+    {
+        NewTransactions = MergeById(newer.NewTransactions, older.NewTransactions, t => t.Id),
+        UpdatedTransactions = MergeById(newer.UpdatedTransactions, older.UpdatedTransactions, t => t.Id),
+        DeletedTransactionIds = newer.DeletedTransactionIds.Union(older.DeletedTransactionIds).ToList(),
+        TransactionEdits = MergeById(newer.TransactionEdits, older.TransactionEdits, t => t.Id),
+        DeletedTransactions = MergeById(newer.DeletedTransactions, older.DeletedTransactions, PendingTransactionDelete.GetStableId),
+        UpdatedBillStatuses = MergeById(newer.UpdatedBillStatuses, older.UpdatedBillStatuses, s => s.BillId),
+        UpdatedSettings = MergeById(newer.UpdatedSettings, older.UpdatedSettings, s => (object)s.Key),
+        NewBills = MergeById(newer.NewBills, older.NewBills, b => b.Id),
+        UpdatedBills = MergeById(newer.UpdatedBills, older.UpdatedBills, b => b.Id),
+        DeletedBillIds = newer.DeletedBillIds.Union(older.DeletedBillIds).ToList(),
+        DeletedBills = MergeById(newer.DeletedBills, older.DeletedBills, b => b.Id),
+        NewDebts = MergeById(newer.NewDebts, older.NewDebts, d => d.Id),
+        UpdatedDebts = MergeById(newer.UpdatedDebts, older.UpdatedDebts, d => d.Id),
+        DeletedDebtIds = newer.DeletedDebtIds.Union(older.DeletedDebtIds).ToList(),
+        NewDebtPayments = MergeById(newer.NewDebtPayments, older.NewDebtPayments, p => p.Id),
+        DeletedDebtPaymentIds = newer.DeletedDebtPaymentIds.Union(older.DeletedDebtPaymentIds).ToList(),
+        UpdatedAccounts = MergeById(newer.UpdatedAccounts, older.UpdatedAccounts, a => a.Id),
+        NewSavingsGoals = MergeById(newer.NewSavingsGoals, older.NewSavingsGoals, g => g.Id),
+        UpdatedSavingsGoals = MergeById(newer.UpdatedSavingsGoals, older.UpdatedSavingsGoals, g => g.Id),
+        DeletedSavingsGoalIds = newer.DeletedSavingsGoalIds.Union(older.DeletedSavingsGoalIds).ToList(),
+        NewTrips = MergeById(newer.NewTrips, older.NewTrips, t => t.Id),
+        UpdatedTrips = MergeById(newer.UpdatedTrips, older.UpdatedTrips, t => t.Id),
+        DeletedTripIds = newer.DeletedTripIds.Union(older.DeletedTripIds).ToList()
+    };
+
+    // Keeps every entry from `newer`, plus any entry from `older` whose key
+    // doesn't appear in `newer` — so a fresh push that's empty for some
+    // entity type doesn't drop an earlier, still-unconfirmed entry for that
+    // same type.
+    private static List<T> MergeById<T>(List<T> newer, List<T> older, Func<T, object> keySelector)
+    {
+        if (older.Count == 0) return newer;
+        if (newer.Count == 0) return older;
+        var newerKeys = newer.Select(keySelector).ToHashSet();
+        return newer.Concat(older.Where(o => !newerKeys.Contains(keySelector(o)))).ToList();
     }
 
     private async Task ReapplyPendingChangesAsync()
