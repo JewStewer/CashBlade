@@ -4853,14 +4853,85 @@ public class AppState(IndexedDbService db, SyncService sync)
                 // record is gone a later stale pull silently reverts the edit.
                 if (pushedToCanonicalStore)
                 {
+                    // pushedToCanonicalStore means the phone's own write was just
+                    // accepted directly into finance_sync (the canonical snapshot
+                    // AutoSyncAsync pulls from) — when HasCloudSync that's PushFullSyncAsync
+                    // succeeding, not merely phone_push/PC accepting a mailbox copy. The
+                    // phone is the writer in that path, so there is nothing further to
+                    // "confirm" by re-fetching the cloud: trust it immediately. When cloud
+                    // sync isn't configured, pushedToCanonicalStore falls back to the PC
+                    // accepting the push directly — still a genuine write, just on the
+                    // background/local-only path the PC case is meant to be.
+                    //
+                    // Reference-based removal (every list below, not just trips): several
+                    // queueing methods (QueueUpdatedTransaction, MarkBillPaidAsync,
+                    // QueueUpdatedTripAsync, the Debt/Account/SavingsGoal/Setting update
+                    // helpers) replace a pending entry for the same id by removing it and
+                    // re-adding it at the end of the list. If the user edits the same record
+                    // again while this push is still in flight, that replace happens on the
+                    // live list *after* the snapshot above was taken — count-based
+                    // RemoveRange(0, push.X.Count) would then delete the newer, never-sent
+                    // edit instead of the one actually pushed, and the edit silently reverts
+                    // on the next pull. Removing each pushed object by reference instead only
+                    // ever removes the exact object that was sent, so a newer replacement
+                    // (a different object instance) always survives. Likewise, a persisted
+                    // override/tombstone row for that id is only cleared once nothing for
+                    // that id remains pending — otherwise the row is the only on-disk record
+                    // defending the newer edit against a stale pull.
                     foreach (var t in push.UpdatedTransactions)
-                        await db.ClearTransactionOverrideAsync(t.Id);
+                    {
+                        _pendingUpdatedTransactions.Remove(t);
+                        if (!_pendingUpdatedTransactions.Any(p => p.Id == t.Id))
+                            await db.ClearTransactionOverrideAsync(t.Id);
+                    }
+                    foreach (var t in push.NewTransactions)
+                        _pendingNewTransactions.Remove(t);
+                    foreach (var id in push.DeletedTransactionIds)
+                        _pendingDeletedTransactionIds.Remove(id);
                     foreach (var d in push.DeletedTransactions)
+                    {
+                        _pendingDeletedTransactions.Remove(d);
                         await db.ClearTransactionDeleteAsync(PendingTransactionDelete.GetStableId(d));
+                    }
+
                     foreach (var s in push.UpdatedBillStatuses)
-                        await db.ClearBillOverrideAsync(s.BillId);
+                    {
+                        _pendingBillStatuses.Remove(s);
+                        if (!_pendingBillStatuses.Any(p => p.BillId == s.BillId))
+                            await db.ClearBillOverrideAsync(s.BillId);
+                    }
+                    foreach (var b in push.NewBills)
+                        _pendingNewBills.Remove(b);
+                    foreach (var b in push.UpdatedBills)
+                        _pendingUpdatedBills.Remove(b);
+                    foreach (var id in push.DeletedBillIds)
+                        _pendingDeletedBillIds.Remove(id);
+                    foreach (var d in push.DeletedBills)
+                        _pendingDeletedBills.Remove(d);
+
                     foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
                         await db.ClearDebtDeleteAsync(id);
+                    foreach (var d in push.NewDebts)
+                        _pendingNewDebts.Remove(d);
+                    foreach (var d in push.UpdatedDebts)
+                        _pendingUpdatedDebts.Remove(d);
+                    foreach (var id in push.DeletedDebtIds)
+                        _pendingDeletedDebtIds.Remove(id);
+                    foreach (var p in push.NewDebtPayments)
+                        _pendingNewDebtPayments.Remove(p);
+                    foreach (var id in push.DeletedDebtPaymentIds)
+                        _pendingDeletedDebtPaymentIds.Remove(id);
+
+                    foreach (var a in push.UpdatedAccounts)
+                        _pendingUpdatedAccounts.Remove(a);
+
+                    foreach (var s in push.UpdatedSettings)
+                    {
+                        _pendingUpdatedSettings.Remove(s);
+                        if (!_pendingUpdatedSettings.Any(p => p.Key == s.Key))
+                            await db.ClearSettingOverrideAsync(s.Key);
+                    }
+
                     // Savings goal tombstones are deliberately NOT cleared here. A
                     // successful push only means Supabase/the PC's inbox accepted the
                     // delete, not that WPF has reconciled it into the canonical
@@ -4872,51 +4943,15 @@ public class AppState(IndexedDbService db, SyncService sync)
                     // delayed delete finally landed). ApplyPersistedSavingsGoalDeletesAsync
                     // clears it instead, once a freshly-pulled snapshot actually confirms
                     // the goal is gone.
+                    foreach (var g in push.NewSavingsGoals)
+                        _pendingNewSavingsGoals.Remove(g);
+                    foreach (var g in push.UpdatedSavingsGoals)
+                        _pendingUpdatedSavingsGoals.Remove(g);
+                    foreach (var id in push.DeletedSavingsGoalIds)
+                        _pendingDeletedSavingsGoalIds.Remove(id);
+
                     foreach (var id in push.DeletedTripIds.Where(id => id > 0))
                         await db.ClearTripDeleteAsync(id);
-                    foreach (var s in push.UpdatedSettings)
-                        await db.ClearSettingOverrideAsync(s.Key);
-                    // Remove only what was actually sent (by count, not Clear) —
-                    // an edit made while this push was in flight appends to
-                    // these lists and must survive for the next sync.
-                    _pendingNewTransactions.RemoveRange(0, push.NewTransactions.Count);
-                    _pendingUpdatedTransactions.RemoveRange(0, push.UpdatedTransactions.Count);
-                    _pendingDeletedTransactionIds.RemoveRange(0, push.DeletedTransactionIds.Count);
-                    _pendingDeletedTransactions.RemoveRange(0, push.DeletedTransactions.Count);
-                    _pendingBillStatuses.RemoveRange(0, push.UpdatedBillStatuses.Count);
-                    _pendingNewBills.RemoveRange(0, push.NewBills.Count);
-                    _pendingUpdatedBills.RemoveRange(0, push.UpdatedBills.Count);
-                    _pendingDeletedBillIds.RemoveRange(0, push.DeletedBillIds.Count);
-                    _pendingDeletedBills.RemoveRange(0, push.DeletedBills.Count);
-                    _pendingNewDebts.RemoveRange(0, push.NewDebts.Count);
-                    _pendingUpdatedDebts.RemoveRange(0, push.UpdatedDebts.Count);
-                    _pendingDeletedDebtIds.RemoveRange(0, push.DeletedDebtIds.Count);
-                    _pendingNewDebtPayments.RemoveRange(0, push.NewDebtPayments.Count);
-                    _pendingDeletedDebtPaymentIds.RemoveRange(0, push.DeletedDebtPaymentIds.Count);
-                    _pendingUpdatedAccounts.RemoveRange(0, push.UpdatedAccounts.Count);
-                    _pendingUpdatedSettings.RemoveRange(0, push.UpdatedSettings.Count);
-                    _pendingNewSavingsGoals.RemoveRange(0, push.NewSavingsGoals.Count);
-                    _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
-                    _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
-                    // pushedToCanonicalStore means the phone's own write was just
-                    // accepted directly into finance_sync (the canonical snapshot
-                    // AutoSyncAsync pulls from) — when HasCloudSync that's PushFullSyncAsync
-                    // succeeding, not merely phone_push/PC accepting a mailbox copy. The
-                    // phone is the writer in that path, so there is nothing further to
-                    // "confirm" by re-fetching the cloud: trust it immediately. When cloud
-                    // sync isn't configured, pushedToCanonicalStore falls back to the PC
-                    // accepting the push directly — still a genuine write, just on the
-                    // background/local-only path the PC case is meant to be.
-                    //
-                    // Reference-based removal: if QueueNewTripEditAsync/QueueUpdatedTripAsync
-                    // queued a newer clone for this trip while the push above was in flight,
-                    // that clone is a different object and must survive so the edit isn't lost
-                    // — count-based removal would have dropped it here even though it was
-                    // never actually sent. The persisted override row must survive too: if a
-                    // newer clone is still pending for this trip id, clearing the row here
-                    // deletes the only on-disk record of the edit that wasn't sent in this
-                    // push, so a stale pull has nothing left to defend it with and the edit
-                    // silently reverts.
                     foreach (var t in push.NewTrips)
                     {
                         _pendingNewTrips.Remove(t);
@@ -4933,7 +4968,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                         if (!stillPending)
                             await db.ClearTripOverrideAsync(t.Id);
                     }
-                    _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
+                    foreach (var id in push.DeletedTripIds)
+                        _pendingDeletedTripIds.Remove(id);
                 }
             }
 
