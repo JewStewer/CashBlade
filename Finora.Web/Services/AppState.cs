@@ -738,8 +738,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             // Re-queue for push — a trip edit made locally but never confirmed
             // pushed (e.g. iOS killed the app mid-sync) must survive an app
             // restart and a stale pull, same as transaction/setting overrides.
-            _pendingUpdatedTrips.RemoveAll(t => t.Id == trip.Id);
-            _pendingUpdatedTrips.Add(CloneTrip(trip));
+            // Route by id sign: a still-unadopted trip was never seen by the
+            // server, so it must go out as NewTrips, not UpdatedTrips, or the
+            // server-side merge has nothing matching to update.
+            if (trip.Id > 0)
+            {
+                _pendingUpdatedTrips.RemoveAll(t => t.Id == trip.Id);
+                _pendingUpdatedTrips.Add(CloneTrip(trip));
+            }
+            else
+            {
+                _pendingNewTrips.RemoveAll(t => t.Id == trip.Id);
+                _pendingNewTrips.Add(CloneTrip(trip));
+            }
         }
     }
 
@@ -3278,12 +3289,10 @@ public class AppState(IndexedDbService db, SyncService sync)
             existing.Checklist = t.Checklist;
             existing.BudgetItems = t.BudgetItems;
             await db.PutAsync("trips", existing);
-            // Negative-id (not-yet-synced) trips are mutated in place via the
-            // same object reference already queued in _pendingNewTrips.
             if (existing.Id > 0)
                 await QueueUpdatedTripAsync(existing);
-            else if (!_pendingNewTrips.Any(x => x.Id == existing.Id))
-                _pendingNewTrips.Add(existing);
+            else
+                await QueueNewTripEditAsync(existing);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3303,8 +3312,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             await db.PutAsync("trips", existing);
             if (existing.Id > 0)
                 await QueueUpdatedTripAsync(existing);
-            else if (!_pendingNewTrips.Any(x => x.Id == existing.Id))
-                _pendingNewTrips.Add(existing);
+            else
+                await QueueNewTripEditAsync(existing);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3357,8 +3366,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             await db.PutAsync("trips", trip);
             if (trip.Id > 0)
                 await QueueUpdatedTripAsync(trip);
-            else if (!_pendingNewTrips.Any(x => x.Id == trip.Id))
-                _pendingNewTrips.Add(trip);
+            else
+                await QueueNewTripEditAsync(trip);
         }
         finally { _tripMutationGate.Release(); }
         Compute();
@@ -3557,6 +3566,20 @@ public class AppState(IndexedDbService db, SyncService sync)
         // the still-stale server copy with nothing left to defend it, silently
         // reverting the edit. ApplyPersistedTripOverridesAsync re-seeds the
         // in-memory queue from this on the next load.
+        await db.SetTripOverrideAsync(clone);
+    }
+
+    // Mirrors QueueUpdatedTripAsync for trips still stuck at a negative
+    // (not-yet-adopted) id. _pendingNewTrips previously relied on the live
+    // Trip object reference staying queued, which is silently orphaned the
+    // moment LoadAsync() wholesale-replaces Trips with freshly deserialized
+    // objects — losing the edit with no override to restore it on reload.
+    private async Task QueueNewTripEditAsync(Trip t)
+    {
+        _pendingNewTrips.RemoveAll(x => x.Id == t.Id);
+        var clone = CloneTrip(t);
+        _pendingNewTrips.Add(clone);
+        LogTrip($"QUEUE-NEW trip={t.Id} {ItinSnapshot(clone)}");
         await db.SetTripOverrideAsync(clone);
     }
 
@@ -4713,7 +4736,17 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         foreach (var t in push.NewTrips)
         {
-            if (cloud.Trips.Any(x => x.Id == t.Id)) continue;
+            // A trip stuck at the same negative Id (never adopted) is pushed as
+            // "new" again on every round once it has further edits — update the
+            // existing canonical entry in place instead of skipping it, or the
+            // cloud snapshot freezes at whatever it looked like on the very first
+            // push and every later edit silently reverts on the next pull.
+            var existingSameId = cloud.Trips.FirstOrDefault(x => x.Id == t.Id);
+            if (existingSameId is not null)
+            {
+                CopyTripFields(t, existingSameId);
+                continue;
+            }
 
             var adopted = cloud.Trips.FirstOrDefault(x => SameTripAdoptionCandidate(x, t));
             if (adopted is not null)
@@ -4920,15 +4953,22 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _pendingNewSavingsGoals.RemoveRange(0, push.NewSavingsGoals.Count);
                     _pendingUpdatedSavingsGoals.RemoveRange(0, push.UpdatedSavingsGoals.Count);
                     _pendingDeletedSavingsGoalIds.RemoveRange(0, push.DeletedSavingsGoalIds.Count);
-                    _pendingNewTrips.RemoveRange(0, push.NewTrips.Count);
-                    // Reference-based removal: if QueueUpdatedTrip queued a newer clone for this
-                    // trip while the push above was in flight, that clone is a different object
-                    // and must survive so the edit isn't lost — count-based removal would have
-                    // dropped it here even though it was never actually sent. The persisted
+                    // Reference-based removal: if QueueNewTripEditAsync queued a newer clone for
+                    // this trip while the push above was in flight, that clone is a different
+                    // object and must survive so the edit isn't lost — count-based removal would
+                    // have dropped it here even though it was never actually sent. The persisted
                     // override row must survive too: if a newer clone is still pending for this
-                    // trip ID, clearing the row here deletes the only on-disk record of the edit
+                    // trip id, clearing the row here deletes the only on-disk record of the edit
                     // that wasn't sent in this push, so a stale pull has nothing left to defend
                     // it with and the edit silently reverts.
+                    foreach (var t in push.NewTrips)
+                    {
+                        _pendingNewTrips.Remove(t);
+                        var stillPending = _pendingNewTrips.Any(p => p.Id == t.Id);
+                        LogTrip($"CLEAR-CHECK-NEW trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
+                        if (!stillPending)
+                            await db.ClearTripOverrideAsync(t.Id);
+                    }
                     LogTrip($"CLEAR-DEFER trips=[{string.Join(" || ", push.UpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                     _pendingDeletedTripIds.RemoveRange(0, push.DeletedTripIds.Count);
                 }
@@ -5475,7 +5515,20 @@ public class AppState(IndexedDbService db, SyncService sync)
         // it's no longer in any pending queue.
         foreach (var t in push.NewTrips)
         {
-            if (Trips.Any(x => x.Id == t.Id)) continue;
+            // Still stuck at the same negative Id (never adopted) — overwrite the
+            // existing entry with this freshly defended/pushed clone's fields
+            // instead of skipping, or a pending edit captured in this push gets
+            // silently dropped every time the trip is already present locally
+            // (which it always is, once created).
+            var existingSameId = Trips.FirstOrDefault(x => x.Id == t.Id);
+            if (existingSameId is not null)
+            {
+                LogTrip($"REAPPLY-NEW trip={t.Id} current {ItinSnapshot(existingSameId)} incoming {ItinSnapshot(t)}");
+                CopyTripFields(t, existingSameId);
+                await db.PutAsync("trips", existingSameId);
+                changed = true;
+                continue;
+            }
 
             var adopted = Trips.FirstOrDefault(x => SameTripAdoptionCandidate(x, t));
             if (adopted is not null)
