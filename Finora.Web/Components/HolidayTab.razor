@@ -105,7 +105,7 @@ else
     </div>
 
     var plannedTotal = trip.BudgetItems.Sum(b => b.PlannedDollars);
-        var paidTotal = trip.BudgetItems.Where(b => b.Paid).Sum(b => b.ActualDollars > 0 ? b.ActualDollars : b.PlannedDollars);
+        var paidTotal = trip.BudgetItems.Where(b => b.Paid).Sum(b => b.ActualEntered ? b.ActualDollars : b.PlannedDollars);
         var remainingTotal = Math.Max(plannedTotal - paidTotal, 0);
         var savingsAccount = trip.SavingsAccountId is null ? null : State.Accounts.FirstOrDefault(a => a.Id == trip.SavingsAccountId.Value);
         var savingsBalance = savingsAccount is null ? 0 : Math.Max(State.GetAccountBalance(savingsAccount.Id), 0);
@@ -308,7 +308,7 @@ else
         <div class="list-card">
             @foreach (var item in trip.BudgetItems)
             {
-                var displayPaid = item.ActualDollars > 0 ? item.ActualDollars : (item.Paid ? item.PlannedDollars : 0);
+                var displayPaid = item.ActualEntered ? item.ActualDollars : (item.Paid ? item.PlannedDollars : 0);
                 @if (_editingBudgetId == item.Id)
                 {
                     <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
@@ -713,7 +713,7 @@ else
     private Trip? SelectedTrip => _selectedTripId is null ? null : State.Trips.FirstOrDefault(t => t.Id == _selectedTripId);
 
     private static decimal PlannedTotal(Trip trip) => trip.BudgetItems.Sum(b => b.PlannedDollars);
-    private static decimal PaidTotal(Trip trip) => trip.BudgetItems.Where(b => b.Paid).Sum(b => b.ActualDollars > 0 ? b.ActualDollars : b.PlannedDollars);
+    private static decimal PaidTotal(Trip trip) => trip.BudgetItems.Where(b => b.Paid).Sum(b => b.ActualEntered ? b.ActualDollars : b.PlannedDollars);
 
     private decimal GetRemainingUnallocated(Trip trip, string budgetItemId, string? excludeItineraryId)
     {
@@ -841,6 +841,7 @@ else
             Category = _newBudgetCategory.Trim(),
             PlannedDollars = _newBudgetAmount ?? 0,
             ActualDollars = _newBudgetActual ?? 0,
+            ActualEntered = _newBudgetActual.HasValue,
             Paid = _newBudgetPaid || (_newBudgetActual ?? 0) > 0,
             Notes = string.IsNullOrWhiteSpace(_newBudgetNotes) ? null : _newBudgetNotes.Trim()
         });
@@ -856,7 +857,7 @@ else
         _editingBudgetId = id;
         _newBudgetCategory = item.Category;
         _newBudgetAmount = item.PlannedDollars;
-        _newBudgetActual = item.ActualDollars;
+        _newBudgetActual = item.ActualEntered ? item.ActualDollars : null;
         _newBudgetPaid = item.Paid;
         _newBudgetNotes = item.Notes ?? string.Empty;
         // Swapping the read-only row for the (taller) edit form grows .page-content's
@@ -884,6 +885,7 @@ else
             item.Category = category;
             item.PlannedDollars = planned;
             item.ActualDollars = actual;
+            item.ActualEntered = _newBudgetActual.HasValue;
             item.Paid = paid;
             item.Notes = notes;
         }
@@ -917,11 +919,15 @@ else
         if (item is not null)
         {
             item.Paid = paid;
-            if (!paid) item.ActualDollars = 0;
+            if (!paid)
+            {
+                item.ActualDollars = 0;
+                item.ActualEntered = false;
+            }
             StateHasChanged();
         }
         // Untick clears the recorded actual amount too — otherwise the row's "paid"
-        // badge and the funded/remaining totals keep counting it (ActualDollars > 0
+        // badge and the funded/remaining totals keep counting it (ActualEntered
         // takes priority over Paid in the display logic) until the user reopens Edit
         // and re-saves, which is what made unticking look like it needed an extra step.
         await State.SaveTripSnapshotAsync(trip);

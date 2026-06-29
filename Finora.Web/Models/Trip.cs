@@ -56,6 +56,10 @@ public class TripBudgetItem
     public string Category { get; set; } = string.Empty;
     public int PlannedCents { get; set; }
     public int ActualCents { get; set; }
+    // Distinguishes "user explicitly entered $0" from "no actual recorded yet"
+    // (both leave ActualCents at its default 0). Defaults to false so existing
+    // persisted items, which never set this, keep falling back to Planned.
+    public bool ActualEntered { get; set; }
     public bool Paid { get; set; }
     public string? Notes { get; set; }
     public decimal PlannedDollars

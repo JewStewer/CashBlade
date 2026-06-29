@@ -75,6 +75,8 @@ public class TripBudgetItem
 
     public int ActualCents { get; set; }
 
+    public bool ActualEntered { get; set; }
+
     public bool Paid { get; set; }
 
     public string? Notes { get; set; }

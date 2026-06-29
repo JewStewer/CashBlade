@@ -633,7 +633,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             else
             {
                 _pendingUpdatedBills.RemoveAll(b => b.Id == existing.Id);
-                _pendingUpdatedBills.Add(existing);
+                _pendingUpdatedBills.Add(CloneBill(existing));
             }
         }
     }
@@ -671,7 +671,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             else
             {
                 _pendingUpdatedDebts.RemoveAll(d => d.Id == existing.Id);
-                _pendingUpdatedDebts.Add(existing);
+                _pendingUpdatedDebts.Add(CloneDebt(existing));
             }
         }
     }
@@ -691,7 +691,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             await db.PutAsync("accounts", existing);
 
             _pendingUpdatedAccounts.RemoveAll(a => a.Id == existing.Id);
-            _pendingUpdatedAccounts.Add(existing);
+            _pendingUpdatedAccounts.Add(CloneAccount(existing));
         }
     }
 
@@ -728,7 +728,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             else
             {
                 _pendingUpdatedSavingsGoals.RemoveAll(g => g.Id == existing.Id);
-                _pendingUpdatedSavingsGoals.Add(existing);
+                _pendingUpdatedSavingsGoals.Add(CloneSavingsGoal(existing));
             }
         }
     }
@@ -3169,8 +3169,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         existing.Frequency = b.Frequency;
         existing.IsAutoPay = b.IsAutoPay;
         await db.PutAsync("bills", existing);
-        if (b.Id > 0 && !_pendingUpdatedBills.Any(x => x.Id == b.Id))
-            _pendingUpdatedBills.Add(existing);
+        if (b.Id > 0)
+        {
+            _pendingUpdatedBills.RemoveAll(x => x.Id == b.Id);
+            _pendingUpdatedBills.Add(CloneBill(existing));
+        }
         // Persist so a full bill edit survives an app restart (e.g. iOS
         // evicting a backgrounded PWA) before this push is confirmed —
         // without this the next sync pull silently reverts the edit.
@@ -3269,8 +3272,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             bill.DebtId = null;
             await db.PutAsync("bills", bill);
-            if (bill.Id > 0 && !_pendingUpdatedBills.Any(x => x.Id == bill.Id))
-                _pendingUpdatedBills.Add(bill);
+            if (bill.Id > 0)
+            {
+                _pendingUpdatedBills.RemoveAll(x => x.Id == bill.Id);
+                _pendingUpdatedBills.Add(CloneBill(bill));
+            }
         }
 
         if (id > 0) _pendingDeletedDebtIds.Add(id);
@@ -3544,6 +3550,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             item.Category = category;
             item.PlannedDollars = plannedDollars;
             item.ActualDollars = actualDollars;
+            item.ActualEntered = true;
             item.Paid = paid;
             item.Notes = notes;
         });
@@ -3554,7 +3561,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             var item = trip.BudgetItems.FirstOrDefault(b => b.Id == itemId);
             if (item is null) return;
             item.Paid = paid;
-            if (!item.Paid) item.ActualDollars = 0;
+            if (!item.Paid)
+            {
+                item.ActualDollars = 0;
+                item.ActualEntered = false;
+            }
         });
 
     public Task RemoveBudgetItemAsync(int tripId, string itemId) =>
@@ -3708,7 +3719,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private async Task QueueUpdatedAccount(Account a)
     {
         _pendingUpdatedAccounts.RemoveAll(x => x.Id == a.Id);
-        _pendingUpdatedAccounts.Add(a);
+        _pendingUpdatedAccounts.Add(CloneAccount(a));
         // Persist so an account goal edit survives an app restart (e.g. iOS
         // evicting a backgrounded PWA) before this push is confirmed —
         // without this the next sync pull silently reverts the edit.
@@ -3720,14 +3731,14 @@ public class AppState(IndexedDbService db, SyncService sync)
     private async Task QueueUpdatedDebt(Debt d)
     {
         _pendingUpdatedDebts.RemoveAll(x => x.Id == d.Id);
-        _pendingUpdatedDebts.Add(d);
+        _pendingUpdatedDebts.Add(CloneDebt(d));
         await db.SetDebtOverrideAsync(d);
     }
 
     private async Task QueueUpdatedSavingsGoal(SavingsGoal g)
     {
         _pendingUpdatedSavingsGoals.RemoveAll(x => x.Id == g.Id);
-        _pendingUpdatedSavingsGoals.Add(g);
+        _pendingUpdatedSavingsGoals.Add(CloneSavingsGoal(g));
         await db.SetSavingsGoalOverrideAsync(g);
     }
 
@@ -3809,6 +3820,75 @@ public class AppState(IndexedDbService db, SyncService sync)
         target.BudgetItems = source.BudgetItems;
     }
 
+    // Snapshot clones for the pending-update queues. Edit methods mutate the
+    // live Bills/Debts/Accounts/SavingsGoals list entry in place (the UI binds
+    // directly to that same object) — if the *same* mutable reference were
+    // queued into _pendingUpdatedX, a second edit landing while an earlier
+    // push for that id is still in flight would silently rewrite the
+    // in-flight snapshot too. When that push then completes, the
+    // reference-based removal block in SyncAndReloadAsync would clear the
+    // pending entry/override for the id entirely — even though the second
+    // edit's value was never actually sent over the wire — leaving it with no
+    // defense against the next pull. Queuing an independent clone each time
+    // means a later edit's RemoveAll+Add always swaps in a genuinely different
+    // object, so removing the exact instance that was pushed never removes a
+    // newer, not-yet-sent edit for the same id.
+    private static Account CloneAccount(Account a) => new()
+    {
+        Id = a.Id,
+        Name = a.Name,
+        UpAccountId = a.UpAccountId,
+        Type = a.Type,
+        ColorHex = a.ColorHex,
+        TargetCents = a.TargetCents,
+        TargetDate = a.TargetDate,
+        TargetStartDate = a.TargetStartDate,
+        TargetStartingBalanceCents = a.TargetStartingBalanceCents
+    };
+
+    private static Debt CloneDebt(Debt d) => new()
+    {
+        Id = d.Id,
+        Name = d.Name,
+        BalanceCents = d.BalanceCents,
+        MinimumPaymentCents = d.MinimumPaymentCents,
+        PaymentPeriod = d.PaymentPeriod,
+        InterestRate = d.InterestRate,
+        OriginalBalanceCents = d.OriginalBalanceCents,
+        UpPaymentMatchText = d.UpPaymentMatchText
+    };
+
+    private static Bill CloneBill(Bill b) => new()
+    {
+        Id = b.Id,
+        Name = b.Name,
+        AccountId = b.AccountId,
+        DebtId = b.DebtId,
+        AmountCents = b.AmountCents,
+        DueDate = b.DueDate,
+        NextPayDate = b.NextPayDate,
+        Frequency = b.Frequency,
+        IsPaid = b.IsPaid,
+        IsCreatedFromRecurringPayment = b.IsCreatedFromRecurringPayment,
+        IsAutoPay = b.IsAutoPay,
+        PaymentMatchText = b.PaymentMatchText,
+        AccountName = b.AccountName
+    };
+
+    private static SavingsGoal CloneSavingsGoal(SavingsGoal g) => new()
+    {
+        Id = g.Id,
+        Name = g.Name,
+        TargetCents = g.TargetCents,
+        CurrentCents = g.CurrentCents,
+        WeeklyContributionCents = g.WeeklyContributionCents,
+        TargetDate = g.TargetDate,
+        GroupName = g.GroupName,
+        TargetStartDate = g.TargetStartDate,
+        TargetStartingBalanceCents = g.TargetStartingBalanceCents,
+        Emoji = g.Emoji
+    };
+
     private static Trip CloneTrip(Trip t) => new()
     {
         Id = t.Id,
@@ -3842,6 +3922,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             Category = b.Category,
             PlannedCents = b.PlannedCents,
             ActualCents = b.ActualCents,
+            ActualEntered = b.ActualEntered,
             Paid = b.Paid,
             Notes = b.Notes
         }).ToList()
