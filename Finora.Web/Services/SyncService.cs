@@ -21,6 +21,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
     public string? SupabaseKey { get; private set; }
     public DateTime? LastSyncedAt { get; private set; }
     public string? LastError { get; private set; }
+    public string? LastPushError { get; private set; }
     public bool IsSyncing { get; private set; }
 
     public bool HasCloudSync => !string.IsNullOrWhiteSpace(SupabaseUrl) && !string.IsNullOrWhiteSpace(SupabaseKey);
@@ -726,6 +727,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
     public async Task<bool> PushToSupabaseAsync(PushPayload push)
     {
         if (!HasCloudSync) return false;
+        LastPushError = null;
         try
         {
             var baseUrl = NormaliseUrl(SupabaseUrl!);
@@ -743,9 +745,15 @@ public class SyncService(HttpClient http, IndexedDbService db)
             req.Headers.Add("Prefer", "resolution=merge-duplicates");
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var resp = await http.SendAsync(req, cts.Token);
+            if (!resp.IsSuccessStatusCode)
+                LastPushError = $"phone_push HTTP {(int)resp.StatusCode}";
             return resp.IsSuccessStatusCode;
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            LastPushError = ex is TaskCanceledException ? "phone_push timed out" : $"phone_push: {ex.Message[..Math.Min(60, ex.Message.Length)]}";
+            return false;
+        }
     }
 
     // ── Fetch the current finance_sync payload without touching IndexedDB ────
@@ -762,15 +770,27 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var resp = await http.SendAsync(req, cts.Token);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                LastPushError ??= $"cloud fetch HTTP {(int)resp.StatusCode}";
+                return null;
+            }
 
             var body = await resp.Content.ReadAsStringAsync();
             var rows = JsonSerializer.Deserialize<List<SupabaseRow>>(body, _opts);
-            if (rows is null || rows.Count == 0 || string.IsNullOrWhiteSpace(rows[0].Payload)) return null;
+            if (rows is null || rows.Count == 0 || string.IsNullOrWhiteSpace(rows[0].Payload))
+            {
+                LastPushError ??= "cloud fetch: empty response";
+                return null;
+            }
 
             return JsonSerializer.Deserialize<SyncPayload>(rows[0].Payload, _opts);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            LastPushError ??= ex is TaskCanceledException ? "cloud fetch timed out" : $"cloud fetch: {ex.Message[..Math.Min(60, ex.Message.Length)]}";
+            return null;
+        }
     }
 
     // ── Push a merged full snapshot directly to finance_sync (the canonical ──
@@ -806,14 +826,22 @@ public class SyncService(HttpClient http, IndexedDbService db)
             req.Headers.Add("Prefer", "resolution=merge-duplicates");
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var resp = await http.SendAsync(req, cts.Token);
-            if (!resp.IsSuccessStatusCode) return false;
+            if (!resp.IsSuccessStatusCode)
+            {
+                LastPushError ??= $"finance_sync HTTP {(int)resp.StatusCode}";
+                return false;
+            }
 
             LastSyncedAt = payload.SyncedAt;
             await SaveMetaAsync();
             OnSyncStateChanged?.Invoke();
             return true;
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            LastPushError ??= ex is TaskCanceledException ? "finance_sync timed out" : $"finance_sync: {ex.Message[..Math.Min(60, ex.Message.Length)]}";
+            return false;
+        }
     }
 
     // ── Save push subscription to Supabase ───────────────────────────────────

@@ -1,6 +1,7 @@
 @page "/tools"
 @page "/more"
 @inject AppState State
+@inject SyncService Sync
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -465,8 +466,21 @@ else if (_tab == "Cleanup")
         try
         {
             await State.SyncAndReloadAsync();
-            _syncStatus = "Sync complete.";
-            _syncStatusColor = "var(--green)";
+            if (State.HasPendingChanges && Sync.LastPushError is not null)
+            {
+                _syncStatus = $"Saved locally — cloud write failed ({Sync.LastPushError}). Will retry. Don't repair the queue.";
+                _syncStatusColor = "var(--amber)";
+            }
+            else if (State.HasPendingChanges)
+            {
+                _syncStatus = "Pulled latest data. Local changes still pending — will retry on next sync.";
+                _syncStatusColor = "var(--amber)";
+            }
+            else
+            {
+                _syncStatus = "Sync complete.";
+                _syncStatusColor = "var(--green)";
+            }
         }
         catch (Exception ex)
         {
@@ -481,14 +495,18 @@ else if (_tab == "Cleanup")
 
     private async Task ConfirmRepairAsync()
     {
-        var ok = await JS.InvokeAsync<bool>("confirm", "Clear stuck pending phone sync intents? Existing finance data stays on this device.");
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            "WARNING: This deletes the local record of any queued changes. " +
+            "If those changes never reached the cloud (e.g. cloud writes were failing), " +
+            "they will be permanently lost when the next sync pulls fresh cloud data. " +
+            "Only clear if you are sure the cloud already has your latest changes.");
         if (!ok) return;
 
         _busy = true;
         await State.RepairPendingSyncAsync();
         _busy = false;
-        _syncStatus = "Pending queue cleared. Sync now to pull the latest cloud data.";
-        _syncStatusColor = "var(--green)";
+        _syncStatus = "Queue cleared. Sync now to pull the latest cloud data.";
+        _syncStatusColor = "var(--amber)";
     }
 
     private async Task ForceUpdateAsync()
