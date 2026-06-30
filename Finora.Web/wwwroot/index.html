@@ -47,6 +47,22 @@
         document.addEventListener('touchend', financeBladeSetTouchIdleSoon, { passive: true });
         document.addEventListener('touchcancel', financeBladeSetTouchIdleSoon, { passive: true });
 
+        // WKWebView (standalone iOS PWA) doesn't shrink the layout viewport when
+        // the on-screen keyboard opens — it just overlays it. Fixed-position bars
+        // pinned to bottom:0 (.modal-actions) stay where they were, now hidden
+        // behind the keyboard: visible nowhere, tappable nowhere. visualViewport
+        // tracks the actual visible area, so use it to lift those bars clear.
+        if (window.visualViewport) {
+            const vv = window.visualViewport;
+            const updateKeyboardInset = () => {
+                const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+                document.documentElement.style.setProperty('--kb-inset', inset > 1 ? `${inset}px` : '0px');
+            };
+            vv.addEventListener('resize', updateKeyboardInset, { passive: true });
+            vv.addEventListener('scroll', updateKeyboardInset, { passive: true });
+            updateKeyboardInset();
+        }
+
         // nudgeRepaint's body display:none/'' toggle blurs whatever input is
         // focused — on iOS this dismisses the keyboard mid-typing (the
         // accessory toolbar can linger with no keyboard under it, and the

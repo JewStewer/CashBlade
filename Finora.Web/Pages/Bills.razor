@@ -137,6 +137,10 @@ else
                             {
                                 <span class="badge badge-gray" style="margin-left:4px">Auto</span>
                             }
+                            @if (bill.DebtId is not null && occ.DueDate.Date > DateTime.Today)
+                            {
+                                <span class="badge badge-teal" style="margin-left:4px">Pay early</span>
+                            }
                             @{var danger = GetDangerBadge(bill, occ.DueDate);}
                             @if (!string.IsNullOrEmpty(danger))
                             {
@@ -190,13 +194,32 @@ else
             .ToList();
     }
 
+    // Installment-debt bills (Bill.DebtId set) are the one case where users want
+    // to settle a FUTURE cycle ahead of schedule — e.g. paying next fortnight's
+    // Afterpay installment early. GetOutstandingBillOccurrences only walks up to
+    // the current cycle, so for those bills specifically this also pulls in
+    // upcoming occurrences (90 days out) so every remaining installment shows as
+    // its own row with the same paid-toggle, regardless of whether it's due yet.
+    private List<BillOccurrencePreview> UnpaidWithEarlyInstallments()
+    {
+        var outstanding = State.GetOutstandingBillOccurrences();
+        var futureInstallments = State.GetUpcomingBillOccurrences(DateTime.Today, DateTime.Today.AddDays(90))
+            .Where(o => o.Bill.DebtId is not null);
+        return outstanding
+            .Concat(futureInstallments)
+            .GroupBy(o => (o.Bill.Id, o.DueDate.Date))
+            .Select(g => g.First())
+            .OrderBy(o => o.DueDate)
+            .ToList();
+    }
+
     private List<BillOccurrencePreview> GetFiltered()
     {
         IEnumerable<BillOccurrencePreview> q = filter switch
         {
-            "Unpaid" => State.GetOutstandingBillOccurrences().OrderBy(o => o.DueDate),
+            "Unpaid" => UnpaidWithEarlyInstallments(),
             "Paid"   => State.GetPaidBillOccurrences(),
-            _        => State.GetOutstandingBillOccurrences()
+            _        => UnpaidWithEarlyInstallments()
                             .Concat(State.GetPaidBillOccurrences())
                             .OrderBy(o => o.DueDate)
         };

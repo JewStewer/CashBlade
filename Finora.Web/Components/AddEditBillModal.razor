@@ -109,9 +109,8 @@
             accountId = Bill.AccountId != 0 ? Bill.AccountId : (State.Accounts.FirstOrDefault()?.Id ?? 0);
             isAutoPay = Bill.IsAutoPay;
         }
-        else
+        if (IsNew)
         {
-            accountId = State.Accounts.FirstOrDefault()?.Id ?? 0;
             isInstallment = InstallmentTotalDollars is > 0;
             installmentTotal = InstallmentTotalDollars ?? 0;
         }
