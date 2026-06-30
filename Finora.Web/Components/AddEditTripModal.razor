@@ -1,7 +1,8 @@
 @inject AppState State
 
 <div class="modal-backdrop" @onclick="Close">
-    <div class="modal-sheet" @onclick:stopPropagation>
+    <div class="modal-card" @onclick:stopPropagation>
+    <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">@(Trip?.Id == 0 ? "Add Trip" : "Edit Trip")</div>
 
@@ -62,7 +63,7 @@
 
     @if (confirmingDelete)
     {
-        <div class="modal-actions" @onclick:stopPropagation>
+        <div class="modal-actions">
             <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
             <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
                 @(saving ? "Deleting..." : "Delete")
@@ -71,7 +72,7 @@
     }
     else
     {
-        <div class="modal-actions" @onclick:stopPropagation>
+        <div class="modal-actions">
             @if (Trip?.Id != 0)
             {
                 <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Delete</button>
@@ -82,6 +83,7 @@
             </button>
         </div>
     }
+    </div>
 </div>
 
 @code {

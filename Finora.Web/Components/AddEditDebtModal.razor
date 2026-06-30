@@ -2,7 +2,8 @@
 @inject IJSRuntime JS
 
 <div class="modal-backdrop" @onclick="Close">
-    <div class="modal-sheet" @onclick:stopPropagation>
+    <div class="modal-card" @onclick:stopPropagation>
+    <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">@(Debt?.Id == 0 ? "Add Debt" : "Edit Debt")</div>
 
@@ -49,7 +50,7 @@
         }
     </div>
 
-    <div class="modal-actions" @onclick:stopPropagation>
+    <div class="modal-actions">
         @if (Debt?.Id != 0)
         {
             <button class="btn btn-danger" @onclick="Delete" disabled="@saving">Delete</button>
@@ -58,6 +59,7 @@
         <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
             @(saving ? "Saving…" : (Debt?.Id == 0 ? "Add Debt" : "Save"))
         </button>
+    </div>
     </div>
 </div>
 

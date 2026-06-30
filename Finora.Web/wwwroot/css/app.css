@@ -1165,51 +1165,57 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     background: rgba(0,0,0,0.7);
     z-index: 100;
     display: flex;
-    align-items: flex-end;
+    flex-direction: column;
+    justify-content: flex-end;
     padding-top: calc(var(--safe-top) + 8px);
+    /* Lifts the whole card clear of the on-screen keyboard: WKWebView doesn't
+       shrink the layout viewport when the keyboard opens, so without this the
+       card (and its action bar) stays anchored behind the keyboard. --kb-inset
+       is set by the visualViewport listener in index.html. */
+    padding-bottom: var(--kb-inset, 0px);
 }
 
-.modal-sheet {
+/* Modal card: a height-bounded flex column. .modal-sheet (the scrollable
+   form content) and .modal-actions (the button bar) are both normal-flow
+   flex children of this card, NOT position:fixed. WebKit has a longstanding
+   bug (bugs.webkit.org/show_bug.cgi?id=154399) where position:fixed elements
+   — especially ones newly inserted into the DOM, as Blazor does when a modal
+   opens — aren't reliably promoted to the viewport-relative compositing layer
+   and can render off-screen until a subsequent touch/scroll forces a relayout.
+   That made the action bar intermittently invisible/unreachable even after it
+   was moved outside the scrolling .modal-sheet. Avoiding position:fixed here
+   entirely (a bounded-height flex column with an internally-scrolling content
+   area) sidesteps that whole bug class: the action bar's position falls out of
+   normal flow layout, which WebKit always gets right. */
+.modal-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-height: calc(100dvh - var(--safe-top) - 8px);
     background: var(--surface);
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -12px 32px rgba(0,0,0,0.35);
-    width: 100%;
-    max-height: calc(100dvh - var(--safe-top) - 8px);
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-    /* Reserve room so the last form field can scroll clear of the fixed
-       .modal-actions bar overlaid on top of it (see below). */
-    padding-bottom: calc(80px + var(--safe-bottom));
-    scroll-padding-bottom: calc(80px + var(--safe-bottom));
+    overflow: hidden;
 }
 
-/* Fixed action bar for modal forms. Deliberately position:fixed (anchored to
-   the viewport), and deliberately a SIBLING of .modal-sheet rather than
-   nested inside it: WebKit has a longstanding bug (bugs.webkit.org/show_bug.cgi?id=154399)
-   where position:fixed descendants of a scrolling element don't reliably stay
-   pinned to the true viewport — they get bound to the scrolling ancestor's
-   box instead, which made this bar invisible/unreachable once .modal-sheet's
-   content scrolled. Keeping it outside the scrollable .modal-sheet entirely
-   avoids that. position:fixed is the same proven technique .bottom-nav uses.
-   --kb-inset (set by the visualViewport listener in index.html) lifts this
-   bar clear of the on-screen keyboard: WKWebView doesn't shrink the layout
-   viewport when the keyboard opens, so a plain bottom:0 bar stays pinned
-   behind the keyboard — reachable on screen but untappable. */
+.modal-sheet {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
 .modal-actions {
-    position: fixed;
-    bottom: var(--kb-inset, 0px);
-    left: 0;
-    right: 0;
+    flex: 0 0 auto;
     background: var(--surface);
     padding: 14px 16px calc(14px + var(--safe-bottom));
     display: flex;
     gap: 8px;
     border-top: 1px solid var(--border);
-    z-index: 101;
 }
 
 @supports not (height: 100dvh) {
-    .modal-sheet { max-height: calc(100vh - var(--safe-top) - 8px); }
+    .modal-card { max-height: calc(100vh - var(--safe-top) - 8px); }
 }
 
 .modal-handle {

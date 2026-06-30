@@ -1,7 +1,8 @@
 @inject AppState State
 
 <div class="modal-backdrop" @onclick="Close">
-    <div class="modal-sheet" @onclick:stopPropagation>
+    <div class="modal-card" @onclick:stopPropagation>
+    <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">Edit Goal: @(Account?.Name)</div>
 
@@ -43,7 +44,7 @@
 
     @if (confirmingDelete)
     {
-        <div class="modal-actions" @onclick:stopPropagation>
+        <div class="modal-actions">
             <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
             <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
                 @(saving ? "Removing..." : "Remove")
@@ -52,7 +53,7 @@
     }
     else
     {
-        <div class="modal-actions" @onclick:stopPropagation>
+        <div class="modal-actions">
             <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Remove Goal</button>
             <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
             <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
@@ -60,6 +61,7 @@
             </button>
         </div>
     }
+    </div>
 </div>
 
 @code {

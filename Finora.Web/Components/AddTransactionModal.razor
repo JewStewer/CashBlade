@@ -1,7 +1,8 @@
 @inject AppState State
 
 <div class="modal-backdrop" @onclick="Close">
-    <div class="modal-sheet" @onclick:stopPropagation>
+    <div class="modal-card" @onclick:stopPropagation>
+    <div class="modal-sheet">
         <div class="modal-handle"></div>
         <div class="modal-title">Add Transaction</div>
 
@@ -69,11 +70,12 @@
         }
     </div>
 
-    <div class="modal-actions" @onclick:stopPropagation>
+    <div class="modal-actions">
         <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
         <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
             @(saving ? "Saving…" : "Add")
         </button>
+    </div>
     </div>
 </div>
 
