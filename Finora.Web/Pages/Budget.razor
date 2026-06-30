@@ -62,6 +62,13 @@
     @if (unrepaid.Any())
     {
         var totalOwed = unrepaid.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
+        // Grouped by who it's owed from — the same free-text "Who?" note entered
+        // when a transaction is marked lent out (see Transactions.razor) — so
+        // money owed by different people shows as separate running totals
+        // instead of one undifferentiated list.
+        var groups = unrepaid
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Lent.Note) ? "Other" : x.Lent.Note.Trim(), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Sum(x => State.GetLentOutstandingDollars(x.Txn!)));
         <div class="card" style="margin-top:12px;border-color:rgba(99,102,241,0.4)">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
@@ -70,21 +77,26 @@
                 </div>
                 <span style="font-size:14px;font-weight:700;color:#818CF8">@totalOwed.ToString("C")</span>
             </div>
-            @foreach (var (lent, txn) in unrepaid)
+            @foreach (var group in groups)
             {
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-                    <div style="flex:1;min-width:0">
-                        <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@txn!.Description</div>
-                        <div style="font-size:11px;color:var(--text3)">
-                            @txn.Date.ToString("d MMM")
-                            @if (!string.IsNullOrEmpty(lent.Note)) { <span> · @lent.Note</span> }
-                        </div>
-                    </div>
-                    <span style="font-size:14px;font-weight:600;color:#818CF8;flex-shrink:0">@State.GetLentOutstandingDollars(txn).ToString("C") owed</span>
-                    <button @onclick="() => State.MarkRepaidAsync(lent.Id)" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);color:var(--green);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
-                        Got paid back <Icon Name="check" Size="12" />
-                    </button>
+                var groupTotal = group.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <span style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase">@group.Key</span>
+                    <span style="font-size:12px;font-weight:600;color:#818CF8">@groupTotal.ToString("C")</span>
                 </div>
+                @foreach (var (lent, txn) in group)
+                {
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+                        <div style="flex:1;min-width:0">
+                            <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@txn!.Description</div>
+                            <div style="font-size:11px;color:var(--text3)">@txn.Date.ToString("d MMM")</div>
+                        </div>
+                        <span style="font-size:14px;font-weight:600;color:#818CF8;flex-shrink:0">@State.GetLentOutstandingDollars(txn).ToString("C") owed</span>
+                        <button @onclick="() => State.MarkRepaidAsync(lent.Id)" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);color:var(--green);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
+                            Got paid back <Icon Name="check" Size="12" />
+                        </button>
+                    </div>
+                }
             }
         </div>
     }
