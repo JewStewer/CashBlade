@@ -47,17 +47,17 @@
         {
             <div style="padding:6px 16px;color:var(--red);font-size:13px">@error</div>
         }
+    </div>
 
-        <div class="modal-actions">
-            @if (Debt?.Id != 0)
-            {
-                <button class="btn btn-danger" @onclick="Delete" disabled="@saving">Delete</button>
-            }
-            <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
-            <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
-                @(saving ? "Saving…" : (Debt?.Id == 0 ? "Add Debt" : "Save"))
-            </button>
-        </div>
+    <div class="modal-actions" @onclick:stopPropagation>
+        @if (Debt?.Id != 0)
+        {
+            <button class="btn btn-danger" @onclick="Delete" disabled="@saving">Delete</button>
+        }
+        <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
+        <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
+            @(saving ? "Saving…" : (Debt?.Id == 0 ? "Add Debt" : "Save"))
+        </button>
     </div>
 </div>
 

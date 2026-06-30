@@ -38,24 +38,28 @@
                 <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Remove this account goal?</div>
                 <div style="font-size:12px;color:var(--text2)">This can't be undone.</div>
             </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
-                <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
-                    @(saving ? "Removing..." : "Remove")
-                </button>
-            </div>
-        }
-        else
-        {
-            <div class="modal-actions">
-                <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Remove Goal</button>
-                <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
-                <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
-                    @(saving ? "Saving..." : "Save")
-                </button>
-            </div>
         }
     </div>
+
+    @if (confirmingDelete)
+    {
+        <div class="modal-actions" @onclick:stopPropagation>
+            <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
+            <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
+                @(saving ? "Removing..." : "Remove")
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="modal-actions" @onclick:stopPropagation>
+            <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Remove Goal</button>
+            <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
+            <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
+                @(saving ? "Saving..." : "Save")
+            </button>
+        </div>
+    }
 </div>
 
 @code {

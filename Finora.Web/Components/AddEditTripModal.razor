@@ -57,27 +57,31 @@
                 <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px">Delete this trip?</div>
                 <div style="font-size:12px;color:var(--text2)">This removes the itinerary, checklist, and budget too. This can't be undone.</div>
             </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
-                <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
-                    @(saving ? "Deleting..." : "Delete")
-                </button>
-            </div>
-        }
-        else
-        {
-            <div class="modal-actions">
-                @if (Trip?.Id != 0)
-                {
-                    <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Delete</button>
-                }
-                <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
-                <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
-                    @(saving ? "Saving..." : (Trip?.Id == 0 ? "Add Trip" : "Save"))
-                </button>
-            </div>
         }
     </div>
+
+    @if (confirmingDelete)
+    {
+        <div class="modal-actions" @onclick:stopPropagation>
+            <button class="btn btn-secondary" style="flex:1" @onclick="CancelDelete" disabled="@saving">Keep</button>
+            <button class="btn btn-danger" style="flex:1" @onclick="ConfirmDelete" disabled="@saving">
+                @(saving ? "Deleting..." : "Delete")
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="modal-actions" @onclick:stopPropagation>
+            @if (Trip?.Id != 0)
+            {
+                <button class="btn btn-danger" @onclick="StartDelete" disabled="@saving">Delete</button>
+            }
+            <button class="btn btn-secondary" style="flex:1" @onclick="Close">Cancel</button>
+            <button class="btn btn-primary" style="flex:1" @onclick="Save" disabled="@saving">
+                @(saving ? "Saving..." : (Trip?.Id == 0 ? "Add Trip" : "Save"))
+            </button>
+        </div>
+    }
 </div>
 
 @code {

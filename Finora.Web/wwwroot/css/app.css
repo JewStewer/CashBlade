@@ -1176,7 +1176,6 @@ select.form-input { appearance: none; -webkit-appearance: none; }
     width: 100%;
     max-height: calc(100dvh - var(--safe-top) - 8px);
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     /* Reserve room so the last form field can scroll clear of the fixed
        .modal-actions bar overlaid on top of it (see below). */
@@ -1185,9 +1184,13 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 }
 
 /* Fixed action bar for modal forms. Deliberately position:fixed (anchored to
-   the viewport), not sticky — sticky inside a -webkit-overflow-scrolling:touch
-   container has a history of WebKit quirks where it fails to stay pinned.
-   position:fixed is the same proven technique .bottom-nav already uses.
+   the viewport), and deliberately a SIBLING of .modal-sheet rather than
+   nested inside it: WebKit has a longstanding bug (bugs.webkit.org/show_bug.cgi?id=154399)
+   where position:fixed descendants of a scrolling element don't reliably stay
+   pinned to the true viewport — they get bound to the scrolling ancestor's
+   box instead, which made this bar invisible/unreachable once .modal-sheet's
+   content scrolled. Keeping it outside the scrollable .modal-sheet entirely
+   avoids that. position:fixed is the same proven technique .bottom-nav uses.
    --kb-inset (set by the visualViewport listener in index.html) lifts this
    bar clear of the on-screen keyboard: WKWebView doesn't shrink the layout
    viewport when the keyboard opens, so a plain bottom:0 bar stays pinned
