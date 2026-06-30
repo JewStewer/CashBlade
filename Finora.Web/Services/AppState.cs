@@ -1215,6 +1215,49 @@ public class AppState(IndexedDbService db, SyncService sync)
         return dueDate.Date == effective.Date && IsBillPaid(bill);
     }
 
+    // GetEffectiveDueDate only ever surfaces ONE date per bill — the current/next
+    // cycle — so a bill left unpaid for a couple of cycles silently loses its
+    // earlier occurrences: they're never shown as a row and can never be marked
+    // paid individually. This instead walks forward from the bill's own anchor
+    // date (bounded by lookbackDays so old/stale bills don't generate years of
+    // phantom rows) up to and including the current cycle, returning every
+    // occurrence in between that has no paid status — so missed weeks show up
+    // as their own rows instead of being skipped over.
+    public List<BillOccurrencePreview> GetOutstandingBillOccurrences(int lookbackDays = 60)
+    {
+        var result = new List<BillOccurrencePreview>();
+        var earliest = DateTime.Today.AddDays(-lookbackDays);
+        foreach (var bill in Bills)
+        {
+            var due = bill.DueDate.Date;
+            while (due < earliest)
+                due = AdvanceDueDate(due, bill.Frequency);
+
+            var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+            while (due <= current.Date)
+            {
+                if (!IsBillOccurrencePaid(bill, due))
+                    result.Add(new BillOccurrencePreview(bill, due));
+                due = AdvanceDueDate(due, bill.Frequency);
+            }
+        }
+        return result.OrderBy(o => o.DueDate).ThenBy(o => o.Bill.Name).ToList();
+    }
+
+    // The Paid tab needs each bill's actual paid occurrence date (e.g. "23 Jun"),
+    // not EffectiveDueDate — which is a forward-looking "what's due next"
+    // computation that's already rolled past the date that was really paid.
+    public List<BillOccurrencePreview> GetPaidBillOccurrences(int lookbackDays = 90)
+    {
+        var cutoff = DateTime.Today.AddDays(-lookbackDays);
+        var billMap = Bills.ToDictionary(b => b.Id);
+        return BillStatuses
+            .Where(s => s.IsPaid && s.DueDate.Date >= cutoff && billMap.ContainsKey(s.BillId))
+            .Select(s => new BillOccurrencePreview(billMap[s.BillId], s.DueDate))
+            .OrderByDescending(o => o.DueDate)
+            .ToList();
+    }
+
     // Find (or create) the BillOccurrenceStatus for a bill's current billing
     // cycle, keyed by EffectiveDueDate to match IsBillPaid's primary check —
     // otherwise a status keyed on the (possibly stale) bill.DueDate never
@@ -1273,7 +1316,12 @@ public class AppState(IndexedDbService db, SyncService sync)
             .OrderBy(b => b.EffectiveDueDate)
             .ToList();
 
-        TotalBillsDue = BillsDueBeforePayday.Sum(b => b.AmountDollars);
+        // Sum from the occurrence projection (not BillsDueBeforePayday) so a bill
+        // with multiple missed/unpaid cycles before payday counts each one,
+        // instead of collapsing them into a single bill-level total.
+        TotalBillsDue = GetOutstandingBillOccurrences()
+            .Where(o => o.DueDate.Date <= payEnd)
+            .Sum(o => o.Bill.AmountDollars);
 
         // Per bill-account: bills due strictly before payday vs the account's current balance.
         BillAccountShortfalls = Bills
@@ -4431,22 +4479,47 @@ public class AppState(IndexedDbService db, SyncService sync)
             transaction.Description.Equals("Up balance adjustment", StringComparison.OrdinalIgnoreCase) ||
             transaction.CategoryName.Equals("Balance Adjustment", StringComparison.OrdinalIgnoreCase));
 
-    public async Task MarkBillPaidAsync(int billId, bool paid)
+    public Task MarkBillPaidAsync(int billId, bool paid)
+    {
+        var bill = Bills.FirstOrDefault(b => b.Id == billId);
+        if (bill is null) return Task.CompletedTask;
+        var effectiveDue = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+        return MarkBillOccurrencePaidAsync(billId, effectiveDue, paid);
+    }
+
+    // Marks a SPECIFIC occurrence paid/unpaid, rather than always the bill's
+    // current cycle — needed so an overdue/missed occurrence surfaced by
+    // GetOutstandingBillOccurrences can be settled against its own due date
+    // instead of getting recorded against today's date.
+    public async Task MarkBillOccurrencePaidAsync(int billId, DateTime dueDate, bool paid)
     {
         var bill = Bills.FirstOrDefault(b => b.Id == billId);
         if (bill is null) return;
-        bill.IsPaid = paid;
-        await db.PutAsync("bills", bill);
 
-        var status = GetOrCreateCurrentStatus(bill);
+        var status = BillStatuses.FirstOrDefault(s => s.BillId == billId && s.DueDate.Date == dueDate.Date);
+        if (status is null)
+        {
+            status = new BillOccurrenceStatus { Id = NextLocalId(BillStatuses.Select(s => s.Id)), BillId = billId, DueDate = dueDate.Date };
+            BillStatuses.Add(status);
+        }
         status.IsPaid = paid;
         status.PaidOn = paid ? DateTime.Now : null;
 
         _pendingBillStatuses.RemoveAll(s => s.BillId == status.BillId && s.DueDate.Date == status.DueDate.Date);
         _pendingBillStatuses.Add(status);
         await db.PutAsync("billOccurrenceStatuses", status);
-        // Persist the override so it survives sync's clearAll and app restarts
-        await db.SetBillOverrideAsync(billId, paid);
+
+        // The bill-level IsPaid flag and its sync override only make sense for
+        // the CURRENT cycle — don't let settling an old missed week flip them.
+        var effectiveDue = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+        if (dueDate.Date == effectiveDue.Date)
+        {
+            bill.IsPaid = paid;
+            await db.PutAsync("bills", bill);
+            // Persist the override so it survives sync's clearAll and app restarts
+            await db.SetBillOverrideAsync(billId, paid);
+        }
+
         await ApplyBillDebtPaymentAsync(bill, status.DueDate, paid);
         Compute();
         OnChange?.Invoke();

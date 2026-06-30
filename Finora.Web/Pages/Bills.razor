@@ -40,29 +40,24 @@
 </div>
 
 @{
-    var dueNowBills = State.Bills
-        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today)
-        .ToList();
-    var next7Bills = State.Bills
-        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today.AddDays(7))
-        .ToList();
-    var next30Bills = State.Bills
-        .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today.AddDays(30))
-        .ToList();
+    var outstanding = State.GetOutstandingBillOccurrences();
+    var dueNowBills = outstanding.Where(o => o.DueDate.Date <= DateTime.Today).ToList();
+    var next7Bills = AllUnpaidOccurrences(outstanding, 7).Where(o => o.DueDate.Date <= DateTime.Today.AddDays(7)).ToList();
+    var next30Bills = AllUnpaidOccurrences(outstanding, 30).Where(o => o.DueDate.Date <= DateTime.Today.AddDays(30)).ToList();
 }
 
 <div style="padding:0 16px 10px;display:flex;gap:8px">
     <div class="card-sm" style="flex:1;text-align:center">
         <div class="stat-label">Due now</div>
-        <div style="font-size:17px;font-weight:700;color:var(--red)">@dueNowBills.Sum(b => b.AmountDollars).ToString("C")</div>
+        <div style="font-size:17px;font-weight:700;color:var(--red)">@dueNowBills.Sum(o => o.Bill.AmountDollars).ToString("C")</div>
     </div>
     <div class="card-sm" style="flex:1;text-align:center">
         <div class="stat-label">Next 7d</div>
-        <div style="font-size:17px;font-weight:700;color:var(--text)">@next7Bills.Sum(b => b.AmountDollars).ToString("C")</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">@next7Bills.Sum(o => o.Bill.AmountDollars).ToString("C")</div>
     </div>
     <div class="card-sm" style="flex:1;text-align:center">
         <div class="stat-label">Next 30d</div>
-        <div style="font-size:17px;font-weight:700;color:var(--text)">@next30Bills.Sum(b => b.AmountDollars).ToString("C")</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">@next30Bills.Sum(o => o.Bill.AmountDollars).ToString("C")</div>
     </div>
 </div>
 <div style="padding:0 16px 12px;display:flex;gap:8px;flex-wrap:wrap">
@@ -100,8 +95,8 @@ else
 <div class="scroll-handoff-gap"></div>
 
 <div class="card-list" style="margin-top:0">
-    @{var bills = GetFiltered();}
-    @if (!bills.Any())
+    @{var occurrences = GetFiltered();}
+    @if (!occurrences.Any())
     {
         <div class="empty-state">
             <span>No bills here.</span>
@@ -113,19 +108,20 @@ else
     }
     else
     {
-        @foreach (var bill in bills)
+        @foreach (var occ in occurrences)
         {
-            var isPaid = State.IsBillPaid(bill);
+            var bill = occ.Bill;
+            var isPaid = State.IsBillOccurrencePaid(bill, occ.DueDate);
             var (covered, shortfall) = State.GetBillCoverage(bill);
             <div class="list-row" style="align-items:flex-start;gap:10px">
                 <div style="padding-top:2px">
-                    <button @onclick="() => TogglePaid(bill)" class="@(_celebratedBillIds.Contains(bill.Id) ? "celebrate" : "")" style="width:22px;height:22px;border-radius:50%;border:2px solid @(isPaid?"var(--green)":"var(--border)");background:@(isPaid?"var(--green)":"transparent");cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <button @onclick="() => TogglePaid(occ)" class="@(_celebratedBillIds.Contains(bill.Id) ? "celebrate" : "")" style="width:22px;height:22px;border-radius:50%;border:2px solid @(isPaid?"var(--green)":"var(--border)");background:@(isPaid?"var(--green)":"transparent");cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                         @if (isPaid) { <span style="color:#fff;display:flex"><Icon Name="check" Size="13" /></span> }
                     </button>
                 </div>
                 <div class="row-main" style="cursor:pointer" @onclick="() => StartEdit(bill)">
                     <div class="row-title" style="@(isPaid?"opacity:0.5;text-decoration:line-through":"")">@bill.Name</div>
-                    <div class="row-sub">@bill.AccountName · @bill.Frequency · @bill.EffectiveDueDate.ToString("dd MMM")</div>
+                    <div class="row-sub">@bill.AccountName · @bill.Frequency · @occ.DueDate.ToString("dd MMM")@(occ.DueDate.Date < DateTime.Today && !isPaid ? " · Overdue" : "")</div>
                     @if (!isPaid)
                     {
                         <div style="margin-top:4px">
@@ -141,7 +137,7 @@ else
                             {
                                 <span class="badge badge-gray" style="margin-left:4px">Auto</span>
                             }
-                            @{var danger = GetDangerBadge(bill);}
+                            @{var danger = GetDangerBadge(bill, occ.DueDate);}
                             @if (!string.IsNullOrEmpty(danger))
                             {
                                 <span class="badge @(danger=="Danger"?"badge-red":"badge-amber")" style="margin-left:4px">@danger</span>
@@ -181,46 +177,61 @@ else
         return Task.CompletedTask;
     }
 
-    private IEnumerable<Bill> GetFiltered()
+    // Combines whatever's currently due-or-overdue with future occurrences out
+    // to `aheadDays`, so weekly/fortnightly bills count every cycle in the
+    // window instead of just their single next occurrence. Deduped since the
+    // current cycle can appear in both source lists.
+    private List<BillOccurrencePreview> AllUnpaidOccurrences(List<BillOccurrencePreview> outstanding, int aheadDays)
     {
-        IEnumerable<Bill> q = filter switch
-        {
-            "Unpaid" => State.Bills.Where(b => !State.IsBillPaid(b)).OrderBy(b => b.EffectiveDueDate),
-            "Paid"   => State.Bills.Where(b => State.IsBillPaid(b)).OrderByDescending(b => b.EffectiveDueDate),
-            _        => State.Bills.OrderBy(b => b.EffectiveDueDate)
-        };
-        if (!string.IsNullOrWhiteSpace(_search))
-            q = q.Where(b => b.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
-        return q;
+        return outstanding
+            .Concat(State.GetUpcomingBillOccurrences(DateTime.Today, DateTime.Today.AddDays(aheadDays)))
+            .GroupBy(o => (o.Bill.Id, o.DueDate.Date))
+            .Select(g => g.First())
+            .ToList();
     }
 
-    private string GetDangerBadge(Bill bill)
+    private List<BillOccurrencePreview> GetFiltered()
+    {
+        IEnumerable<BillOccurrencePreview> q = filter switch
+        {
+            "Unpaid" => State.GetOutstandingBillOccurrences().OrderBy(o => o.DueDate),
+            "Paid"   => State.GetPaidBillOccurrences(),
+            _        => State.GetOutstandingBillOccurrences()
+                            .Concat(State.GetPaidBillOccurrences())
+                            .OrderBy(o => o.DueDate)
+        };
+        if (!string.IsNullOrWhiteSpace(_search))
+            q = q.Where(o => o.Bill.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+        return q.ToList();
+    }
+
+    private string GetDangerBadge(Bill bill, DateTime dueDate)
     {
         var (covered, _) = State.GetBillCoverage(bill);
-        if (!covered && bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Danger";
+        if (!covered && dueDate.Date <= State.NextPayDate.Date) return "Danger";
         if (!covered) return "Short";
-        if (bill.EffectiveDueDate.Date <= State.NextPayDate.Date) return "Ready";
+        if (dueDate.Date <= State.NextPayDate.Date) return "Ready";
         return string.Empty;
     }
 
     private readonly HashSet<int> _celebratedBillIds = new();
 
-    private async Task TogglePaid(Bill bill)
+    private async Task TogglePaid(BillOccurrencePreview occ)
     {
-        var markingPaid = !State.IsBillPaid(bill);
-        if (markingPaid && DateTime.Today < bill.EffectiveDueDate.Date)
-            _celebratedBillIds.Add(bill.Id);
-        await State.MarkBillPaidAsync(bill.Id, markingPaid);
+        var markingPaid = !State.IsBillOccurrencePaid(occ.Bill, occ.DueDate);
+        if (markingPaid && DateTime.Today < occ.DueDate.Date)
+            _celebratedBillIds.Add(occ.Bill.Id);
+        await State.MarkBillOccurrencePaidAsync(occ.Bill.Id, occ.DueDate, markingPaid);
     }
 
     private async Task MarkDuePaidAsync()
     {
-        var dueNow = State.Bills
-            .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= DateTime.Today)
+        var dueNow = State.GetOutstandingBillOccurrences()
+            .Where(o => o.DueDate.Date <= DateTime.Today)
             .ToList();
 
-        foreach (var bill in dueNow)
-            await State.MarkBillPaidAsync(bill.Id, true);
+        foreach (var occ in dueNow)
+            await State.MarkBillOccurrencePaidAsync(occ.Bill.Id, occ.DueDate, true);
     }
 
     private static string DueLabel(DateTime date)
