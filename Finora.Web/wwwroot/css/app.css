@@ -131,7 +131,19 @@ button, a, input, select, textarea, [role="button"] {
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
+    /* NOT -webkit-overflow-scrolling:touch — every page-level modal (Add Bill,
+       Add Debt, trips, etc.) renders as a DOM descendant of this scrolling
+       container via @Body. That legacy property has a longstanding WebKit bug
+       where position:fixed descendants of a touch-scrolling ancestor get
+       shifted by the ancestor's scroll offset (worst right after a scroll),
+       which clipped/misplaced the modal action bar depending on this page's
+       scroll position — not anything in the modal's own CSS. Modern WKWebView
+       (iOS 13+) already does native momentum scrolling on overflow-y:auto
+       without this property, so dropping it costs nothing and removes the
+       containing-block bug at its source. The FAB-triggered Add modals in
+       MainLayout never had this bug because they're siblings of .page-content,
+       not descendants of it.
+    */
     overflow-anchor: none;
     overscroll-behavior-y: contain;
     touch-action: pan-x pan-y;
