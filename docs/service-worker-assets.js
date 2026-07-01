@@ -33,11 +33,11 @@
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-4Aw9xqMrdw2\/eEHj6jofSvf\/elBp2s2VjeBazyrxyyQ=",
+      "hash": "sha256-94n501cGmSHSYy6XJdVBLFsxJ9E3YjT3kDzFyWdtlCA=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-8Rz9vruwBRGbkdvQguFQSC+9+5KFrkpdhYM5qRsE0J8=",
+      "hash": "sha256-K82DpdZnZoEFP8Fo9JAdnqsn\/PdVogCZLK8\/NkrUpAI=",
       "url": "_framework\/Finora.Web.wasm"
     },
     {
@@ -213,7 +213,7 @@
       "url": "icons\/icon-512.png"
     },
     {
-      "hash": "sha256-mngaDgYK4ak2+UkXm+\/QHwUD1NQIgo+oKy3BILJmi8k=",
+      "hash": "sha256-cMg2CrizUnyE9MkyrQCfAa3qidHIsnUolMUHd9yn33w=",
       "url": "index.html"
     },
     {
@@ -225,9 +225,9 @@
       "url": "js\/push.js"
     },
     {
-      "hash": "sha256-f+LdeGj76X4ijwbirb9U8oB7OjUWVn+iEHAH0uDG\/PA=",
+      "hash": "sha256-KYw4Lf8GqSPq2fQoTGPeUPHjl\/Sa2XvHdYxIo98oEGU=",
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "Ql2L6oY9"
+  "version": "5H+T5Aab"
 };

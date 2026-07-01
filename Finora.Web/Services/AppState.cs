@@ -237,6 +237,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public void ForceResetSyncGuard() => _syncInProgress = false;
 
     public string LastSyncChangeSummary { get; private set; } = "No sync changes summarized yet.";
+    public string? LastSyncPushStatus { get; private set; }
 
     public bool HasPendingChanges =>
         _pendingNewTransactions.Count > 0 ||
@@ -5166,6 +5167,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .ToHashSet();
 
             PushPayload? sentPush = null;
+            LastSyncPushStatus = null;
 
             if (HasPendingChanges)
             {
@@ -5232,6 +5234,14 @@ public class AppState(IndexedDbService db, SyncService sync)
                 var pushed = pushedToCloud || pushedToPc;
                 if (pushed)
                     sentPush = push;
+
+                // Record push outcome for SyncNowAsync to show a meaningful status.
+                if (!pushed)
+                    LastSyncPushStatus = sync.LastPushError ?? $"push not accepted (cloud={sync.HasCloudSync}, pc={sync.HasLocalSync})";
+                else if (!pushedToCanonicalStore)
+                    LastSyncPushStatus = sync.LastPushError ?? "finance_sync not updated (merged write failed)";
+                else
+                    LastSyncPushStatus = null;
 
                 // Only clear persisted overrides/tombstones and drop entries from the
                 // pending queues once finance_sync — the snapshot AutoSyncAsync actually

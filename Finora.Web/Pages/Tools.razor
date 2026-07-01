@@ -466,9 +466,9 @@ else if (_tab == "Cleanup")
         try
         {
             await State.SyncAndReloadAsync();
-            if (State.HasPendingChanges && Sync.LastPushError is not null)
+            if (State.HasPendingChanges && State.LastSyncPushStatus is not null)
             {
-                _syncStatus = $"Saved locally — cloud write failed ({Sync.LastPushError}). Will retry. Don't repair the queue.";
+                _syncStatus = $"Saved locally — cloud write failed: {State.LastSyncPushStatus}. Will retry. Don't repair the queue.";
                 _syncStatusColor = "var(--amber)";
             }
             else if (State.HasPendingChanges && Sync.LastError is not null)
@@ -478,7 +478,7 @@ else if (_tab == "Cleanup")
             }
             else if (State.HasPendingChanges)
             {
-                _syncStatus = "Changes queued — cloud write failed silently. Check Supabase permissions.";
+                _syncStatus = $"Changes pending after sync (push={State.LastSyncPushStatus ?? "null"}, pullErr={Sync.LastError ?? "null"})";
                 _syncStatusColor = "var(--amber)";
             }
             else
