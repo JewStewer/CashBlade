@@ -239,13 +239,13 @@
     <!-- Weekly Commitments breakdown: bills grouped by account + savings/trips -->
     @if (State.WeeklyIncome > 0 && (State.Bills.Any() || State.SavingsGoals.Any(g => g.WeeklyContributionDollars > 0) || State.Trips.Any(t => t.WeeklyContributionDollars > 0)))
     {
-        // Bills grouped by account name, sorted by account name then due date
+        // Bills grouped by account name, sorted by account name then bill name
         var wkBillGroups = State.Bills
-            .Select(b => (b.Name, b.AmountDollars, b.Frequency, b.AccountName, Weekly: BillWeekly(b)))
+            .Select(b => (Bill: b, Weekly: BillWeekly(b)))
             .Where(x => x.Weekly > 0)
-            .GroupBy(x => string.IsNullOrWhiteSpace(x.AccountName) ? "Other" : x.AccountName)
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Bill.AccountName) ? "Other" : x.Bill.AccountName)
             .OrderBy(g => g.Key)
-            .Select(g => (Account: g.Key, Total: g.Sum(x => x.Weekly), Bills: g.OrderBy(x => x.Name).ToList()))
+            .Select(g => (Account: g.Key, Total: g.Sum(x => x.Weekly), Bills: g.OrderBy(x => x.Bill.Name).ToList()))
             .ToList();
         var wkGoalRows = State.SavingsGoals
             .Where(g => g.WeeklyContributionDollars > 0)
@@ -288,11 +288,11 @@
                                 <span style="font-size:12px;font-weight:700;color:var(--text2)">@account</span>
                                 <span style="font-size:13px;font-weight:700;color:var(--teal)">@accountTotal.ToString("C")/wk</span>
                             </div>
-                            @foreach (var (name, amount, freq, _, weekly) in bills)
+                            @foreach (var (bill, weekly) in bills)
                             {
-                                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;padding-left:8px">
-                                    <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@name</span>
-                                    <span style="font-size:11px;color:var(--text3);flex-shrink:0">@FreqAbbr(freq) @amount.ToString("C")</span>
+                                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;padding-left:8px;cursor:pointer" @onclick="() => _billDraft = bill">
+                                    <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</span>
+                                    <span style="font-size:11px;color:var(--text3);flex-shrink:0">@FreqAbbr(bill.Frequency) @bill.AmountDollars.ToString("C")</span>
                                     <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@weekly.ToString("C")/wk</span>
                                 </div>
                             }
@@ -310,7 +310,7 @@
                         </div>
                         @foreach (var g in wkGoalRows)
                         {
-                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px">
+                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px;cursor:pointer" @onclick="() => _goalDraft = g">
                                 <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                                     @if (!string.IsNullOrEmpty(g.Emoji)) { <span>@g.Emoji </span> }
                                     @g.Name
@@ -320,7 +320,7 @@
                         }
                         @foreach (var t in wkTripRows)
                         {
-                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px">
+                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px;cursor:pointer" @onclick='() => SelectTopPill("Holiday")'>
                                 <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@t.Name holiday</span>
                                 <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@t.WeeklyContributionDollars.ToString("C")/wk</span>
                             </div>
