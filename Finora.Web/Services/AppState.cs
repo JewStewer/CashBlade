@@ -594,6 +594,27 @@ public class AppState(IndexedDbService db, SyncService sync)
             var transaction = FindTransactionForOverride(updated);
             if (transaction is null) continue;
 
+            // If the canonical store already reflects every field the override would
+            // write, WPF has already reconciled this change into finance_sync and we
+            // pulled it back. The override is stale — clear it and skip re-queuing so
+            // it stops appearing as a phantom "Edited transactions" entry on every load.
+            var resolvedCategory = ResolveCategory(updated.CategoryName, updated.CategoryId, updated.AmountCents);
+            var alreadyApplied =
+                transaction.Date.Date == updated.Date.Date &&
+                transaction.Description == updated.Description &&
+                transaction.AmountCents == updated.AmountCents &&
+                transaction.AccountId == updated.AccountId &&
+                transaction.CategoryId == resolvedCategory.Id &&
+                transaction.TransferId == updated.TransferId &&
+                transaction.UpTransactionId == updated.UpTransactionId &&
+                transaction.IsUnnecessary == updated.IsUnnecessary &&
+                transaction.IsReimbursement == updated.IsReimbursement;
+            if (alreadyApplied)
+            {
+                await db.ClearTransactionOverrideAsync(updated.Id);
+                continue;
+            }
+
             ApplyTransactionEdit(transaction, updated);
             await db.PutAsync("transactions", transaction);
             QueueUpdatedTransaction(transaction);
@@ -674,6 +695,25 @@ public class AppState(IndexedDbService db, SyncService sync)
                 if (debt.Id < 0 && !_pendingNewDebts.Any(d => d.Id == debt.Id))
                     _pendingNewDebts.Add(debt);
                 continue;
+            }
+
+            // If the IDs match and the canonical store already reflects every field
+            // the override would write, WPF has reconciled this change. The override
+            // is stale — clear it to stop phantom "Debt changes" appearing every load.
+            if (debt.Id == existing.Id && existing.Id > 0)
+            {
+                var alreadyApplied =
+                    existing.Name == debt.Name &&
+                    existing.BalanceCents == debt.BalanceCents &&
+                    existing.MinimumPaymentCents == debt.MinimumPaymentCents &&
+                    existing.PaymentPeriod == debt.PaymentPeriod &&
+                    existing.InterestRate == debt.InterestRate &&
+                    existing.OriginalBalanceCents == debt.OriginalBalanceCents;
+                if (alreadyApplied)
+                {
+                    await db.ClearDebtOverrideAsync(existing.Id);
+                    continue;
+                }
             }
 
             CopyDebtFields(debt, existing);
