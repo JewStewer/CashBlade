@@ -358,6 +358,19 @@ public class AppState(IndexedDbService db, SyncService sync)
     // own OnChange once the reapply is done, so nothing is lost by skipping this one.
     private bool _suppressLoadOnChange;
 
+    // Suppresses ApplyPersisted* re-seeding inside LoadStoresAsync when called
+    // from SyncAndReloadAsync. Those methods are designed for app-restart
+    // restoration: they read IndexedDB overrides and unconditionally push them
+    // back onto the in-memory _pending* lists. During a live sync the _pending*
+    // lists already reflect the correct intent (cleared after a successful push,
+    // or still populated if the push failed), so re-seeding from IndexedDB would
+    // either create phantom pending changes (when ClearDebtOverrideAsync fails
+    // silently after a successful push, or when HasPendingChanges was false but a
+    // stale override remained in IndexedDB) or double-queue the same change.
+    // ReapplyPendingChangesAsync() runs immediately after LoadAsync() inside
+    // SyncAndReloadAsync and reapplies whatever is legitimately in the lists.
+    private bool _suppressPendingReseed;
+
     public async Task LoadAsync()
     {
         await LoadStoresAsync();
@@ -398,19 +411,26 @@ public class AppState(IndexedDbService db, SyncService sync)
         _unrepaidLentIds = LentTransactions.Where(IsLentOutstanding).Select(l => l.Id).ToHashSet();
 
         // Apply any phone-side overrides that survived a cloud replace or app restart.
-        await ApplyPersistedTransactionOverridesAsync();
-        await ApplyPersistedTransactionDeletesAsync();
-        await ApplyPersistedBillDeletesAsync();
-        await ApplyPersistedDebtDeletesAsync();
-        await ApplyPersistedSavingsGoalDeletesAsync();
-        await ApplyPersistedTripDeletesAsync();
-        await ApplyPersistedTripOverridesAsync();
-        await ApplyPersistedBillOverridesAsync();
-        await ApplyPersistedBillEditOverridesAsync();
-        await ApplyPersistedDebtOverridesAsync();
-        await ApplyPersistedAccountOverridesAsync();
-        await ApplyPersistedSavingsGoalOverridesAsync();
-        await ApplyPersistedSettingOverridesAsync();
+        // Skipped during mid-session sync reloads (_suppressPendingReseed) because the
+        // in-memory _pending* lists already carry the correct intent and
+        // ReapplyPendingChangesAsync() runs right after to reapply them — re-seeding
+        // from IndexedDB here would create phantom pending changes.
+        if (!_suppressPendingReseed)
+        {
+            await ApplyPersistedTransactionOverridesAsync();
+            await ApplyPersistedTransactionDeletesAsync();
+            await ApplyPersistedBillDeletesAsync();
+            await ApplyPersistedDebtDeletesAsync();
+            await ApplyPersistedSavingsGoalDeletesAsync();
+            await ApplyPersistedTripDeletesAsync();
+            await ApplyPersistedTripOverridesAsync();
+            await ApplyPersistedBillOverridesAsync();
+            await ApplyPersistedBillEditOverridesAsync();
+            await ApplyPersistedDebtOverridesAsync();
+            await ApplyPersistedAccountOverridesAsync();
+            await ApplyPersistedSavingsGoalOverridesAsync();
+            await ApplyPersistedSettingOverridesAsync();
+        }
         await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: false);
         await ApplyTransactionCategoryRulesAsync(persistTransactionOverrides: false);
     }
@@ -5406,8 +5426,9 @@ public class AppState(IndexedDbService db, SyncService sync)
                 {
                     var tripsBeforeLoad = Trips.Where(t => t.Id < 0).Select(CloneTrip).ToList();
                     _suppressLoadOnChange = true;
+                    _suppressPendingReseed = true;
                     try { await LoadAsync(); }
-                    finally { _suppressLoadOnChange = false; }
+                    finally { _suppressLoadOnChange = false; _suppressPendingReseed = false; }
                     AdoptPulledTripIds(tripsBeforeLoad);
                     LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
                     // Sync wipes IndexedDB and replaces with server data; reapply any

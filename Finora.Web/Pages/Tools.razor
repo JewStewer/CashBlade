@@ -478,7 +478,7 @@ else if (_tab == "Cleanup")
             }
             else if (State.HasPendingChanges)
             {
-                _syncStatus = $"Changes pending after sync (push={State.LastSyncPushStatus ?? "null"}, pullErr={Sync.LastError ?? "null"})";
+                _syncStatus = "Saved locally — will push on next sync.";
                 _syncStatusColor = "var(--amber)";
             }
             else
