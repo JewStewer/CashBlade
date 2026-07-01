@@ -236,6 +236,98 @@
         }
     </div>
 
+    <!-- Weekly Commitments breakdown: per-bill/goal/trip weekly cost -->
+    @if (State.WeeklyIncome > 0 && (State.Bills.Any() || State.SavingsGoals.Any(g => g.WeeklyContributionDollars > 0) || State.Trips.Any(t => t.WeeklyContributionDollars > 0)))
+    {
+        var wkBillRows = State.Bills
+            .OrderBy(b => b.EffectiveDueDate)
+            .ThenBy(b => b.Name)
+            .Select(b => (b.Name, b.AmountDollars, b.Frequency, Weekly: BillWeekly(b)))
+            .Where(x => x.Weekly > 0)
+            .ToList();
+        var wkGoalRows = State.SavingsGoals
+            .Where(g => g.WeeklyContributionDollars > 0)
+            .OrderBy(g => g.TargetDate ?? DateTime.MaxValue)
+            .ThenBy(g => g.Name)
+            .ToList();
+        var wkTripRows = State.Trips
+            .Where(t => t.WeeklyContributionDollars > 0)
+            .OrderBy(t => t.Name)
+            .ToList();
+        var totalBillsWk = wkBillRows.Sum(x => x.Weekly);
+        var totalSavingsWk = wkGoalRows.Sum(g => g.WeeklyContributionDollars) + wkTripRows.Sum(t => t.WeeklyContributionDollars);
+        var grandTotal = totalBillsWk + totalSavingsWk;
+
+        <div class="card" style="margin-top:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none" @onclick="() => _showWeeklyBreakdown = !_showWeeklyBreakdown">
+                <div>
+                    <div class="section-title">Weekly Commitments</div>
+                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">What takes money each week</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                    <div style="font-size:15px;font-weight:700;color:var(--red)">@grandTotal.ToString("C")<span style="font-size:10px;font-weight:400;color:var(--text3)">/wk</span></div>
+                    <div style="font-size:10px;color:var(--text3);margin-top:2px">@(_showWeeklyBreakdown ? "▲ hide" : "▼ show")</div>
+                </div>
+            </div>
+
+            @if (_showWeeklyBreakdown)
+            {
+                @if (wkBillRows.Any())
+                {
+                    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+                        <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);margin-bottom:8px">
+                            <span>Bills</span>
+                            <span>@totalBillsWk.ToString("C")/wk</span>
+                        </div>
+                        @foreach (var (name, amount, freq, weekly) in wkBillRows)
+                        {
+                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px">
+                                <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@name</span>
+                                <span style="font-size:11px;color:var(--text3);flex-shrink:0">@FreqAbbr(freq) @amount.ToString("C")</span>
+                                <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@weekly.ToString("C")/wk</span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (wkGoalRows.Any() || wkTripRows.Any())
+                {
+                    <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px">
+                        <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);margin-bottom:8px">
+                            <span>Savings & Holidays</span>
+                            <span>@totalSavingsWk.ToString("C")/wk</span>
+                        </div>
+                        @foreach (var g in wkGoalRows)
+                        {
+                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px">
+                                <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                                    @if (!string.IsNullOrEmpty(g.Emoji)) { <span>@g.Emoji </span> }
+                                    @g.Name
+                                </span>
+                                <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@g.WeeklyContributionDollars.ToString("C")/wk</span>
+                            </div>
+                        }
+                        @foreach (var t in wkTripRows)
+                        {
+                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px">
+                                <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@t.Name holiday</span>
+                                <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@t.WeeklyContributionDollars.ToString("C")/wk</span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:baseline">
+                    <span style="font-size:13px;color:var(--text3)">Total committed</span>
+                    <div style="text-align:right">
+                        <span style="font-size:15px;font-weight:700;color:var(--red)">@grandTotal.ToString("C")/wk</span>
+                        <div style="font-size:11px;color:var(--text3)">@((grandTotal / State.WeeklyIncome).ToString("P0")) of @State.WeeklyIncome.ToString("C") income</div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
     @if (State.WeeklyIncome > 0)
     {
         var todayInPeriod = DateTime.Today.Date < PeriodRange.From.Date
@@ -1291,6 +1383,7 @@ else if (_tab == "Holiday")
 
 @code {
     private string _tab = "Overview";
+    private bool _showWeeklyBreakdown;
     private SavingsGoal? _goalDraft;
     private string? _expandedGoalGroupName;
 
@@ -1434,6 +1527,26 @@ else if (_tab == "Holiday")
         await State.SetBudgetOverrideAsync("Unplanned", _smartSuggestion.Unplanned.ToString(inv));
         _smartSuggestion = null;
     }
+
+    private static decimal BillWeekly(Bill b) => Math.Round(b.Frequency switch
+    {
+        BillFrequency.Weekly      => b.AmountDollars,
+        BillFrequency.Fortnightly => b.AmountDollars / 2m,
+        BillFrequency.Monthly     => b.AmountDollars / 4m,
+        BillFrequency.Quarterly   => b.AmountDollars / 12m,
+        BillFrequency.Yearly      => b.AmountDollars / 52m,
+        _                         => b.AmountDollars / 4m
+    }, 2);
+
+    private static string FreqAbbr(BillFrequency freq) => freq switch
+    {
+        BillFrequency.Weekly      => "weekly",
+        BillFrequency.Fortnightly => "fortnightly",
+        BillFrequency.Monthly     => "monthly",
+        BillFrequency.Quarterly   => "quarterly",
+        BillFrequency.Yearly      => "yearly",
+        _                         => "monthly"
+    };
 
     private IEnumerable<(string Label, string Field, decimal Amount, string Color)> EditableBudgetRows()
     {
