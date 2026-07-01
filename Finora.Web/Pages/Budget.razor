@@ -657,6 +657,9 @@
                             <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">@account.Name already has a tracked goal — this will replace it.</div>
                         }
                     }
+                    <button class="btn btn-outline btn-sm btn-full" style="margin-top:8px" @onclick="() => StartAddGoalAsBill(cycleNeeded)">
+                        Add @cycleNeeded.ToString("C")/@cycleLabel/pay to Budget as Bill
+                    </button>
                 </div>
             }
         }
@@ -1819,6 +1822,24 @@ else if (_tab == "Holiday")
                 <= 6 => BillFrequency.Monthly,
                 <= 26 => BillFrequency.Quarterly,
                 _ => BillFrequency.Yearly
+            }
+        };
+    }
+
+    private void StartAddGoalAsBill(decimal perCycleAmount)
+    {
+        var deadline = GoalTargetDate;
+        _billDraft = new Bill
+        {
+            Name = $"Save {_affordAmount:C}",
+            AmountDollars = perCycleAmount,
+            DueDate = deadline,
+            NextPayDate = deadline,
+            Frequency = State.PayIntervalDays switch
+            {
+                14 => BillFrequency.Fortnightly,
+                28 => BillFrequency.Monthly,
+                _ => BillFrequency.Weekly
             }
         };
     }
