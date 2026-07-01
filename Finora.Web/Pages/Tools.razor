@@ -471,9 +471,14 @@ else if (_tab == "Cleanup")
                 _syncStatus = $"Saved locally — cloud write failed ({Sync.LastPushError}). Will retry. Don't repair the queue.";
                 _syncStatusColor = "var(--amber)";
             }
+            else if (State.HasPendingChanges && Sync.LastError is not null)
+            {
+                _syncStatus = $"Changes queued — pull also failed: {Sync.LastError}";
+                _syncStatusColor = "var(--red)";
+            }
             else if (State.HasPendingChanges)
             {
-                _syncStatus = "Pulled latest data. Local changes still pending — will retry on next sync.";
+                _syncStatus = "Changes queued — cloud write failed silently. Check Supabase permissions.";
                 _syncStatusColor = "var(--amber)";
             }
             else

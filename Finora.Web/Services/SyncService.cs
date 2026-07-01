@@ -784,7 +784,9 @@ public class SyncService(HttpClient http, IndexedDbService db)
                 return null;
             }
 
-            return JsonSerializer.Deserialize<SyncPayload>(rows[0].Payload, _opts);
+            var result = JsonSerializer.Deserialize<SyncPayload>(rows[0].Payload, _opts);
+            if (result is null) LastPushError ??= "cloud fetch: payload deserialized as null";
+            return result;
         }
         catch (Exception ex)
         {
@@ -800,11 +802,10 @@ public class SyncService(HttpClient http, IndexedDbService db)
     public async Task<bool> PushFullSyncAsync(SyncPayload payload)
     {
         if (!HasCloudSync) return false;
-        if (IsEmptyFinancePayload(payload) || IsMissingPlanningPayload(payload))
+        if (IsEmptyFinancePayload(payload))
         {
-            LastError = IsEmptyFinancePayload(payload)
-                ? "Refusing to push an empty finance snapshot. Sync from Windows or Supabase first."
-                : "Refusing to push a snapshot with no bills, debts, savings goals, or budget data.";
+            LastPushError = "Refused: merged snapshot is empty — sync from cloud first.";
+            LastError = "Refusing to push an empty finance snapshot. Sync from Windows or Supabase first.";
             OnSyncStateChanged?.Invoke();
             return false;
         }

@@ -4940,7 +4940,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var u in push.UpdatedBills)
         {
             var existing = cloud.Bills.FirstOrDefault(b => b.Id == u.Id);
-            if (existing is null) continue;
+            if (existing is null) { cloud.Bills.Add(u); continue; }
             existing.Name = u.Name;
             existing.AccountId = u.AccountId;
             existing.AmountCents = u.AmountCents;
@@ -4966,6 +4966,12 @@ public class AppState(IndexedDbService db, SyncService sync)
                 existing.PaymentPeriod = u.PaymentPeriod;
                 existing.InterestRate = u.InterestRate;
                 existing.OriginalBalanceCents = u.OriginalBalanceCents;
+            }
+            else
+            {
+                // Debt not found in cloud snapshot — cloud may be sparse or
+                // the debt was never pushed. Add it so the edit isn't lost.
+                cloud.Debts.Add(u);
             }
         }
         cloud.Debts.AddRange(push.NewDebts);
