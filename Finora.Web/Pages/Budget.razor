@@ -603,7 +603,7 @@
                             var paceWeeks = Math.Max((int)Math.Ceiling(cycles * multiplier), 1);
                             var cycleAmount = Math.Round(_affordAmount / paceWeeks, 2);
                             var paceLeftOver = cycleSpare - cycleAmount;
-                            var paceDate = State.NthPaydayFromNow(paceWeeks);
+                            var paceDate = State.NthPaydayFromNow(paceWeeks + 1);
                             var isSelected = paceWeeks == cycles;
                             <div @onclick="() => SelectPaceAsync(paceWeeks)" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:var(--surface);border:1px solid @(isSelected ? color : "transparent")">
                                 <div>
@@ -1491,7 +1491,7 @@ else if (_tab == "Holiday")
         _tab = tab;
     }
     private Debt? _debtDraft;
-    private DateTime GoalTargetDate => State.NthPaydayFromNow(Math.Max(_goalWeeks, 1));
+    private DateTime GoalTargetDate => State.NthPaydayFromNow(Math.Max(_goalWeeks, 1) + 1);
     private string CycleLabel => State.PayIntervalDays switch { 14 => "fn", 28 => "4wk", _ => "wk" };
 
     // Multipliers applied to the user's chosen "Over how many weeks?" value —
