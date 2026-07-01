@@ -311,6 +311,63 @@ public class AppState(IndexedDbService db, SyncService sync)
         items.Add(new SyncQueueItem { Label = label, Count = count, Kind = kind, Detail = string.IsNullOrWhiteSpace(detail) ? null : detail });
     }
 
+    public async Task DismissQueueKindAsync(string kind)
+    {
+        switch (kind)
+        {
+            case "Transactions":
+                _pendingNewTransactions.Clear();
+                _pendingUpdatedTransactions.Clear();
+                _pendingDeletedTransactionIds.Clear();
+                _pendingDeletedTransactions.Clear();
+                await db.ClearTransactionOverridesAsync();
+                await db.ClearTransactionDeletesAsync();
+                break;
+            case "Bills":
+                _pendingNewBills.Clear();
+                _pendingUpdatedBills.Clear();
+                _pendingBillStatuses.Clear();
+                _pendingDeletedBillIds.Clear();
+                _pendingDeletedBills.Clear();
+                await db.ClearBillEditOverridesAsync();
+                await db.ClearBillOverridesAsync();
+                await db.ClearBillDeletesAsync();
+                break;
+            case "Debts":
+                _pendingNewDebts.Clear();
+                _pendingUpdatedDebts.Clear();
+                _pendingDeletedDebtIds.Clear();
+                _pendingNewDebtPayments.Clear();
+                _pendingDeletedDebtPaymentIds.Clear();
+                await db.ClearDebtOverridesAsync();
+                await db.ClearDebtDeletesAsync();
+                break;
+            case "Accounts":
+                _pendingUpdatedAccounts.Clear();
+                await db.ClearAccountOverridesAsync();
+                break;
+            case "Settings":
+                _pendingUpdatedSettings.Clear();
+                await db.ClearSettingOverridesAsync();
+                break;
+            case "Savings":
+                _pendingNewSavingsGoals.Clear();
+                _pendingUpdatedSavingsGoals.Clear();
+                _pendingDeletedSavingsGoalIds.Clear();
+                await db.ClearSavingsGoalOverridesAsync();
+                await db.ClearSavingsGoalDeletesAsync();
+                break;
+            case "Trips":
+                _pendingNewTrips.Clear();
+                _pendingUpdatedTrips.Clear();
+                _pendingDeletedTripIds.Clear();
+                await db.ClearTripOverridesAsync();
+                await db.ClearTripDeletesAsync();
+                break;
+        }
+        OnChange?.Invoke();
+    }
+
     public async Task<(int Edits, int Deletes)> GetPersistedTransactionIntentCountsAsync()
     {
         var edits = await db.GetPendingTransactionOverridesAsync();

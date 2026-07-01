@@ -47,7 +47,10 @@
                     <div class="inset-card" style="display:flex;flex-direction:column;gap:2px;padding:8px">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                             <span style="font-size:13px;color:var(--text2)">@item.Label</span>
-                            <span class="badge badge-gray">@item.Count</span>
+                            <div style="display:flex;align-items:center;gap:6px">
+                                <span class="badge badge-gray">@item.Count</span>
+                                <button style="background:none;border:none;padding:2px 4px;font-size:14px;color:var(--text3);cursor:pointer;line-height:1" disabled="@_busy" @onclick="() => DismissItemAsync(item)" title="Remove from queue">×</button>
+                            </div>
                         </div>
                         @if (!string.IsNullOrEmpty(item.Detail))
                         {
@@ -502,6 +505,23 @@ else if (_tab == "Cleanup")
         {
             _busy = false;
         }
+    }
+
+    private async Task DismissItemAsync(SyncQueueItem item)
+    {
+        var what = string.IsNullOrEmpty(item.Detail) ? item.Label : $"{item.Label} ({item.Detail})";
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Remove \"{what}\" from the sync queue?\n\n" +
+            "If this change was never pushed to the cloud it will be lost. " +
+            "Only dismiss if you know the cloud is already up to date, " +
+            "or you no longer want this change.");
+        if (!ok) return;
+
+        _busy = true;
+        await State.DismissQueueKindAsync(item.Kind);
+        _busy = false;
+        _syncStatus = $"Dismissed: {item.Label}.";
+        _syncStatusColor = "var(--amber)";
     }
 
     private async Task ConfirmRepairAsync()
