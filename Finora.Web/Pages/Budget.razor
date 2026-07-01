@@ -560,7 +560,7 @@
         {
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
                 <div style="flex:1;min-width:120px">
-                    <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Over how many weeks?</label>
+                    <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Over how many pay cycles?</label>
                     <input class="form-input" type="number" min="1" step="1" @bind="_goalWeeks" @bind:event="oninput" @onchange="OnGoalWeeksChanged" style="font-size:14px" />
                 </div>
                 <div style="flex:1;min-width:120px">
@@ -581,37 +581,38 @@
 
             @if (_affordAmount > 0)
             {
-                var weeks = Math.Max(_goalWeeks, 1);
+                var cycles = Math.Max(_goalWeeks, 1);
                 var selectedTargetDate = GoalTargetDate;
-                var weeklyNeeded = Math.Round(_affordAmount / weeks, 2);
-                var weeklySpare = State.BudgetLeftover;
-                var leftOver = weeklySpare - weeklyNeeded;
-                var ratio = weeklySpare > 0 ? weeklyNeeded / weeklySpare : 999m;
+                var cycleSpare = State.BudgetLeftover * (decimal)State.PayIntervalDays / 7m;
+                var cycleNeeded = Math.Round(_affordAmount / cycles, 2);
+                var leftOver = cycleSpare - cycleNeeded;
+                var ratio = cycleSpare > 0 ? cycleNeeded / cycleSpare : 999m;
                 var (verdictIcon, verdict, verdictColor) =
                     ratio < 0.5m ? ("check", "Comfortable — easily on track", "var(--green)") :
                     ratio <= 1m  ? ("alert-triangle", "Tight — uses most of your spare budget", "var(--amber)") :
                                    ("x", "Short — not enough spare to hit this goal", "var(--red)");
                 var account = State.AffordabilityGoalAccount;
+                var cycleLabel = CycleLabel;
 
-                @if (weeklySpare > 0)
+                @if (cycleSpare > 0)
                 {
                     <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
                         <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:600">Savings pace for @_affordAmount.ToString("C")</div>
                         @foreach (var (label, multiplier, color) in PaceOptions)
                         {
-                            var paceWeeks = Math.Max((int)Math.Ceiling(weeks * multiplier), 1);
-                            var weeklyAmount = Math.Round(_affordAmount / paceWeeks, 2);
-                            var paceLeftOver = weeklySpare - weeklyAmount;
-                            var paceDate = DateTime.Today.AddDays(paceWeeks * 7);
-                            var isSelected = paceWeeks == weeks;
+                            var paceWeeks = Math.Max((int)Math.Ceiling(cycles * multiplier), 1);
+                            var cycleAmount = Math.Round(_affordAmount / paceWeeks, 2);
+                            var paceLeftOver = cycleSpare - cycleAmount;
+                            var paceDate = State.NthPaydayFromNow(paceWeeks);
+                            var isSelected = paceWeeks == cycles;
                             <div @onclick="() => SelectPaceAsync(paceWeeks)" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:var(--surface);border:1px solid @(isSelected ? color : "transparent")">
                                 <div>
                                     <div style="font-size:13px;font-weight:700;color:@color">@label</div>
-                                    <div style="font-size:11px;color:var(--text3)">@weeklyAmount.ToString("C")/wk</div>
-                                    <div style="font-size:11px;color:@(paceLeftOver>=0?"var(--green)":"var(--red)")">@paceLeftOver.ToString("C")/wk left</div>
+                                    <div style="font-size:11px;color:var(--text3)">@cycleAmount.ToString("C")/@cycleLabel</div>
+                                    <div style="font-size:11px;color:@(paceLeftOver>=0?"var(--green)":"var(--red)")">@paceLeftOver.ToString("C")/@cycleLabel left</div>
                                 </div>
                                 <div style="text-align:right">
-                                    <div style="font-size:13px;font-weight:600">@paceWeeks wk@(paceWeeks == 1 ? "" : "s")</div>
+                                    <div style="font-size:13px;font-weight:600">@paceWeeks pay@(paceWeeks == 1 ? "" : "s")</div>
                                     <div style="font-size:11px;color:var(--text3)">by @paceDate.ToString("dd MMM yy")</div>
                                 </div>
                             </div>
@@ -623,15 +624,15 @@
                     <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                         <span style="color:var(--text3)">Need to save</span>
-                        <span style="font-weight:600">@weeklyNeeded.ToString("C")/wk for @weeks wk@(weeks == 1 ? "" : "s")</span>
+                        <span style="font-weight:600">@cycleNeeded.ToString("C")/@cycleLabel for @cycles pay@(cycles == 1 ? "" : "s")</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;font-size:13px">
                         <span style="color:var(--text3)">Your spare budget</span>
-                        <span style="font-weight:600;color:@(weeklySpare>=weeklyNeeded?"var(--green)":"var(--red)")">@weeklySpare.ToString("C")/wk</span>
+                        <span style="font-weight:600;color:@(cycleSpare>=cycleNeeded?"var(--green)":"var(--red)")">@cycleSpare.ToString("C")/@cycleLabel</span>
                     </div>
                     <div style="border-top:1px solid var(--border);margin-top:5px;padding-top:8px;display:flex;justify-content:space-between;font-size:14px">
                         <span style="color:var(--text3)">Left over after saving</span>
-                        <span style="font-weight:700;color:@(leftOver>=0?"var(--green)":"var(--red)")">@leftOver.ToString("C")/wk</span>
+                        <span style="font-weight:700;color:@(leftOver>=0?"var(--green)":"var(--red)")">@leftOver.ToString("C")/@cycleLabel</span>
                     </div>
                     @if (account is not null)
                     {
@@ -644,8 +645,8 @@
                                 <span style="font-weight:600">@currentBalance.ToString("C")</span>
                             </div>
                             <div style="display:flex;justify-content:space-between;font-size:14px">
-                                <span style="color:var(--text3)">Projected in @weeks wk@(weeks == 1 ? "" : "s")</span>
-                                <span style="font-weight:700;color:@(weeklySpare>=weeklyNeeded?"var(--green)":"var(--red)")">@projected.ToString("C")</span>
+                                <span style="color:var(--text3)">Projected in @cycles pay@(cycles == 1 ? "" : "s")</span>
+                                <span style="font-weight:700;color:@(cycleSpare>=cycleNeeded?"var(--green)":"var(--red)")">@projected.ToString("C")</span>
                             </div>
                         </div>
                         <button class="btn btn-primary btn-sm btn-full" style="margin-top:10px" @onclick="() => SetSavingsGoalAsync(account.Id, projected, selectedTargetDate)">
@@ -1490,7 +1491,8 @@ else if (_tab == "Holiday")
         _tab = tab;
     }
     private Debt? _debtDraft;
-    private DateTime GoalTargetDate => DateTime.Today.AddDays(Math.Max(_goalWeeks, 1) * 7);
+    private DateTime GoalTargetDate => State.NthPaydayFromNow(Math.Max(_goalWeeks, 1));
+    private string CycleLabel => State.PayIntervalDays switch { 14 => "fn", 28 => "4wk", _ => "wk" };
 
     // Multipliers applied to the user's chosen "Over how many weeks?" value —
     // Aggressive halves it, Balanced matches it, Passive doubles it, so all
@@ -1616,7 +1618,7 @@ else if (_tab == "Holiday")
     {
         if (DateTime.TryParse(e.Value?.ToString(), out var targetDate))
         {
-            _goalWeeks = WeeksUntil(targetDate);
+            _goalWeeks = State.PaydaysBefore(targetDate);
             await SaveAffordabilitySettingsAsync();
         }
     }
@@ -1627,6 +1629,7 @@ else if (_tab == "Holiday")
         await SaveAffordabilitySettingsAsync();
     }
 
+    // Kept for any remaining callers; new code prefers State.PaydaysBefore.
     private static int WeeksUntil(DateTime targetDate)
     {
         var days = Math.Max((targetDate.Date - DateTime.Today).TotalDays, 1);

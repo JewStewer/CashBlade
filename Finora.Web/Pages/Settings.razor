@@ -212,6 +212,14 @@ else if (_tab == "Preferences")
             <label class="form-label">Next Pay Date</label>
             <input class="form-input" type="date" @bind="nextPayDate" />
         </div>
+        <div style="margin-top:10px">
+            <label class="form-label">Pay Frequency</label>
+            <div style="display:flex;gap:6px;margin-top:4px">
+                <button class="pill @(payIntervalDays==7?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick="() => SetPayInterval(7)">Weekly</button>
+                <button class="pill @(payIntervalDays==14?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick="() => SetPayInterval(14)">Fortnightly</button>
+                <button class="pill @(payIntervalDays==28?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick="() => SetPayInterval(28)">4-Weekly</button>
+            </div>
+        </div>
         <button class="btn btn-primary btn-sm" style="margin-top:10px" @onclick="SavePayDate">Save</button>
     </div>
 
@@ -389,6 +397,7 @@ else if (_tab == "Data")
     private string syncStatus = string.Empty, syncStatusColor = "var(--text3)";
     private string repairStatus = string.Empty, repairStatusColor = "var(--text3)";
     private DateTime nextPayDate = DateTime.Today;
+    private int payIntervalDays = 7;
     private bool testingSupabase;
     private string supabaseStatus = string.Empty, supabaseStatusColor = "var(--text3)";
     private int localEditIntents;
@@ -427,6 +436,7 @@ else if (_tab == "Data")
         supabaseKey = Sync.SupabaseKey ?? string.Empty;
         upBankToken = await UpSync.GetAccessTokenAsync();
         nextPayDate = State.NextPayDate;
+        payIntervalDays = State.PayIntervalDays;
         vapidPublicKey = State.VapidPublicKey;
         await RefreshLocalIntentCountsAsync();
         Sync.OnSyncStateChanged += StateHasChanged;
@@ -765,6 +775,12 @@ else if (_tab == "Data")
     private async Task SavePayDate()
     {
         await State.SaveSettingAsync("NextPayDate", nextPayDate.ToString("O"));
+    }
+
+    private async Task SetPayInterval(int days)
+    {
+        payIntervalDays = days;
+        await State.SaveSettingAsync("PayIntervalDays", days.ToString());
     }
 
     private async Task SetPeriod(string period)

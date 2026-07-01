@@ -73,6 +73,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     // ── Settings ──────────────────────────────────────────────────────────────
     public DateTime NextPayDate { get; private set; } = DateTime.Today;
     public int DaysUntilPayday => Math.Max((NextPayDate.Date - DateTime.Today).Days, 0);
+    public int PayIntervalDays { get; private set; } = 7;
     public string SummaryPeriod { get; private set; } = "Weekly";
     public bool NoSpendMode { get; private set; }
     public DateTime? NoSpendModeSince { get; private set; }
@@ -1148,6 +1149,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         else
             NextPayDate = DateTime.Today;
 
+        PayIntervalDays = int.TryParse(GetSetting("PayIntervalDays"), out var pid) && pid > 0 ? pid : 7;
         SummaryPeriod = GetSetting("SummaryPeriod") ?? "Weekly";
         NoSpendMode = string.Equals(GetSetting("NoSpendMode"), "true", StringComparison.OrdinalIgnoreCase);
         NoSpendModeSince = DateTime.TryParse(GetSetting("NoSpendModeSince"), out var noSpendSince) ? noSpendSince : null;
@@ -1952,7 +1954,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public (DateTime from, DateTime to) GetCurrentPayCycle()
     {
-        const int cycleDays = 7;
+        var cycleDays = PayIntervalDays;
         var today = DateTime.Today;
         var nextPayday = NextPayDate.Date;
         while (nextPayday < today)
@@ -1961,6 +1963,30 @@ public class AppState(IndexedDbService db, SyncService sync)
         var from = nextPayday == today ? today : nextPayday.AddDays(-cycleDays);
         var to = nextPayday == today ? today.AddDays(cycleDays - 1) : nextPayday.AddDays(-1);
         return (from, to);
+    }
+
+    /// <summary>Counts paydays that fall strictly before <paramref name="target"/>, minimum 1.</summary>
+    public int PaydaysBefore(DateTime target)
+    {
+        var payday = NextPayDate.Date;
+        while (payday < DateTime.Today)
+            payday = payday.AddDays(PayIntervalDays);
+        int count = 0;
+        while (payday < target.Date)
+        {
+            count++;
+            payday = payday.AddDays(PayIntervalDays);
+        }
+        return Math.Max(count, 1);
+    }
+
+    /// <summary>Returns the date of the <paramref name="n"/>th upcoming payday (1-indexed; 1 = next payday).</summary>
+    public DateTime NthPaydayFromNow(int n)
+    {
+        var payday = NextPayDate.Date;
+        while (payday < DateTime.Today)
+            payday = payday.AddDays(PayIntervalDays);
+        return payday.AddDays(PayIntervalDays * (Math.Max(n, 1) - 1));
     }
 
     // ── Week spending helpers ──────────────────────────────────────────────────
