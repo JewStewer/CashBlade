@@ -670,6 +670,21 @@ public class AppState(IndexedDbService db, SyncService sync)
             var bill = ov.Bill;
             var existing = Bills.FirstOrDefault(b => b.Id == bill.Id)
                 ?? Bills.FirstOrDefault(b => SameBillSnapshot(b, bill));
+            if (existing is null && bill.Id < 0)
+            {
+                // Negative-ID (temp) new-bill override: SameBillSnapshot requires an
+                // exact amount match, but the bill amount may differ from when the
+                // override was stored (e.g. the bill was edited on the PC after being
+                // reconciled by WPF). If a canonical bill with the same name already
+                // exists, WPF already reconciled the creation — clear the stale override.
+                var nameMatch = Bills.FirstOrDefault(b => b.Id > 0 &&
+                    string.Equals(b.Name.Trim(), bill.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (nameMatch is not null)
+                {
+                    await db.ClearBillEditOverrideAsync(bill.Id);
+                    continue;
+                }
+            }
             if (existing is null)
             {
                 Bills.Add(bill);
@@ -712,6 +727,21 @@ public class AppState(IndexedDbService db, SyncService sync)
             var debt = ov.Debt;
             var existing = Debts.FirstOrDefault(d => d.Id == debt.Id)
                 ?? Debts.FirstOrDefault(d => SameDebtSnapshot(d, debt));
+            if (existing is null && debt.Id < 0)
+            {
+                // Negative-ID (temp) new-debt override: SameDebtSnapshot requires a
+                // balance match, but the balance may have shifted since the override was
+                // stored (e.g. Afterpay purchases added/paid off). If a canonical debt
+                // with the same name already exists, WPF already reconciled the creation
+                // — clear the stale override instead of re-queuing a phantom new debt.
+                var nameMatch = Debts.FirstOrDefault(d => d.Id > 0 &&
+                    string.Equals(d.Name.Trim(), debt.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (nameMatch is not null)
+                {
+                    await db.ClearDebtOverrideAsync(debt.Id);
+                    continue;
+                }
+            }
             if (existing is null)
             {
                 Debts.Add(debt);
