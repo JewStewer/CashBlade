@@ -266,25 +266,49 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<SyncQueueItem> GetPendingSyncQueue()
     {
         var items = new List<SyncQueueItem>();
-        AddQueueItem(items, "New transactions", _pendingNewTransactions.Count, "Transactions");
-        AddQueueItem(items, "Edited transactions", _pendingUpdatedTransactions.Count, "Transactions");
+
+        AddQueueItem(items, "New transactions", _pendingNewTransactions.Count, "Transactions",
+            Names(_pendingNewTransactions.Select(t => t.Description)));
+        AddQueueItem(items, "Edited transactions", _pendingUpdatedTransactions.Count, "Transactions",
+            Names(_pendingUpdatedTransactions.Select(t => t.Description)));
         AddQueueItem(items, "Deleted transactions", Math.Max(_pendingDeletedTransactionIds.Count, _pendingDeletedTransactions.Count), "Transactions");
         AddQueueItem(items, "Bill paid/unpaid changes", _pendingBillStatuses.Count, "Bills");
-        AddQueueItem(items, "New bills", _pendingNewBills.Count, "Bills");
-        AddQueueItem(items, "Edited bills", _pendingUpdatedBills.Count, "Bills");
+        AddQueueItem(items, "New bills", _pendingNewBills.Count, "Bills",
+            Names(_pendingNewBills.Select(b => b.Name)));
+        AddQueueItem(items, "Edited bills", _pendingUpdatedBills.Count, "Bills",
+            Names(_pendingUpdatedBills.Select(b => b.Name)));
         AddQueueItem(items, "Deleted bills", Math.Max(_pendingDeletedBillIds.Count, _pendingDeletedBills.Count), "Bills");
-        AddQueueItem(items, "Budget/settings changes", _pendingUpdatedSettings.Count, "Settings");
-        AddQueueItem(items, "Account changes", _pendingUpdatedAccounts.Count, "Accounts");
-        AddQueueItem(items, "Debt changes", _pendingNewDebts.Count + _pendingUpdatedDebts.Count + _pendingDeletedDebtIds.Count + _pendingNewDebtPayments.Count + _pendingDeletedDebtPaymentIds.Count, "Debts");
-        AddQueueItem(items, "Savings goal changes", _pendingNewSavingsGoals.Count + _pendingUpdatedSavingsGoals.Count + _pendingDeletedSavingsGoalIds.Count, "Savings");
+        AddQueueItem(items, "Budget/settings changes", _pendingUpdatedSettings.Count, "Settings",
+            Names(_pendingUpdatedSettings.Select(s => s.Key)));
+        AddQueueItem(items, "Account changes", _pendingUpdatedAccounts.Count, "Accounts",
+            Names(_pendingUpdatedAccounts.Select(a => a.Name)));
+
+        var debtTotal = _pendingNewDebts.Count + _pendingUpdatedDebts.Count + _pendingDeletedDebtIds.Count
+                        + _pendingNewDebtPayments.Count + _pendingDeletedDebtPaymentIds.Count;
+        var debtParts = new List<string>();
+        if (_pendingNewDebts.Count > 0) debtParts.Add($"new: {Names(_pendingNewDebts.Select(d => d.Name))}");
+        if (_pendingUpdatedDebts.Count > 0) debtParts.Add($"edited: {Names(_pendingUpdatedDebts.Select(d => d.Name))}");
+        if (_pendingDeletedDebtIds.Count > 0) debtParts.Add($"{_pendingDeletedDebtIds.Count} deleted");
+        if (_pendingNewDebtPayments.Count > 0) debtParts.Add($"{_pendingNewDebtPayments.Count} payment(s)");
+        if (_pendingDeletedDebtPaymentIds.Count > 0) debtParts.Add($"{_pendingDeletedDebtPaymentIds.Count} payment deletion(s)");
+        AddQueueItem(items, "Debt changes", debtTotal, "Debts", string.Join("; ", debtParts));
+
+        AddQueueItem(items, "Savings goal changes", _pendingNewSavingsGoals.Count + _pendingUpdatedSavingsGoals.Count + _pendingDeletedSavingsGoalIds.Count, "Savings",
+            Names(_pendingUpdatedSavingsGoals.Select(g => g.Name)));
         AddQueueItem(items, "Trip changes", _pendingNewTrips.Count + _pendingUpdatedTrips.Count + _pendingDeletedTripIds.Count, "Trips");
         return items;
     }
 
-    private static void AddQueueItem(List<SyncQueueItem> items, string label, int count, string kind)
+    private static string Names(IEnumerable<string?> names)
+    {
+        var list = names.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!.Length > 22 ? n[..19] + "…" : n).ToList();
+        return list.Count == 0 ? "" : string.Join(", ", list);
+    }
+
+    private static void AddQueueItem(List<SyncQueueItem> items, string label, int count, string kind, string? detail = null)
     {
         if (count <= 0) return;
-        items.Add(new SyncQueueItem { Label = label, Count = count, Kind = kind });
+        items.Add(new SyncQueueItem { Label = label, Count = count, Kind = kind, Detail = string.IsNullOrWhiteSpace(detail) ? null : detail });
     }
 
     public async Task<(int Edits, int Deletes)> GetPersistedTransactionIntentCountsAsync()
@@ -859,7 +883,13 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .Where(d => SameDebtDelete(d, deleted))
                 .Select(d => d.Id)
                 .ToHashSet();
-            if (removedIds.Count == 0) continue;
+            if (removedIds.Count == 0)
+            {
+                // Debt no longer in the canonical store — the delete was already
+                // reconciled by WPF. Clear the tombstone so it doesn't linger.
+                await db.ClearDebtDeleteAsync(deleted.Id);
+                continue;
+            }
 
             Debts.RemoveAll(d => removedIds.Contains(d.Id));
             DebtPayments.RemoveAll(p => removedIds.Contains(p.DebtId));

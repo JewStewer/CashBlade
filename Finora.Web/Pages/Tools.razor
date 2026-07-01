@@ -44,9 +44,15 @@
             <div style="display:flex;flex-direction:column;gap:6px">
                 @foreach (var item in queue)
                 {
-                    <div class="inset-card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px">
-                        <span style="font-size:13px;color:var(--text2)">@item.Label</span>
-                        <span class="badge badge-gray">@item.Count</span>
+                    <div class="inset-card" style="display:flex;flex-direction:column;gap:2px;padding:8px">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                            <span style="font-size:13px;color:var(--text2)">@item.Label</span>
+                            <span class="badge badge-gray">@item.Count</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(item.Detail))
+                        {
+                            <span style="font-size:11px;color:var(--text3)">@item.Detail</span>
+                        }
                     </div>
                 }
             </div>
