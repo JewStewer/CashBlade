@@ -141,6 +141,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private const string AppLockPinHashKey = "AppLockPinHash";
     private const string AppLockSalt = "Finora-AppLock-v1";
     private bool _lockStateInitialized;
+    private bool _hasBudgetBillsOverride;
 
     public bool AppLockEnabled { get; private set; }
     // In-memory only: reset on the first Compute() after a fresh app load, then
@@ -1197,6 +1198,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         // Phone-side overrides take precedence over the desktop-synced WeeklyBudget
         // record, so targets can be tweaked from the phone without WPF running.
         WeeklyIncome = GetBudgetOverride("Income", WeeklyIncome);
+        _hasBudgetBillsOverride = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Bills"), out _);
         BudgetBills = GetBudgetOverride("Bills", BudgetBills);
         BudgetEssentials = GetBudgetOverride("Essentials", BudgetEssentials);
         BudgetSavings = GetBudgetOverride("Savings", BudgetSavings);
@@ -1474,9 +1476,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         NetWorth = TotalBalance - DebtTotal;
     }
 
+    public decimal ActualBillsPerWeek =>
+        Math.Round(Bills.Sum(b => GetWeeklyEquivalent(b.AmountDollars, b.Frequency)), 2);
+
     private void ComputeBudget()
     {
-        // Already loaded from WeeklyBudgets in ComputeSettings
+        if (!_hasBudgetBillsOverride)
+            BudgetBills = ActualBillsPerWeek;
     }
 
     private void ComputeSummaries()
@@ -5507,7 +5513,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                             await db.ClearBillOverrideAsync(s.BillId);
                     }
                     foreach (var b in push.NewBills)
+                    {
                         _pendingNewBills.Remove(b);
+                        if (!_pendingNewBills.Any(p => p.Id == b.Id))
+                            await db.ClearBillEditOverrideAsync(b.Id);
+                    }
                     foreach (var b in push.UpdatedBills)
                     {
                         _pendingUpdatedBills.Remove(b);
@@ -5522,7 +5532,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
                         await db.ClearDebtDeleteAsync(id);
                     foreach (var d in push.NewDebts)
+                    {
                         _pendingNewDebts.Remove(d);
+                        if (!_pendingNewDebts.Any(p => p.Id == d.Id))
+                            await db.ClearDebtOverrideAsync(d.Id);
+                    }
                     foreach (var d in push.UpdatedDebts)
                     {
                         _pendingUpdatedDebts.Remove(d);
@@ -5562,7 +5576,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                     // clears it instead, once a freshly-pulled snapshot actually confirms
                     // the goal is gone.
                     foreach (var g in push.NewSavingsGoals)
+                    {
                         _pendingNewSavingsGoals.Remove(g);
+                        if (!_pendingNewSavingsGoals.Any(p => p.Id == g.Id))
+                            await db.ClearSavingsGoalOverrideAsync(g.Id);
+                    }
                     foreach (var g in push.UpdatedSavingsGoals)
                     {
                         _pendingUpdatedSavingsGoals.Remove(g);
