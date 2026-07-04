@@ -290,7 +290,7 @@
                                 <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
                                     <span style="font-size:12px;font-weight:700;color:var(--text2)">@account</span>
                                     <span style="font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;background:@grpBg;color:@grpColor;font-weight:600;flex-shrink:0"
-                                          @onclick="() => CycleBillGroupCategory(account)"
+                                          @onclick='() => OpenCategoryPicker($"BillAccountBudgetCategory:{account}", grpCat)'
                                           @onclick:stopPropagation="true">
                                         @grpCat
                                     </span>
@@ -304,7 +304,7 @@
                                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-left:8px;cursor:pointer" @onclick="() => _billDraft = bill">
                                     <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</span>
                                     <span style="font-size:9px;padding:1px 5px;border-radius:8px;cursor:pointer;background:@iBg;color:@iColor;font-weight:600;flex-shrink:0;line-height:1.6"
-                                          @onclick="() => CycleBillItemCategory(bill)"
+                                          @onclick='() => OpenCategoryPicker($"BillItemBudgetCategory:{bill.Id}", itemCat)'
                                           @onclick:stopPropagation="true">
                                         @itemCat
                                     </span>
@@ -334,7 +334,7 @@
                                     @g.Name
                                 </span>
                                 <span style="font-size:9px;padding:1px 5px;border-radius:8px;cursor:pointer;background:@gBg;color:@gColor;font-weight:600;flex-shrink:0;line-height:1.6"
-                                      @onclick="() => CycleGoalCategory(g.Id)"
+                                      @onclick='() => OpenCategoryPicker($"GoalBudgetCategory:{g.Id}", gCat)'
                                       @onclick:stopPropagation="true">
                                     @gCat
                                 </span>
@@ -348,7 +348,7 @@
                             <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;cursor:pointer" @onclick='() => SelectTopPill("Holiday")'>
                                 <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@t.Name holiday</span>
                                 <span style="font-size:9px;padding:1px 5px;border-radius:8px;cursor:pointer;background:@tBg;color:@tColor;font-weight:600;flex-shrink:0;line-height:1.6"
-                                      @onclick="() => CycleTripCategory(t.Id)"
+                                      @onclick='() => OpenCategoryPicker($"TripBudgetCategory:{t.Id}", tCat)'
                                       @onclick:stopPropagation="true">
                                     @tCat
                                 </span>
@@ -1402,6 +1402,48 @@ else if (_tab == "Holiday")
     <HolidayTab />
 }
 
+@if (_showCategoryPicker)
+{
+    <div class="modal-backdrop" @onclick="() => _showCategoryPicker = false">
+        <div class="modal-card" @onclick:stopPropagation>
+        <div class="modal-sheet">
+            <div class="modal-handle"></div>
+            <div class="modal-title">Budget category</div>
+            <div style="padding:0 16px 8px;display:flex;flex-direction:column;gap:2px">
+                @foreach (var cat in State.GetAllBudgetCategories())
+                {
+                    var (cColor, cBg) = CatColors(cat);
+                    var isActive = string.Equals(cat, _pickerCurrentCat, StringComparison.OrdinalIgnoreCase);
+                    <button @onclick="() => PickCategoryAsync(cat)"
+                            style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:@(isActive ? cBg : "transparent");border:@(isActive ? $"1px solid {cColor}40" : "1px solid transparent");border-radius:10px;cursor:pointer;text-align:left">
+                        <span style="width:10px;height:10px;border-radius:50%;background:@cColor;flex-shrink:0"></span>
+                        <span style="flex:1;font-size:14px;color:var(--text)">@cat</span>
+                        @if (isActive) { <span style="font-size:12px;color:@cColor;font-weight:700">✓</span> }
+                    </button>
+                }
+                @if (!_showNewCatInput)
+                {
+                    <button @onclick="() => _showNewCatInput = true"
+                            style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:transparent;border:1px dashed var(--border);border-radius:10px;cursor:pointer;text-align:left;margin-top:4px">
+                        <span style="width:10px;height:10px;border-radius:50%;background:var(--border);flex-shrink:0"></span>
+                        <span style="flex:1;font-size:14px;color:var(--text3)">New category…</span>
+                    </button>
+                }
+                else
+                {
+                    <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+                        <input class="form-input" style="flex:1" placeholder="Category name" @bind="_newCategoryName" @bind:event="oninput"
+                               @onkeydown='async e => { if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newCategoryName)) await CreateAndPickCategoryAsync(); }' />
+                        <button class="btn btn-primary btn-sm" @onclick="CreateAndPickCategoryAsync" disabled="@string.IsNullOrWhiteSpace(_newCategoryName)">Create</button>
+                        <button class="btn btn-secondary btn-sm" @onclick='() => { _showNewCatInput = false; _newCategoryName = ""; }'>✕</button>
+                    </div>
+                }
+            </div>
+        </div>
+        </div>
+    </div>
+}
+
 @if (_billDraft is not null)
 {
     <AddEditBillModal Bill="@_billDraft"
@@ -1506,6 +1548,11 @@ else if (_tab == "Holiday")
     </div>;
     private bool _editingBudget;
     private bool _showCategoryLimits;
+    private string? _pickerSettingKey;
+    private string _pickerCurrentCat = "Bills";
+    private bool _showCategoryPicker;
+    private string _newCategoryName = "";
+    private bool _showNewCatInput;
     private bool _showPaceExclusions;
     private decimal _affordAmount;
     private string _affordMode = "OneOff"; // OneOff | Savings | Installments
@@ -1874,51 +1921,58 @@ else if (_tab == "Holiday")
         };
     }
 
+    private static readonly (string hex, string rgba)[] _customColors =
+    {
+        ("#EF4444", "rgba(239,68,68,0.13)"),
+        ("#F97316", "rgba(249,115,22,0.13)"),
+        ("#06B6D4", "rgba(6,182,212,0.13)"),
+        ("#3B82F6", "rgba(59,130,246,0.13)"),
+        ("#EC4899", "rgba(236,72,153,0.13)"),
+        ("#84CC16", "rgba(132,204,22,0.13)"),
+    };
+
+    private static (string color, string bg) CustomCatColors(string cat)
+    {
+        if (string.IsNullOrEmpty(cat)) return ("#94A3B8", "rgba(148,163,184,0.13)");
+        var sum = 0; foreach (var ch in cat) sum += ch;
+        var (hex, rgba) = _customColors[Math.Abs(sum) % _customColors.Length];
+        return (hex, rgba);
+    }
+
     private static (string color, string bg) CatColors(string cat) => cat switch
     {
+        "Bills"      => ("#10B981", "rgba(16,185,129,0.13)"),
         "Essentials" => ("#F59E0B", "rgba(245,158,11,0.13)"),
         "Savings"    => ("#8B5CF6", "rgba(139,92,246,0.13)"),
         "Unplanned"  => ("var(--text3)", "var(--surface3)"),
-        _            => ("#10B981", "rgba(16,185,129,0.13)")  // Bills
+        _ => CustomCatColors(cat)
     };
 
-    private static string CycleBillCat(string current) => current switch
+    private void OpenCategoryPicker(string settingKey, string currentCat)
     {
-        "Bills"      => "Essentials",
-        "Essentials" => "Unplanned",
-        _            => "Bills"
-    };
-
-    private static string CycleAllCat(string current) => current switch
-    {
-        "Bills"      => "Essentials",
-        "Essentials" => "Savings",
-        "Savings"    => "Unplanned",
-        _            => "Bills"
-    };
-
-    private async Task CycleBillGroupCategory(string accountName)
-    {
-        var next = CycleBillCat(State.GetBillAccountBudgetCategory(accountName));
-        await State.SaveSettingAsync($"BillAccountBudgetCategory:{accountName}", next);
+        _pickerSettingKey = settingKey;
+        _pickerCurrentCat = currentCat;
+        _showCategoryPicker = true;
+        _showNewCatInput = false;
+        _newCategoryName = "";
     }
 
-    private async Task CycleBillItemCategory(Bill bill)
+    private async Task PickCategoryAsync(string cat)
     {
-        var next = CycleBillCat(State.GetBillBudgetCategory(bill));
-        await State.SaveSettingAsync($"BillItemBudgetCategory:{bill.Id}", next);
+        if (_pickerSettingKey is null) return;
+        await State.SaveSettingAsync(_pickerSettingKey, cat);
+        _showCategoryPicker = false;
+        _pickerSettingKey = null;
     }
 
-    private async Task CycleGoalCategory(int goalId)
+    private async Task CreateAndPickCategoryAsync()
     {
-        var next = CycleAllCat(State.GetGoalBudgetCategory(goalId));
-        await State.SaveSettingAsync($"GoalBudgetCategory:{goalId}", next);
-    }
-
-    private async Task CycleTripCategory(int tripId)
-    {
-        var next = CycleAllCat(State.GetTripBudgetCategory(tripId));
-        await State.SaveSettingAsync($"TripBudgetCategory:{tripId}", next);
+        var name = _newCategoryName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        await State.AddCustomBudgetCategoryAsync(name);
+        _newCategoryName = "";
+        _showNewCatInput = false;
+        await PickCategoryAsync(name);
     }
 
     private async Task SaveAffordabilitySettingsAsync()
@@ -2021,7 +2075,7 @@ else if (_tab == "Holiday")
     }
 
     private decimal AllocatedTotal =>
-        State.BudgetBills + State.BudgetEssentials + State.BudgetSavings + State.BudgetUnplanned;
+        State.BudgetBills + State.BudgetEssentials + State.BudgetSavings + State.BudgetUnplanned + State.CustomBudgetTotals.Values.Sum();
 
     private IEnumerable<(string Label, decimal Amount, string Color)> BudgetRows()
     {
@@ -2029,6 +2083,8 @@ else if (_tab == "Holiday")
         yield return ("Essentials", State.BudgetEssentials, "#16A34A");
         yield return ("Savings", State.BudgetSavings, "#7C3AED");
         yield return ("Unplanned", State.BudgetUnplanned, "#D97706");
+        foreach (var (cat, amt) in State.CustomBudgetTotals.OrderBy(kv => kv.Key))
+            yield return (cat, amt, CustomCatColors(cat).color);
     }
 
     private IEnumerable<(string Label, decimal Amount, string Color)> OverBudgetRows() =>

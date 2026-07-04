@@ -34,7 +34,9 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal PlannedSavingsTransfers { get; private set; }
     public decimal BudgetWeeklyTransfers => BudgetBills + BudgetSavings;
     public decimal BudgetUnplanned { get; private set; }
-    public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned;
+    public List<string> CustomBudgetCategories { get; private set; } = new();
+    public Dictionary<string, decimal> CustomBudgetTotals { get; private set; } = new();
+    public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned - CustomBudgetTotals.Values.Sum();
     public decimal BudgetSafeToSpendAmount => Math.Max(BudgetLeftover, 0);
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
     // what's actually left in the current pay cycle (allowance minus real
@@ -1205,6 +1207,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         _hasBudgetEssentialsOverride = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Essentials"), out _);
         _hasBudgetSavingsOverride    = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Savings"),    out _);
         _hasBudgetUnplannedOverride  = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Unplanned"),  out _);
+        CustomBudgetCategories = GetSettingJson<List<string>>("BudgetCustomCategories") ?? new();
         BudgetBills = GetBudgetOverride("Bills", BudgetBills);
         BudgetEssentials = GetBudgetOverride("Essentials", BudgetEssentials);
         BudgetSavings = GetBudgetOverride("Savings", BudgetSavings);
@@ -1512,42 +1515,72 @@ public class AppState(IndexedDbService db, SyncService sync)
     public string GetTripBudgetCategory(int tripId) =>
         GetSetting($"TripBudgetCategory:{tripId}") ?? "Savings";
 
+    /// <summary>All available budget categories: built-in first, then user-created custom ones.</summary>
+    public IReadOnlyList<string> GetAllBudgetCategories()
+    {
+        var builtIn = new[] { "Bills", "Essentials", "Savings", "Unplanned" };
+        var custom = CustomBudgetCategories.Where(c => !builtIn.Contains(c, StringComparer.OrdinalIgnoreCase));
+        return builtIn.Concat(custom).ToList();
+    }
+
+    public Task AddCustomBudgetCategoryAsync(string name)
+    {
+        var trimmed = name.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return Task.CompletedTask;
+        var builtIn = new[] { "Bills", "Essentials", "Savings", "Unplanned" };
+        if (builtIn.Contains(trimmed, StringComparer.OrdinalIgnoreCase)) return Task.CompletedTask;
+        var list = CustomBudgetCategories.ToList();
+        if (list.Contains(trimmed, StringComparer.OrdinalIgnoreCase)) return Task.CompletedTask;
+        list.Add(trimmed);
+        return SaveSettingJsonAsync("BudgetCustomCategories", list);
+    }
+
     private void ComputeBudget()
     {
         decimal fromBills = 0, fromEssentials = 0, fromSavings = 0, fromUnplanned = 0;
         bool anyEssentials = false, anyUnplanned = false;
+        var fromCustom = new Dictionary<string, decimal>(StringComparer.Ordinal);
+
+        void AddCustom(string cat, decimal wk) =>
+            fromCustom[cat] = fromCustom.GetValueOrDefault(cat) + wk;
 
         foreach (var b in Bills)
         {
             var wk = GetWeeklyEquivalent(b.AmountDollars, b.Frequency);
-            switch (GetBillBudgetCategory(b))
+            var bCat = GetBillBudgetCategory(b);
+            switch (bCat)
             {
                 case "Essentials": fromEssentials += wk; anyEssentials = true; break;
                 case "Savings":    fromSavings    += wk; break;
                 case "Unplanned":  fromUnplanned  += wk; anyUnplanned  = true; break;
-                default:           fromBills      += wk; break;
+                case "Bills":      fromBills      += wk; break;
+                default:           AddCustom(bCat, wk); break;
             }
         }
         foreach (var g in SavingsGoals)
         {
             var wk = g.WeeklyContributionDollars;
-            switch (GetGoalBudgetCategory(g.Id))
+            var gCat = GetGoalBudgetCategory(g.Id);
+            switch (gCat)
             {
                 case "Bills":      fromBills      += wk; break;
                 case "Essentials": fromEssentials += wk; anyEssentials = true; break;
                 case "Unplanned":  fromUnplanned  += wk; anyUnplanned  = true; break;
-                default:           fromSavings    += wk; break;
+                case "Savings":    fromSavings    += wk; break;
+                default:           AddCustom(gCat, wk); break;
             }
         }
         foreach (var t in Trips)
         {
             var wk = t.WeeklyContributionDollars;
-            switch (GetTripBudgetCategory(t.Id))
+            var tCat = GetTripBudgetCategory(t.Id);
+            switch (tCat)
             {
                 case "Bills":      fromBills      += wk; break;
                 case "Essentials": fromEssentials += wk; anyEssentials = true; break;
                 case "Unplanned":  fromUnplanned  += wk; anyUnplanned  = true; break;
-                default:           fromSavings    += wk; break;
+                case "Savings":    fromSavings    += wk; break;
+                default:           AddCustom(tCat, wk); break;
             }
         }
 
@@ -1561,6 +1594,8 @@ public class AppState(IndexedDbService db, SyncService sync)
         // planned-transfers value already set by ComputeSettings.
         if (!_hasBudgetSavingsOverride)
             BudgetSavings = Math.Max(Math.Round(fromSavings, 2), PlannedSavingsTransfers);
+
+        CustomBudgetTotals = fromCustom.ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value, 2));
     }
 
     private void ComputeSummaries()
