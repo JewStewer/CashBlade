@@ -283,29 +283,31 @@
                         </div>
                         @foreach (var (account, accountTotal, bills) in wkBillGroups)
                         {
-                            var billCat = State.GetBillAccountBudgetCategory(account);
-                            var (pillColor, pillBg) = billCat switch
-                            {
-                                "Essentials" => ("#F59E0B", "rgba(245,158,11,0.13)"),
-                                "Unplanned"  => ("var(--text3)", "var(--surface3)"),
-                                _            => ("#10B981", "rgba(16,185,129,0.13)")
-                            };
-                            <!-- Account header -->
+                            var grpCat = State.GetBillAccountBudgetCategory(account);
+                            var (grpColor, grpBg) = CatColors(grpCat);
+                            <!-- Account header — pill sets the default for all unoverridden bills in this group -->
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;padding:5px 8px;background:var(--surface2);border-radius:7px">
                                 <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
                                     <span style="font-size:12px;font-weight:700;color:var(--text2)">@account</span>
-                                    <span style="font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;background:@pillBg;color:@pillColor;font-weight:600;flex-shrink:0"
-                                          @onclick="() => CycleBillCategory(account)"
+                                    <span style="font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;background:@grpBg;color:@grpColor;font-weight:600;flex-shrink:0"
+                                          @onclick="() => CycleBillGroupCategory(account)"
                                           @onclick:stopPropagation="true">
-                                        @billCat
+                                        @grpCat
                                     </span>
                                 </div>
                                 <span style="font-size:13px;font-weight:700;color:var(--teal);flex-shrink:0">@accountTotal.ToString("C")/wk</span>
                             </div>
                             @foreach (var (bill, weekly) in bills)
                             {
-                                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;padding-left:8px;cursor:pointer" @onclick="() => _billDraft = bill">
+                                var itemCat = State.GetBillBudgetCategory(bill);
+                                var (iColor, iBg) = CatColors(itemCat);
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-left:8px;cursor:pointer" @onclick="() => _billDraft = bill">
                                     <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</span>
+                                    <span style="font-size:9px;padding:1px 5px;border-radius:8px;cursor:pointer;background:@iBg;color:@iColor;font-weight:600;flex-shrink:0;line-height:1.6"
+                                          @onclick="() => CycleBillItemCategory(bill)"
+                                          @onclick:stopPropagation="true">
+                                        @itemCat
+                                    </span>
                                     <span style="font-size:11px;color:var(--text3);flex-shrink:0">@FreqAbbr(bill.Frequency) @bill.AmountDollars.ToString("C")</span>
                                     <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@weekly.ToString("C")/wk</span>
                                 </div>
@@ -324,18 +326,32 @@
                         </div>
                         @foreach (var g in wkGoalRows)
                         {
-                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px;cursor:pointer" @onclick="() => _goalDraft = g">
+                            var gCat = State.GetGoalBudgetCategory(g.Id);
+                            var (gColor, gBg) = CatColors(gCat);
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;cursor:pointer" @onclick="() => _goalDraft = g">
                                 <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                                     @if (!string.IsNullOrEmpty(g.Emoji)) { <span>@g.Emoji </span> }
                                     @g.Name
+                                </span>
+                                <span style="font-size:9px;padding:1px 5px;border-radius:8px;cursor:pointer;background:@gBg;color:@gColor;font-weight:600;flex-shrink:0;line-height:1.6"
+                                      @onclick="() => CycleGoalCategory(g.Id)"
+                                      @onclick:stopPropagation="true">
+                                    @gCat
                                 </span>
                                 <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@g.WeeklyContributionDollars.ToString("C")/wk</span>
                             </div>
                         }
                         @foreach (var t in wkTripRows)
                         {
-                            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:7px;cursor:pointer" @onclick='() => SelectTopPill("Holiday")'>
+                            var tCat = State.GetTripBudgetCategory(t.Id);
+                            var (tColor, tBg) = CatColors(tCat);
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;cursor:pointer" @onclick='() => SelectTopPill("Holiday")'>
                                 <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@t.Name holiday</span>
+                                <span style="font-size:9px;padding:1px 5px;border-radius:8px;cursor:pointer;background:@tBg;color:@tColor;font-weight:600;flex-shrink:0;line-height:1.6"
+                                      @onclick="() => CycleTripCategory(t.Id)"
+                                      @onclick:stopPropagation="true">
+                                    @tCat
+                                </span>
                                 <span style="font-size:13px;font-weight:600;flex-shrink:0;min-width:56px;text-align:right">@t.WeeklyContributionDollars.ToString("C")/wk</span>
                             </div>
                         }
@@ -1858,15 +1874,51 @@ else if (_tab == "Holiday")
         };
     }
 
-    private async Task CycleBillCategory(string accountName)
+    private static (string color, string bg) CatColors(string cat) => cat switch
     {
-        var next = State.GetBillAccountBudgetCategory(accountName) switch
-        {
-            "Bills"      => "Essentials",
-            "Essentials" => "Unplanned",
-            _            => "Bills"
-        };
+        "Essentials" => ("#F59E0B", "rgba(245,158,11,0.13)"),
+        "Savings"    => ("#8B5CF6", "rgba(139,92,246,0.13)"),
+        "Unplanned"  => ("var(--text3)", "var(--surface3)"),
+        _            => ("#10B981", "rgba(16,185,129,0.13)")  // Bills
+    };
+
+    private static string CycleBillCat(string current) => current switch
+    {
+        "Bills"      => "Essentials",
+        "Essentials" => "Unplanned",
+        _            => "Bills"
+    };
+
+    private static string CycleAllCat(string current) => current switch
+    {
+        "Bills"      => "Essentials",
+        "Essentials" => "Savings",
+        "Savings"    => "Unplanned",
+        _            => "Bills"
+    };
+
+    private async Task CycleBillGroupCategory(string accountName)
+    {
+        var next = CycleBillCat(State.GetBillAccountBudgetCategory(accountName));
         await State.SaveSettingAsync($"BillAccountBudgetCategory:{accountName}", next);
+    }
+
+    private async Task CycleBillItemCategory(Bill bill)
+    {
+        var next = CycleBillCat(State.GetBillBudgetCategory(bill));
+        await State.SaveSettingAsync($"BillItemBudgetCategory:{bill.Id}", next);
+    }
+
+    private async Task CycleGoalCategory(int goalId)
+    {
+        var next = CycleAllCat(State.GetGoalBudgetCategory(goalId));
+        await State.SaveSettingAsync($"GoalBudgetCategory:{goalId}", next);
+    }
+
+    private async Task CycleTripCategory(int tripId)
+    {
+        var next = CycleAllCat(State.GetTripBudgetCategory(tripId));
+        await State.SaveSettingAsync($"TripBudgetCategory:{tripId}", next);
     }
 
     private async Task SaveAffordabilitySettingsAsync()

@@ -143,6 +143,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private bool _lockStateInitialized;
     private bool _hasBudgetBillsOverride;
     private bool _hasBudgetEssentialsOverride;
+    private bool _hasBudgetSavingsOverride;
     private bool _hasBudgetUnplannedOverride;
 
     public bool AppLockEnabled { get; private set; }
@@ -1202,6 +1203,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         WeeklyIncome = GetBudgetOverride("Income", WeeklyIncome);
         _hasBudgetBillsOverride      = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Bills"),      out _);
         _hasBudgetEssentialsOverride = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Essentials"), out _);
+        _hasBudgetSavingsOverride    = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Savings"),    out _);
         _hasBudgetUnplannedOverride  = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Unplanned"),  out _);
         BudgetBills = GetBudgetOverride("Bills", BudgetBills);
         BudgetEssentials = GetBudgetOverride("Essentials", BudgetEssentials);
@@ -1220,8 +1222,12 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private decimal CalculatePlannedSavingsTransfers()
     {
-        var goalTransfers = SavingsGoals.Sum(g => g.WeeklyContributionDollars);
-        var tripTransfers = Trips.Sum(t => t.WeeklyContributionDollars);
+        var goalTransfers = SavingsGoals
+            .Where(g => GetGoalBudgetCategory(g.Id) == "Savings")
+            .Sum(g => g.WeeklyContributionDollars);
+        var tripTransfers = Trips
+            .Where(t => GetTripBudgetCategory(t.Id) == "Savings")
+            .Sum(t => t.WeeklyContributionDollars);
         return Math.Round(goalTransfers + tripTransfers, 2);
     }
 
@@ -1483,36 +1489,78 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal ActualBillsPerWeek =>
         Math.Round(Bills.Sum(b => GetWeeklyEquivalent(b.AmountDollars, b.Frequency)), 2);
 
-    /// <summary>Returns the budget category ("Bills", "Essentials", "Unplanned") the account's
-    /// bills should count towards. Defaults to "Bills" when not explicitly set.</summary>
+    /// <summary>Budget category for an account group ("Bills", "Essentials", "Unplanned").
+    /// Used as the default for individual bills that don't have a per-item override.</summary>
     public string GetBillAccountBudgetCategory(string accountName) =>
         GetSetting($"BillAccountBudgetCategory:{accountName}") ?? "Bills";
 
+    /// <summary>Budget category for an individual bill. Per-item override takes precedence
+    /// over the account-group default.</summary>
+    public string GetBillBudgetCategory(Bill b)
+    {
+        var perItem = GetSetting($"BillItemBudgetCategory:{b.Id}");
+        if (perItem is not null) return perItem;
+        var acct = string.IsNullOrWhiteSpace(b.AccountName) ? "Other" : b.AccountName;
+        return GetBillAccountBudgetCategory(acct);
+    }
+
+    /// <summary>Budget category for a savings goal. Defaults to "Savings".</summary>
+    public string GetGoalBudgetCategory(int goalId) =>
+        GetSetting($"GoalBudgetCategory:{goalId}") ?? "Savings";
+
+    /// <summary>Budget category for a trip. Defaults to "Savings".</summary>
+    public string GetTripBudgetCategory(int tripId) =>
+        GetSetting($"TripBudgetCategory:{tripId}") ?? "Savings";
+
     private void ComputeBudget()
     {
-        decimal fromBills = 0, fromEssentials = 0, fromUnplanned = 0;
+        decimal fromBills = 0, fromEssentials = 0, fromSavings = 0, fromUnplanned = 0;
         bool anyEssentials = false, anyUnplanned = false;
+
         foreach (var b in Bills)
         {
-            var acct = string.IsNullOrWhiteSpace(b.AccountName) ? "Other" : b.AccountName;
-            var cat  = GetBillAccountBudgetCategory(acct);
-            var wk   = GetWeeklyEquivalent(b.AmountDollars, b.Frequency);
-            switch (cat)
+            var wk = GetWeeklyEquivalent(b.AmountDollars, b.Frequency);
+            switch (GetBillBudgetCategory(b))
             {
                 case "Essentials": fromEssentials += wk; anyEssentials = true; break;
+                case "Savings":    fromSavings    += wk; break;
                 case "Unplanned":  fromUnplanned  += wk; anyUnplanned  = true; break;
                 default:           fromBills      += wk; break;
+            }
+        }
+        foreach (var g in SavingsGoals)
+        {
+            var wk = g.WeeklyContributionDollars;
+            switch (GetGoalBudgetCategory(g.Id))
+            {
+                case "Bills":      fromBills      += wk; break;
+                case "Essentials": fromEssentials += wk; anyEssentials = true; break;
+                case "Unplanned":  fromUnplanned  += wk; anyUnplanned  = true; break;
+                default:           fromSavings    += wk; break;
+            }
+        }
+        foreach (var t in Trips)
+        {
+            var wk = t.WeeklyContributionDollars;
+            switch (GetTripBudgetCategory(t.Id))
+            {
+                case "Bills":      fromBills      += wk; break;
+                case "Essentials": fromEssentials += wk; anyEssentials = true; break;
+                case "Unplanned":  fromUnplanned  += wk; anyUnplanned  = true; break;
+                default:           fromSavings    += wk; break;
             }
         }
 
         if (!_hasBudgetBillsOverride)
             BudgetBills = Math.Round(fromBills, 2);
-        // Only override Essentials/Unplanned if the user has actually mapped accounts there,
-        // so WPF-synced values aren't silently zeroed out when no mappings exist yet.
         if (anyEssentials && !_hasBudgetEssentialsOverride)
             BudgetEssentials = Math.Round(fromEssentials, 2);
         if (anyUnplanned && !_hasBudgetUnplannedOverride)
             BudgetUnplanned = Math.Round(fromUnplanned, 2);
+        // Savings floor: whichever is larger — items tagged Savings, or the
+        // planned-transfers value already set by ComputeSettings.
+        if (!_hasBudgetSavingsOverride)
+            BudgetSavings = Math.Max(Math.Round(fromSavings, 2), PlannedSavingsTransfers);
     }
 
     private void ComputeSummaries()
