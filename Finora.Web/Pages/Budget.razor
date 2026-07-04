@@ -283,10 +283,24 @@
                         </div>
                         @foreach (var (account, accountTotal, bills) in wkBillGroups)
                         {
+                            var billCat = State.GetBillAccountBudgetCategory(account);
+                            var (pillColor, pillBg) = billCat switch
+                            {
+                                "Essentials" => ("#F59E0B", "rgba(245,158,11,0.13)"),
+                                "Unplanned"  => ("var(--text3)", "var(--surface3)"),
+                                _            => ("#10B981", "rgba(16,185,129,0.13)")
+                            };
                             <!-- Account header -->
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;padding:5px 8px;background:var(--surface2);border-radius:7px">
-                                <span style="font-size:12px;font-weight:700;color:var(--text2)">@account</span>
-                                <span style="font-size:13px;font-weight:700;color:var(--teal)">@accountTotal.ToString("C")/wk</span>
+                                <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+                                    <span style="font-size:12px;font-weight:700;color:var(--text2)">@account</span>
+                                    <span style="font-size:10px;padding:2px 7px;border-radius:10px;cursor:pointer;background:@pillBg;color:@pillColor;font-weight:600;flex-shrink:0"
+                                          @onclick="() => CycleBillCategory(account)"
+                                          @onclick:stopPropagation="true">
+                                        @billCat
+                                    </span>
+                                </div>
+                                <span style="font-size:13px;font-weight:700;color:var(--teal);flex-shrink:0">@accountTotal.ToString("C")/wk</span>
                             </div>
                             @foreach (var (bill, weekly) in bills)
                             {
@@ -1842,6 +1856,17 @@ else if (_tab == "Holiday")
                 _ => BillFrequency.Weekly
             }
         };
+    }
+
+    private async Task CycleBillCategory(string accountName)
+    {
+        var next = State.GetBillAccountBudgetCategory(accountName) switch
+        {
+            "Bills"      => "Essentials",
+            "Essentials" => "Unplanned",
+            _            => "Bills"
+        };
+        await State.SaveSettingAsync($"BillAccountBudgetCategory:{accountName}", next);
     }
 
     private async Task SaveAffordabilitySettingsAsync()

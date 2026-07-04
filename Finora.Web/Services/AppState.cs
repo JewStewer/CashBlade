@@ -142,6 +142,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     private const string AppLockSalt = "Finora-AppLock-v1";
     private bool _lockStateInitialized;
     private bool _hasBudgetBillsOverride;
+    private bool _hasBudgetEssentialsOverride;
+    private bool _hasBudgetUnplannedOverride;
 
     public bool AppLockEnabled { get; private set; }
     // In-memory only: reset on the first Compute() after a fresh app load, then
@@ -1198,7 +1200,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         // Phone-side overrides take precedence over the desktop-synced WeeklyBudget
         // record, so targets can be tweaked from the phone without WPF running.
         WeeklyIncome = GetBudgetOverride("Income", WeeklyIncome);
-        _hasBudgetBillsOverride = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Bills"), out _);
+        _hasBudgetBillsOverride      = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Bills"),      out _);
+        _hasBudgetEssentialsOverride = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Essentials"), out _);
+        _hasBudgetUnplannedOverride  = decimal.TryParse(GetSetting("WeeklyBudgetOverride:Unplanned"),  out _);
         BudgetBills = GetBudgetOverride("Bills", BudgetBills);
         BudgetEssentials = GetBudgetOverride("Essentials", BudgetEssentials);
         BudgetSavings = GetBudgetOverride("Savings", BudgetSavings);
@@ -1479,10 +1483,36 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal ActualBillsPerWeek =>
         Math.Round(Bills.Sum(b => GetWeeklyEquivalent(b.AmountDollars, b.Frequency)), 2);
 
+    /// <summary>Returns the budget category ("Bills", "Essentials", "Unplanned") the account's
+    /// bills should count towards. Defaults to "Bills" when not explicitly set.</summary>
+    public string GetBillAccountBudgetCategory(string accountName) =>
+        GetSetting($"BillAccountBudgetCategory:{accountName}") ?? "Bills";
+
     private void ComputeBudget()
     {
+        decimal fromBills = 0, fromEssentials = 0, fromUnplanned = 0;
+        bool anyEssentials = false, anyUnplanned = false;
+        foreach (var b in Bills)
+        {
+            var acct = string.IsNullOrWhiteSpace(b.AccountName) ? "Other" : b.AccountName;
+            var cat  = GetBillAccountBudgetCategory(acct);
+            var wk   = GetWeeklyEquivalent(b.AmountDollars, b.Frequency);
+            switch (cat)
+            {
+                case "Essentials": fromEssentials += wk; anyEssentials = true; break;
+                case "Unplanned":  fromUnplanned  += wk; anyUnplanned  = true; break;
+                default:           fromBills      += wk; break;
+            }
+        }
+
         if (!_hasBudgetBillsOverride)
-            BudgetBills = ActualBillsPerWeek;
+            BudgetBills = Math.Round(fromBills, 2);
+        // Only override Essentials/Unplanned if the user has actually mapped accounts there,
+        // so WPF-synced values aren't silently zeroed out when no mappings exist yet.
+        if (anyEssentials && !_hasBudgetEssentialsOverride)
+            BudgetEssentials = Math.Round(fromEssentials, 2);
+        if (anyUnplanned && !_hasBudgetUnplannedOverride)
+            BudgetUnplanned = Math.Round(fromUnplanned, 2);
     }
 
     private void ComputeSummaries()
