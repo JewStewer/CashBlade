@@ -3,8 +3,20 @@
 // already requires (`web-push`) — matches the rest of this folder's style.
 
 function loadEnv(requiredKeys, title) {
-    const values = { VAPID_EMAIL: process.env.VAPID_EMAIL };
-    for (const key of requiredKeys) values[key] = process.env[key];
+    // VAPID_KEYS is a JSON object {"pub":"...","priv":"..."} stored as a single
+    // secret to work around GitHub secret scanning stripping raw base64url keys.
+    const vapidKeys = (() => {
+        try { return JSON.parse(process.env.VAPID_KEYS || '{}'); } catch { return {}; }
+    })();
+
+    const values = {
+        VAPID_EMAIL: process.env.VAPID_EMAIL,
+        VAPID_PUBLIC_KEY: vapidKeys.pub || process.env.VAPID_PUBLIC_KEY,
+        VAPID_PRIVATE_KEY: vapidKeys.priv || process.env.VAPID_PRIVATE_KEY,
+    };
+    for (const key of requiredKeys) {
+        if (!(key in values)) values[key] = process.env[key];
+    }
 
     const missing = requiredKeys.filter(key => !values[key]);
     if (missing.length > 0) {

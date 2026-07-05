@@ -14,6 +14,7 @@ const webpush = require('web-push');
 const { loadEnv, makeSupabaseClient, sendToSubscription, isBillUnpaid } = require('./push-helpers');
 
 const env = loadEnv(['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'PUSH_SUBSCRIPTION', 'SUPABASE_URL', 'SUPABASE_ANON_KEY'], 'Bill reminders not configured');
+// VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are resolved from VAPID_KEYS JSON secret by loadEnv
 webpush.setVapidDetails(env.VAPID_EMAIL || 'mailto:admin@cashblade.app', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
 const supabase = makeSupabaseClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
 
