@@ -105,11 +105,52 @@
     <div class="card" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
             <div class="section-title">Planned Weekly Budget</div>
-            @if (State.WeeklyIncome > 0 || _editingBudget)
-            {
-                <button class="btn btn-sm btn-secondary" @onclick="() => _editingBudget = !_editingBudget">@(_editingBudget ? "Done" : "Edit")</button>
-            }
+            <div style="display:flex;gap:6px;align-items:center">
+                @if (!_editingBudget)
+                {
+                    <button class="btn btn-sm btn-secondary" @onclick="() => { _showBudgetAddPicker = !_showBudgetAddPicker; _showBudgetEnvelopeForm = false; }">+ Add</button>
+                }
+                @if (State.WeeklyIncome > 0 || _editingBudget)
+                {
+                    <button class="btn btn-sm btn-secondary" @onclick="() => { _editingBudget = !_editingBudget; _showBudgetAddPicker = false; _showBudgetEnvelopeForm = false; }">@(_editingBudget ? "Done" : "Edit")</button>
+                }
+            </div>
         </div>
+        @if (_showBudgetAddPicker && !_editingBudget)
+        {
+            <div style="margin-bottom:10px;padding:10px;background:var(--surface2);border-radius:10px">
+                @if (!_showBudgetEnvelopeForm)
+                {
+                    <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:600">What would you like to add?</div>
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                        <button class="btn btn-secondary btn-sm" style="text-align:left;justify-content:flex-start" @onclick="() => { _billDraft = new Bill(); _showBudgetAddPicker = false; }">
+                            A recurring bill
+                        </button>
+                        <button class="btn btn-secondary btn-sm" style="text-align:left;justify-content:flex-start" @onclick="() => { _goalDraft = new SavingsGoal(); _showBudgetAddPicker = false; }">
+                            Something I'm saving for
+                        </button>
+                        <button class="btn btn-secondary btn-sm" style="text-align:left;justify-content:flex-start" @onclick="() => _showBudgetEnvelopeForm = true">
+                            A budget envelope (custom weekly amount)
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:600">New budget envelope</div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                        <input class="form-input" placeholder="Name (e.g. Petrol, Date nights)" style="font-size:14px"
+                               @bind="_newEnvelopeName" @bind:event="oninput" />
+                        <input class="form-input" type="number" min="1" step="1" placeholder="Weekly amount"
+                               style="font-size:14px" @bind="_newEnvelopeAmount" @bind:event="oninput" />
+                        <div style="display:flex;gap:6px">
+                            <button class="btn btn-primary btn-sm" style="flex:1" @onclick="SaveBudgetEnvelopeAsync"
+                                    disabled="@(string.IsNullOrWhiteSpace(_newEnvelopeName) || string.IsNullOrWhiteSpace(_newEnvelopeAmount))">Save</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => { _showBudgetEnvelopeForm = false; _newEnvelopeName = string.Empty; _newEnvelopeAmount = string.Empty; }">Cancel</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">
             @(_editingBudget ? "Set your own weekly targets from your phone — overrides the PC's budget until changed again." : "How you've told PC to split your income each week")
         </div>
@@ -1699,6 +1740,10 @@ else if (_tab == "Holiday")
     private readonly HashSet<string> _excludedBudgetLabels = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<int> _excludedBillIds = new();
     private readonly HashSet<string> _expandedBudgetCategories = new(StringComparer.OrdinalIgnoreCase);
+    private bool _showBudgetAddPicker;
+    private bool _showBudgetEnvelopeForm;
+    private string _newEnvelopeName = string.Empty;
+    private string _newEnvelopeAmount = string.Empty;
 
     private void SelectTopPill(string tab)
     {
@@ -1753,6 +1798,17 @@ else if (_tab == "Holiday")
         await State.SetBudgetOverrideAsync("Savings", _smartSuggestion.Savings.ToString(inv));
         await State.SetBudgetOverrideAsync("Unplanned", _smartSuggestion.Unplanned.ToString(inv));
         _smartSuggestion = null;
+    }
+
+    private async Task SaveBudgetEnvelopeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newEnvelopeName)) return;
+        if (!decimal.TryParse(_newEnvelopeAmount, out var amt) || amt <= 0) return;
+        await State.SetCustomBudgetCategoryAmountAsync(_newEnvelopeName.Trim(), amt);
+        _newEnvelopeName = string.Empty;
+        _newEnvelopeAmount = string.Empty;
+        _showBudgetEnvelopeForm = false;
+        _showBudgetAddPicker = false;
     }
 
     private static decimal BillWeekly(Bill b) => Math.Round(b.Frequency switch

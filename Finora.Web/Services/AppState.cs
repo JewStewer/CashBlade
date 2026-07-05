@@ -1535,6 +1535,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         return SaveSettingJsonAsync("BudgetCustomCategories", list);
     }
 
+    public async Task SetCustomBudgetCategoryAmountAsync(string name, decimal weeklyAmount)
+    {
+        var trimmed = name.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return;
+        await AddCustomBudgetCategoryAsync(trimmed);
+        await SaveSettingAsync($"WeeklyBudgetOverride:{trimmed}", weeklyAmount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     private void ComputeBudget()
     {
         decimal fromBills = 0, fromEssentials = 0, fromSavings = 0, fromUnplanned = 0;
@@ -1595,7 +1603,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (!_hasBudgetSavingsOverride)
             BudgetSavings = Math.Max(Math.Round(fromSavings, 2), PlannedSavingsTransfers);
 
-        CustomBudgetTotals = fromCustom.ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value, 2));
+        foreach (var cat in CustomBudgetCategories)
+            fromCustom.TryAdd(cat, 0m);
+        foreach (var cat in CustomBudgetCategories)
+        {
+            var raw = GetSetting($"WeeklyBudgetOverride:{cat}");
+            if (decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var ov) && ov >= 0)
+                fromCustom[cat] = ov;
+        }
+        CustomBudgetTotals = fromCustom.Where(kv => kv.Value > 0).ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value, 2));
     }
 
     private void ComputeSummaries()

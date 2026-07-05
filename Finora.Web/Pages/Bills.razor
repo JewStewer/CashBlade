@@ -19,12 +19,28 @@
     </div>
 </div>
 <div class="pill-tabs">
-    @foreach (var f in new[]{"Unpaid","All","Paid"})
+    @foreach (var f in new[]{"Unpaid","All","Paid","List"})
     {
         <button class="pill @(filter==f?"pill-active":"pill-inactive")" @onclick="() => filter = f">@f</button>
     }
 </div>
 
+@{
+    var outstanding = State.GetOutstandingBillOccurrences();
+    var dueNowBills = outstanding.Where(o => o.DueDate.Date <= DateTime.Today).ToList();
+    var next7Bills = AllUnpaidOccurrences(outstanding, 7).Where(o => o.DueDate.Date <= DateTime.Today.AddDays(7)).ToList();
+    var next30Bills = AllUnpaidOccurrences(outstanding, 30).Where(o => o.DueDate.Date <= DateTime.Today.AddDays(30)).ToList();
+    var listBills = GetBillsForList();
+    var listGroups = listBills
+        .GroupBy(b => string.IsNullOrWhiteSpace(b.AccountName) ? "Other" : b.AccountName)
+        .OrderBy(g => g.Key)
+        .Select(g => (Account: g.Key, Bills: g.OrderBy(b => b.Name).ToList()))
+        .ToList();
+    var listTotal = listBills.Sum(b => BillWeekly(b));
+}
+
+@if (filter != "List")
+{
 <!-- Summary bar -->
 <div style="padding:0 16px 12px;display:flex;gap:8px">
     <div class="card-sm" style="flex:1;text-align:center">
@@ -38,13 +54,6 @@
         <div style="font-size:11px;color:var(--text3);margin-top:2px">in @(Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0))d</div>
     </div>
 </div>
-
-@{
-    var outstanding = State.GetOutstandingBillOccurrences();
-    var dueNowBills = outstanding.Where(o => o.DueDate.Date <= DateTime.Today).ToList();
-    var next7Bills = AllUnpaidOccurrences(outstanding, 7).Where(o => o.DueDate.Date <= DateTime.Today.AddDays(7)).ToList();
-    var next30Bills = AllUnpaidOccurrences(outstanding, 30).Where(o => o.DueDate.Date <= DateTime.Today.AddDays(30)).ToList();
-}
 
 <div style="padding:0 16px 10px;display:flex;gap:8px">
     <div class="card-sm" style="flex:1;text-align:center">
@@ -93,7 +102,43 @@ else
 }
 
 <div class="scroll-handoff-gap"></div>
+}
 
+@if (filter == "List")
+{
+    @if (!listBills.Any())
+    {
+        <div class="empty-state">
+            <span>No bills found.</span>
+            <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">Add Bill</button>
+        </div>
+    }
+    else
+    {
+        <div class="card-list" style="margin-top:0">
+            @foreach (var (account, bills) in listGroups)
+            {
+                <div style="padding:8px 16px 4px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3);letter-spacing:0.05em">@account</div>
+                @foreach (var bill in bills)
+                {
+                    <div class="list-row" style="gap:10px;cursor:pointer" @onclick="() => StartEdit(bill)">
+                        <div class="row-main">
+                            <div class="row-title">@bill.Name</div>
+                            <div class="row-sub">@FreqAbbr(bill.Frequency) · @BillWeekly(bill).ToString("C")/wk</div>
+                        </div>
+                        <span class="row-amount neg">@bill.AmountDollars.ToString("C")</span>
+                    </div>
+                }
+            }
+            <div style="padding:10px 16px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border)">
+                <span style="font-size:13px;color:var(--text3)">@listBills.Count bill@(listBills.Count == 1 ? "" : "s") · @listTotal.ToString("C")/wk</span>
+                <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">+ Add</button>
+            </div>
+        </div>
+    }
+}
+else
+{
 <div class="card-list" style="margin-top:0">
     @{var occurrences = GetFiltered();}
     @if (!occurrences.Any())
@@ -154,6 +199,7 @@ else
         }
     }
 </div>
+}
 
 <div style="height:16px"></div>
 
@@ -265,4 +311,34 @@ else
         if (days == 1) return "Tomorrow";
         return $"{days} days";
     }
+
+    private List<Bill> GetBillsForList()
+    {
+        var q = State.Bills.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(_search))
+            q = q.Where(b => b.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+        return q.OrderBy(b => string.IsNullOrWhiteSpace(b.AccountName) ? "zzz" : b.AccountName)
+                .ThenBy(b => b.Name)
+                .ToList();
+    }
+
+    private static decimal BillWeekly(Bill b) => Math.Round(b.Frequency switch
+    {
+        BillFrequency.Weekly      => b.AmountDollars,
+        BillFrequency.Fortnightly => b.AmountDollars / 2m,
+        BillFrequency.Monthly     => b.AmountDollars / 4m,
+        BillFrequency.Quarterly   => b.AmountDollars / 12m,
+        BillFrequency.Yearly      => b.AmountDollars / 48m,
+        _                         => 0m
+    }, 2);
+
+    private static string FreqAbbr(BillFrequency freq) => freq switch
+    {
+        BillFrequency.Weekly      => "Weekly",
+        BillFrequency.Fortnightly => "Fortnightly",
+        BillFrequency.Monthly     => "Monthly",
+        BillFrequency.Quarterly   => "Quarterly",
+        BillFrequency.Yearly      => "Yearly",
+        _                         => "Monthly"
+    };
 }
