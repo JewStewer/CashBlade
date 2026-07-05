@@ -174,28 +174,73 @@
             {
                 var pct = State.WeeklyIncome > 0 ? amount / State.WeeklyIncome : 0;
                 var isExcluded = _excludedBudgetLabels.Contains(label);
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;opacity:@(isExcluded?"0.35":"1")" @onclick="() => ToggleBudgetRow(label)">
-                    <div class="dot" style="background:@color"></div>
-                    <div style="flex:1">
-                        <div style="display:flex;justify-content:space-between">
-                            <span style="font-size:14px;text-decoration:@(isExcluded?"line-through":"none")">@label</span>
-                            <span style="font-size:14px;font-weight:600;text-decoration:@(isExcluded?"line-through":"none")">@amount.ToString("C")</span>
-                        </div>
-                        @if (!isExcluded)
-                        {
-                            <div class="progress-bar" style="margin-top:4px">
-                                <div class="progress-fill" style="width:@((int)(Math.Clamp(pct,0,1)*100))%;background:@color"></div>
+                var subBills = BillsForBudgetCategory(label);
+                var hasSubItems = subBills.Count > 0;
+                var isExpanded = _expandedBudgetCategories.Contains(label);
+                var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
+                var effectiveAmount = Math.Max(amount - excludedSubWeekly, 0m);
+                var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0;
+
+                <div style="margin-bottom:10px">
+                    <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;opacity:@(isExcluded ? "0.35" : "1")"
+                         @onclick="@(() => { if (hasSubItems) ToggleExpandCategory(label); else ToggleBudgetRow(label); })">
+                        <div class="dot" style="background:@color;margin-top:4px;flex-shrink:0"></div>
+                        <div style="flex:1">
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <span style="font-size:14px;text-decoration:@(isExcluded ? "line-through" : "none")">@label</span>
+                                <div style="display:flex;align-items:center;gap:5px">
+                                    @if (excludedSubWeekly > 0 && !isExcluded)
+                                    {
+                                        <span style="font-size:11px;color:var(--green)">−@excludedSubWeekly.ToString("C")</span>
+                                    }
+                                    <span style="font-size:14px;font-weight:600;text-decoration:@(isExcluded ? "line-through" : "none")">@amount.ToString("C")</span>
+                                    @if (hasSubItems)
+                                    {
+                                        <span style="font-size:10px;color:var(--text3);margin-left:2px">@(isExpanded ? "▲" : "▼")</span>
+                                    }
+                                </div>
                             </div>
-                            <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
-                        }
+                            <div class="progress-bar" style="margin-top:4px;opacity:@(isExcluded ? "0.25" : "1")">
+                                <div class="progress-fill" style="width:@((int)(Math.Clamp(effectivePct,0,1)*100))%;background:@color"></div>
+                            </div>
+                            <div style="font-size:11px;color:var(--text3);margin-top:2px;opacity:@(isExcluded ? "0.4" : "1")">@pct.ToString("P0") of income</div>
+                        </div>
                     </div>
+
+                    @if (hasSubItems && isExpanded && !isExcluded)
+                    {
+                        <div style="margin-left:22px;margin-top:5px;background:var(--surface2);border-radius:8px;padding:2px 8px 2px">
+                            @foreach (var (bill, weekly) in subBills)
+                            {
+                                var isBillExcluded = _excludedBillIds.Contains(bill.Id);
+                                <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer"
+                                     @onclick="@(() => ToggleBill(bill.Id))">
+                                    <div style="flex:1;min-width:0">
+                                        <div style="font-size:13px;text-decoration:@(isBillExcluded ? "line-through" : "none");opacity:@(isBillExcluded ? "0.45" : "1");overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
+                                        <div style="font-size:10px;color:var(--text3)">@FreqAbbr(bill.Frequency) · @bill.AmountDollars.ToString("C")</div>
+                                    </div>
+                                    <span style="font-size:12px;font-weight:600;flex-shrink:0;min-width:52px;text-align:right;text-decoration:@(isBillExcluded ? "line-through" : "none");opacity:@(isBillExcluded ? "0.45" : "1")">@weekly.ToString("C")/wk</span>
+                                </div>
+                            }
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+                                <span style="font-size:10px;color:var(--text3)">@subBills.Count bill@(subBills.Count == 1 ? "" : "s") · tap to exclude</span>
+                                @if (subBills.Any(x => _excludedBillIds.Contains(x.Bill.Id)))
+                                {
+                                    <button @onclick="@(() => RestoreAllBillsInCategory(label))"
+                                            style="background:none;border:none;color:var(--teal);font-size:11px;cursor:pointer;padding:0;text-decoration:underline">
+                                        Restore all
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
                 </div>
             }
-            @if (_excludedBudgetLabels.Count > 0)
+            @if (_excludedBudgetLabels.Count > 0 || _excludedBillIds.Count > 0)
             {
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px;border-top:1px solid var(--border);margin-top:2px">
-                    <span style="font-size:12px;color:var(--text3)">@_excludedBudgetLabels.Count hidden · tap row to restore</span>
-                    <button @onclick="() => _excludedBudgetLabels.Clear()" style="background:none;border:none;color:var(--teal);font-size:12px;cursor:pointer;padding:0;text-decoration:underline">Reset</button>
+                    <span style="font-size:12px;color:var(--text3)">@(_excludedBudgetLabels.Count + _excludedBillIds.Count) excluded · tap to restore</span>
+                    <button @onclick="@(() => { _excludedBudgetLabels.Clear(); _excludedBillIds.Clear(); })" style="background:none;border:none;color:var(--teal);font-size:12px;cursor:pointer;padding:0;text-decoration:underline">Reset all</button>
                 </div>
             }
 
@@ -238,10 +283,10 @@
                         @WhatIfUnallocated.ToString("C")
                     </span>
                 </div>
-                @if (_excludedBudgetLabels.Count > 0)
+                @if (_excludedBudgetLabels.Count > 0 || _excludedBillIds.Count > 0)
                 {
                     var freed = WhatIfUnallocated - State.BudgetLeftover;
-                    <div style="font-size:12px;color:var(--green);text-align:right;margin-top:2px">+@freed.ToString("C") if those rows were removed</div>
+                    <div style="font-size:12px;color:var(--green);text-align:right;margin-top:2px">+@freed.ToString("C") if those items were removed</div>
                 }
             </div>
         }
@@ -1644,6 +1689,8 @@ else if (_tab == "Holiday")
     private readonly Dictionary<int, decimal> _goalWhatIfWeekly = new();
     private readonly Dictionary<string, decimal> _groupWhatIfWeekly = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _excludedBudgetLabels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<int> _excludedBillIds = new();
+    private readonly HashSet<string> _expandedBudgetCategories = new(StringComparer.OrdinalIgnoreCase);
 
     private void SelectTopPill(string tab)
     {
@@ -2156,9 +2203,19 @@ else if (_tab == "Holiday")
     private decimal AllocatedTotal =>
         State.BudgetBills + State.BudgetEssentials + State.BudgetSavings + State.BudgetUnplanned + State.CustomBudgetTotals.Values.Sum();
 
-    private decimal WhatIfAllocated => BudgetRows()
-        .Where(r => r.Amount > 0 && !_excludedBudgetLabels.Contains(r.Label))
-        .Sum(r => r.Amount);
+    private decimal WhatIfAllocated
+    {
+        get
+        {
+            var categoryTotal = BudgetRows()
+                .Where(r => r.Amount > 0 && !_excludedBudgetLabels.Contains(r.Label))
+                .Sum(r => r.Amount);
+            var excludedBillWeekly = State.Bills
+                .Where(b => _excludedBillIds.Contains(b.Id))
+                .Sum(b => BillWeekly(b));
+            return categoryTotal - excludedBillWeekly;
+        }
+    }
 
     private decimal WhatIfUnallocated => State.WeeklyIncome - WhatIfAllocated;
 
@@ -2166,6 +2223,44 @@ else if (_tab == "Holiday")
     {
         if (!_excludedBudgetLabels.Remove(label))
             _excludedBudgetLabels.Add(label);
+    }
+
+    private void ToggleBill(int billId)
+    {
+        if (!_excludedBillIds.Remove(billId))
+            _excludedBillIds.Add(billId);
+    }
+
+    private void ToggleExpandCategory(string label)
+    {
+        if (!_expandedBudgetCategories.Remove(label))
+            _expandedBudgetCategories.Add(label);
+    }
+
+    private void RestoreAllBillsInCategory(string label)
+    {
+        foreach (var (bill, _) in BillsForBudgetCategory(label))
+            _excludedBillIds.Remove(bill.Id);
+    }
+
+    private List<(Bill Bill, decimal Weekly)> BillsForBudgetCategory(string label) =>
+        State.Bills
+            .Where(b => string.Equals(GetEffectiveBillBudgetCategory(b), label, StringComparison.OrdinalIgnoreCase))
+            .Select(b => (Bill: b, Weekly: BillWeekly(b)))
+            .Where(x => x.Weekly > 0)
+            .OrderBy(x => x.Bill.Name)
+            .ToList();
+
+    private string GetEffectiveBillBudgetCategory(Bill b)
+    {
+        var cat = State.GetBillBudgetCategory(b);
+        if (!string.IsNullOrEmpty(cat)) return cat;
+        if (!string.IsNullOrWhiteSpace(b.AccountName))
+        {
+            var acct = State.GetBillAccountBudgetCategory(b.AccountName);
+            if (!string.IsNullOrEmpty(acct)) return acct;
+        }
+        return "Bills";
     }
 
     private IEnumerable<(string Label, decimal Amount, string Color)> BudgetRows()
