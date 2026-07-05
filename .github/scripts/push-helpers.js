@@ -43,38 +43,23 @@ function makeSupabaseClient(supabaseUrl, supabaseAnonKey) {
     };
 }
 
-async function sendToAllSubscriptions(webpush, supabase, notificationJson) {
-    const subscriptions = await supabase.get('push_subscriptions?select=id,subscription');
-    if (!subscriptions.length) {
-        console.log('No push subscriptions found — nothing to send.');
+async function sendToSubscription(webpush, subscriptionJson, notificationJson) {
+    let sub;
+    try { sub = typeof subscriptionJson === 'string' ? JSON.parse(subscriptionJson) : subscriptionJson; }
+    catch { console.error('Invalid PUSH_SUBSCRIPTION JSON — re-copy it from Settings → Notifications in the app.'); return 0; }
+
+    try {
+        await webpush.sendNotification(sub, notificationJson);
+        console.log('✓ Notification sent.');
+        return 1;
+    } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+            console.error('Subscription expired. Re-enable notifications in Settings → Notifications and update the PUSH_SUBSCRIPTION secret.');
+        } else {
+            console.error('Send failed:', err.message);
+        }
         return 0;
     }
-
-    console.log(`Sending to ${subscriptions.length} subscription(s)…`);
-
-    const results = await Promise.allSettled(
-        subscriptions.map(async row => {
-            let sub;
-            try { sub = JSON.parse(row.subscription); }
-            catch { console.warn(`Invalid subscription JSON for id=${row.id}`); return; }
-
-            try {
-                await webpush.sendNotification(sub, notificationJson);
-                console.log(`✓ Sent to ${row.id}`);
-            } catch (err) {
-                if (err.statusCode === 410 || err.statusCode === 404) {
-                    console.log(`Removing expired subscription ${row.id}`);
-                    await supabase.delete(`push_subscriptions?id=eq.${row.id}`);
-                } else {
-                    console.error(`Failed for ${row.id}:`, err.message);
-                }
-            }
-        })
-    );
-
-    const sent = results.filter(r => r.status === 'fulfilled').length;
-    console.log(`Done. ${sent}/${subscriptions.length} notifications sent.`);
-    return sent;
 }
 
 // Mirrors the bill-paid check send-bill-reminders.js already relied on inline:
@@ -88,4 +73,4 @@ function isBillUnpaid(bill, statuses) {
     return !latestStatus?.isPaid;
 }
 
-module.exports = { loadEnv, makeSupabaseClient, sendToAllSubscriptions, isBillUnpaid };
+module.exports = { loadEnv, makeSupabaseClient, sendToSubscription, isBillUnpaid };

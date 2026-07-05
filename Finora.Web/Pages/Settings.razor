@@ -239,50 +239,48 @@ else if (_tab == "Notifications")
     <!-- Push notifications -->
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px"><Icon Name="bell" Size="15" /> Push Notifications</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Bill and insight reminders while the app is open. Subscribe below too if you want them even when the app is closed.</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Receive bill reminders even when the app is closed.</div>
 
         @if (!_pushSupported)
         {
-            <div style="font-size:13px;color:var(--text3)">Push notifications are not supported on this device/browser.</div>
+            <div style="font-size:13px;color:var(--text3)">Push notifications are not supported on this browser. Make sure the app is installed to your home screen and open in Safari.</div>
         }
         else if (_pushPermission == "denied")
         {
-            <div style="font-size:13px;color:var(--red)">Notifications blocked. Enable them in your browser/phone settings, then return here.</div>
+            <div style="font-size:13px;color:var(--red)">Notifications blocked. Go to Settings → Notifications → Evergrove and allow them, then return here.</div>
         }
         else
         {
-            <div style="display:flex;gap:8px;margin-bottom:12px">
-                <button class="btn btn-primary btn-sm" style="flex:1" @onclick="EnableLocalNotifications" disabled="@_pushBusy">
-                    @(_pushPermission == "granted" ? "Notifications Enabled" : "Enable Alerts")
-                </button>
-                <button class="btn btn-secondary btn-sm" @onclick="SendTestNotification" disabled="@(_pushBusy || _pushPermission != "granted")">Test</button>
-            </div>
-            @if (!string.IsNullOrEmpty(_localNotificationStatus))
+            @if (!_pushSubscribed)
             {
-                <div style="margin-bottom:10px;font-size:13px;color:@_localNotificationStatusColor">@_localNotificationStatus</div>
+                <button class="btn btn-primary btn-full" @onclick="SubscribePush" disabled="@_pushBusy">
+                    @(_pushBusy ? "Enabling…" : "Enable Notifications")
+                </button>
+            }
+            else
+            {
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+                    <span class="badge badge-teal" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Enabled</span>
+                    <button class="btn btn-secondary btn-sm" @onclick="SendTestNotification" disabled="@_pushBusy">Test</button>
+                    <button class="btn btn-secondary btn-sm" @onclick="UnsubscribePush" disabled="@_pushBusy">Disable</button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_pushSubJson))
+                {
+                    <div style="background:var(--surface2);border-radius:10px;padding:12px;margin-top:4px">
+                        <div style="font-size:12px;font-weight:600;margin-bottom:6px">One-time setup</div>
+                        <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
+                            To receive reminders when the app is closed, add this as a GitHub secret named <strong>PUSH_SUBSCRIPTION</strong>:<br/>
+                            <span style="font-size:11px;color:var(--text3)">github.com → your repo → Settings → Secrets and variables → Actions</span>
+                        </div>
+                        <textarea class="form-input" readonly style="font-size:10px;font-family:monospace;height:72px;resize:none" value="@_pushSubJson"></textarea>
+                        <button class="btn btn-secondary btn-sm btn-full" style="margin-top:8px" @onclick="CopySubscriptionJson">
+                            @(_copiedSub ? "Copied!" : "Copy to clipboard")
+                        </button>
+                    </div>
+                }
             }
 
-            <div style="font-size:12px;color:var(--text3);margin-bottom:8px">For reminders even when the app is closed, subscribe to cloud push too:</div>
-            <div>
-                <label class="form-label">VAPID Public Key</label>
-                <input class="form-input" @bind="vapidPublicKey" placeholder="BHxk… (from npx web-push generate-vapid-keys)" style="font-family:monospace;font-size:12px" />
-                <div style="font-size:11px;color:var(--text3);margin-top:4px">Generate keys once: <code>npx web-push generate-vapid-keys</code><br/>Add VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY as GitHub Actions secrets.</div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:10px">
-                @if (_pushSubscribed)
-                {
-                    <span class="badge badge-teal" style="align-self:center;display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Subscribed</span>
-                    <button class="btn btn-secondary btn-sm" style="flex:1" @onclick="UnsubscribePush" disabled="@_pushBusy">
-                        @(_pushBusy ? "…" : "Disable")
-                    </button>
-                }
-                else
-                {
-                    <button class="btn btn-primary btn-full" @onclick="SubscribePush" disabled="@(_pushBusy || string.IsNullOrWhiteSpace(vapidPublicKey))">
-                        @(_pushBusy ? "Subscribing…" : "Enable Notifications")
-                    </button>
-                }
-            </div>
             @if (!string.IsNullOrEmpty(_pushStatus))
             {
                 <div style="margin-top:8px;font-size:13px;color:@_pushStatusColor">@_pushStatus</div>
@@ -416,7 +414,8 @@ else if (_tab == "Data")
     private bool _pushBusy;
     private string _pushStatus = string.Empty, _pushStatusColor = "var(--text3)";
     private string _localNotificationStatus = string.Empty, _localNotificationStatusColor = "var(--text3)";
-    private string vapidPublicKey = string.Empty;
+    private string _pushSubJson = string.Empty;
+    private bool _copiedSub;
     private bool manualSyncActive;
     private string manualSyncStep = string.Empty;
 
@@ -437,7 +436,6 @@ else if (_tab == "Data")
         upBankToken = await UpSync.GetAccessTokenAsync();
         nextPayDate = State.NextPayDate;
         payIntervalDays = State.PayIntervalDays;
-        vapidPublicKey = State.VapidPublicKey;
         await RefreshLocalIntentCountsAsync();
         Sync.OnSyncStateChanged += StateHasChanged;
         UpSync.OnStateChanged += StateHasChanged;
@@ -479,6 +477,7 @@ else if (_tab == "Data")
             _pushPermission = await JS.InvokeAsync<string>("pushNotifications.getPermission");
             var existingSub = await JS.InvokeAsync<string?>("pushNotifications.getSubscription");
             _pushSubscribed = !string.IsNullOrEmpty(existingSub);
+            if (!string.IsNullOrEmpty(existingSub)) _pushSubJson = existingSub;
             await RefreshUpdateStatusAsync();
             StateHasChanged();
         }
@@ -703,37 +702,32 @@ else if (_tab == "Data")
         _localNotificationStatusColor = ok ? "var(--green)" : "var(--red)";
     }
 
+    private const string VapidPublicKey = "BGJ1oO8SbTqN6Jir5WmZOzfzf-dw9XiRsDwk6VORxeJPGyh4b2c5qKVKusV9aWOSg6NhWSJnd3fIDGk9-G_mhb8";
+
     private async Task SubscribePush()
     {
-        if (string.IsNullOrWhiteSpace(vapidPublicKey)) return;
         _pushBusy = true; _pushStatus = string.Empty; StateHasChanged();
         try
         {
-            // Save VAPID key so it persists across sessions
-            await State.SaveSettingAsync("VapidPublicKey", vapidPublicKey.Trim());
-
             _pushPermission = await JS.InvokeAsync<string>("pushNotifications.requestPermission");
             if (_pushPermission != "granted")
             {
-                _pushStatus = "Permission denied. Enable notifications in your browser/phone settings.";
+                _pushStatus = "Permission denied. Go to Settings → Notifications → Evergrove to allow them.";
                 _pushStatusColor = "var(--red)";
                 return;
             }
 
-            var subJson = await JS.InvokeAsync<string?>("pushNotifications.subscribe", vapidPublicKey.Trim());
+            var subJson = await JS.InvokeAsync<string?>("pushNotifications.subscribe", VapidPublicKey);
             if (string.IsNullOrEmpty(subJson))
             {
-                _pushStatus = "Failed to subscribe. Check the VAPID key and try again.";
+                _pushStatus = "Subscription failed. Make sure the app is installed to your home screen.";
                 _pushStatusColor = "var(--red)";
                 return;
             }
 
-            var saved = await Sync.SavePushSubscriptionAsync(subJson);
             _pushSubscribed = true;
-            _pushStatus = saved
-                ? "Notifications enabled! You'll receive bill reminders."
-                : "Subscribed locally (Supabase save failed — check connection).";
-            _pushStatusColor = "var(--green)";
+            _pushSubJson = subJson;
+            _pushStatus = string.Empty;
         }
         catch (Exception ex)
         {
@@ -741,6 +735,20 @@ else if (_tab == "Data")
             _pushStatusColor = "var(--red)";
         }
         finally { _pushBusy = false; StateHasChanged(); }
+    }
+
+    private async Task CopySubscriptionJson()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _pushSubJson);
+            _copiedSub = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copiedSub = false;
+            StateHasChanged();
+        }
+        catch { }
     }
 
     private async Task UnsubscribePush()

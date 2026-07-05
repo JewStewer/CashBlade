@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 // Runs daily via GitHub Actions — reads bills from Supabase and sends web push
-// to all subscribed devices for bills due within the next 3 days.
+// to the device subscribed via the app's Settings → Notifications page.
 //
 // Required GitHub Actions secrets:
-//   SUPABASE_URL      — your Supabase project URL
-//   SUPABASE_ANON_KEY — Supabase anon/public key
-//   VAPID_PUBLIC_KEY  — from: npx web-push generate-vapid-keys
-//   VAPID_PRIVATE_KEY — from: npx web-push generate-vapid-keys
-//   VAPID_EMAIL       — e.g. mailto:you@example.com
+//   VAPID_PUBLIC_KEY   — hardcoded in the app (BGJ1oO8…)
+//   VAPID_PRIVATE_KEY  — 4u7ZnkAQAZXVZUUZw5i84yPVTQ14WXvTG8qFItyxLYk
+//   VAPID_EMAIL        — e.g. mailto:you@example.com
+//   PUSH_SUBSCRIPTION  — JSON copied from Settings → Notifications in the app
+//   SUPABASE_URL       — your Supabase project URL (for reading bill data)
+//   SUPABASE_ANON_KEY  — Supabase anon/public key
 
 const webpush = require('web-push');
-const { loadEnv, makeSupabaseClient, sendToAllSubscriptions, isBillUnpaid } = require('./push-helpers');
+const { loadEnv, makeSupabaseClient, sendToSubscription, isBillUnpaid } = require('./push-helpers');
 
-const env = loadEnv(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'], 'Bill reminders not configured');
+const env = loadEnv(['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'PUSH_SUBSCRIPTION', 'SUPABASE_URL', 'SUPABASE_ANON_KEY'], 'Bill reminders not configured');
 webpush.setVapidDetails(env.VAPID_EMAIL || 'mailto:admin@cashblade.app', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
 const supabase = makeSupabaseClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
 
@@ -25,7 +26,6 @@ function daysBetween(dateStr) {
 }
 
 async function main() {
-    // 1. Get the latest sync payload (bills live inside finance_sync)
     const syncRows = await supabase.get('finance_sync?id=eq.main&select=payload');
     if (!syncRows.length) {
         console.log('No sync data found — skipping.');
@@ -39,7 +39,6 @@ async function main() {
     const bills = payload.bills ?? [];
     const statuses = payload.billOccurrenceStatuses ?? [];
 
-    // 2. Find unpaid bills due within 3 days
     const upcomingBills = bills.filter(b => {
         const days = daysBetween(b.dueDate);
         if (days < 0 || days > 3) return false;
@@ -53,7 +52,6 @@ async function main() {
 
     console.log(`Found ${upcomingBills.length} upcoming bill(s):`, upcomingBills.map(b => b.name).join(', '));
 
-    // 3. Build notification payload
     const billList = upcomingBills.map(b => {
         const days = daysBetween(b.dueDate);
         const when = days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
@@ -65,8 +63,7 @@ async function main() {
         body: `Upcoming: ${billList}`
     });
 
-    // 4. Send to all subscribed devices
-    await sendToAllSubscriptions(webpush, supabase, notification);
+    await sendToSubscription(webpush, env.PUSH_SUBSCRIPTION, notification);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

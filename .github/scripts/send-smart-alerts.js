@@ -14,9 +14,9 @@
 // (SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL)
 
 const webpush = require('web-push');
-const { loadEnv, makeSupabaseClient, sendToAllSubscriptions, isBillUnpaid } = require('./push-helpers');
+const { loadEnv, makeSupabaseClient, sendToSubscription, isBillUnpaid } = require('./push-helpers');
 
-const env = loadEnv(['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY'], 'Smart alerts not configured');
+const env = loadEnv(['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'PUSH_SUBSCRIPTION', 'SUPABASE_URL', 'SUPABASE_ANON_KEY'], 'Smart alerts not configured');
 webpush.setVapidDetails(env.VAPID_EMAIL || 'mailto:admin@cashblade.app', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
 const supabase = makeSupabaseClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
 
@@ -259,7 +259,7 @@ async function main() {
 
     console.log(`Sending ${alerts.length} alert(s):`, alerts);
     const notification = JSON.stringify({ title: 'Evergrove — Smart Alerts', body: alerts.join('\n') });
-    await sendToAllSubscriptions(webpush, supabase, notification);
+    await sendToSubscription(webpush, env.PUSH_SUBSCRIPTION, notification);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
