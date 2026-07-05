@@ -2261,9 +2261,9 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         BillFrequency.Weekly => amount,
         BillFrequency.Fortnightly => amount / 2m,
-        BillFrequency.Monthly => amount * 12m / 52m,
-        BillFrequency.Quarterly => amount * 4m / 52m,
-        BillFrequency.Yearly => amount / 52m,
+        BillFrequency.Monthly => amount / 4m,
+        BillFrequency.Quarterly => amount / 12m,
+        BillFrequency.Yearly => amount / 48m,
         _ => 0
     };
 

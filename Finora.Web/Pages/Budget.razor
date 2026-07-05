@@ -1637,9 +1637,9 @@ else if (_tab == "Holiday")
     {
         BillFrequency.Weekly      => b.AmountDollars,
         BillFrequency.Fortnightly => b.AmountDollars / 2m,
-        BillFrequency.Monthly     => b.AmountDollars * 12m / 52m,
-        BillFrequency.Quarterly   => b.AmountDollars * 4m / 52m,
-        BillFrequency.Yearly      => b.AmountDollars / 52m,
+        BillFrequency.Monthly     => b.AmountDollars / 4m,
+        BillFrequency.Quarterly   => b.AmountDollars / 12m,
+        BillFrequency.Yearly      => b.AmountDollars / 48m,
         _                         => 0m
     }, 2);
 
