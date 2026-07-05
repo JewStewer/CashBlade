@@ -68,7 +68,11 @@ async function sendToSubscription(webpush, subscriptionJson, notificationJson) {
         if (err.statusCode === 410 || err.statusCode === 404) {
             console.error('Subscription expired. Re-enable notifications in Settings → Notifications and update the PUSH_SUBSCRIPTION secret.');
         } else {
-            console.error('Send failed:', err.message);
+            console.error(`Send failed (HTTP ${err.statusCode ?? 'unknown'}): ${err.message}`);
+            if (err.body) console.error('Response body:', err.body);
+            if (err.statusCode === 400 || err.statusCode === 401) {
+                console.error('Hint: 400/401 usually means the PUSH_SUBSCRIPTION was created with a different VAPID public key. Re-subscribe in Settings → Notifications and update the PUSH_SUBSCRIPTION secret.');
+            }
         }
         return 0;
     }
