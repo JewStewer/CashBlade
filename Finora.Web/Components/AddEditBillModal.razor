@@ -55,7 +55,25 @@
                             @cat
                         </button>
                     }
+                    @if (!_showNewCatInput)
+                    {
+                        <button type="button"
+                                style="padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:2px dashed var(--border);background:transparent;color:var(--text3)"
+                                @onclick="() => _showNewCatInput = true">
+                            + New
+                        </button>
+                    }
                 </div>
+                @if (_showNewCatInput)
+                {
+                    <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+                        <input class="form-input" style="flex:1;font-size:13px" placeholder="Category name"
+                               @bind="_newCatName" @bind:event="oninput"
+                               @onkeydown='async e => { if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newCatName)) await CreateCategoryAsync(); }' />
+                        <button class="btn btn-primary btn-sm" @onclick="CreateCategoryAsync" disabled="@string.IsNullOrWhiteSpace(_newCatName)">Create</button>
+                        <button class="btn btn-secondary btn-sm" @onclick='() => { _showNewCatInput = false; _newCatName = ""; }'>✕</button>
+                    </div>
+                }
             </div>
             <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
                 <input type="checkbox" id="autoPay" @bind="isAutoPay" style="width:18px;height:18px;accent-color:var(--teal)" />
@@ -111,6 +129,8 @@
     private bool isAutoPay;
     private bool isInstallment;
     private string budgetCategory = "Bills";
+    private bool _showNewCatInput;
+    private string _newCatName = "";
     private string error = string.Empty;
     private bool saving;
 
@@ -185,6 +205,16 @@
         await State.DeleteBillAsync(Bill.Id);
         saving = false;
         await OnSaved.InvokeAsync();
+    }
+
+    private async Task CreateCategoryAsync()
+    {
+        var name = _newCatName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        await State.AddCustomBudgetCategoryAsync(name);
+        budgetCategory = name;
+        _newCatName = "";
+        _showNewCatInput = false;
     }
 
     private async Task Close() => await OnClose.InvokeAsync();

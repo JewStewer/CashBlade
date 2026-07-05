@@ -170,27 +170,20 @@
                 <div class="progress-fill" style="width:@((int)(usedPct*100))%;background:@(State.BudgetLeftover>=0?"var(--teal)":"var(--red)")"></div>
             </div>
 
-            @foreach (var (label, amount, color) in BudgetRows())
+            @foreach (var (label, amount, color) in BudgetRows().Where(r => r.Amount > 0))
             {
                 var pct = State.WeeklyIncome > 0 ? amount / State.WeeklyIncome : 0;
-                var notSet = amount == 0;
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;@(notSet?"opacity:0.45":"")">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                     <div class="dot" style="background:@color"></div>
                     <div style="flex:1">
                         <div style="display:flex;justify-content:space-between">
                             <span style="font-size:14px">@label</span>
-                            <span style="font-size:14px;font-weight:600">
-                                @if (notSet) { <span style="font-size:12px;color:var(--text3);font-weight:400">not set</span> }
-                                else { @amount.ToString("C") }
-                            </span>
+                            <span style="font-size:14px;font-weight:600">@amount.ToString("C")</span>
                         </div>
-                        @if (!notSet)
-                        {
-                            <div class="progress-bar" style="margin-top:4px">
-                                <div class="progress-fill" style="width:@((int)(Math.Clamp(pct,0,1)*100))%;background:@color"></div>
-                            </div>
-                            <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
-                        }
+                        <div class="progress-bar" style="margin-top:4px">
+                            <div class="progress-fill" style="width:@((int)(Math.Clamp(pct,0,1)*100))%;background:@color"></div>
+                        </div>
+                        <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
                     </div>
                 </div>
             }
