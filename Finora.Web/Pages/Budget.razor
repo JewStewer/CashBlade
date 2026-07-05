@@ -1428,7 +1428,7 @@ else if (_tab == "Forecast")
     <div class="card">
         <div class="section-title" style="margin-bottom:2px">60-Day Balance Forecast</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">
-            Projects all recurring bills, future paydays and @ForecastDailySpendAssumption.ToString("C")/day discretionary spend@(State.NoSpendMode ? " while no-spend mode is on" : " capped by your budget pace")
+            Projects all recurring bills, future paydays and @ForecastDailySpendAssumption.ToString("C")/day discretionary spend@(State.NoSpendMode ? " while no-spend mode is on" : " based on your last 30 days")
         </div>
         <div style="display:flex;justify-content:space-between;align-items:baseline">
             <div>
@@ -2437,8 +2437,9 @@ else if (_tab == "Holiday")
         {
             if (State.NoSpendMode) return 0m;
             var recent = Math.Max(State.GetDiscretionarySpendingForPeriod(DateTime.Today.AddDays(-30), DateTime.Today.AddDays(-1)) / 30m, 0m);
-            var budgetPace = State.BudgetSafeToSpendAmount > 0 ? State.BudgetSafeToSpendAmount / 7m : recent;
-            return Math.Round(Math.Min(recent, budgetPace), 2);
+            if (recent > 0) return Math.Round(recent, 2);
+            var budgetFallback = WhatIfUnallocated > 0 ? WhatIfUnallocated / 7m : 0m;
+            return Math.Round(budgetFallback, 2);
         }
     }
 
