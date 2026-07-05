@@ -1492,7 +1492,7 @@ else if (_tab == "Forecast")
             }
             @foreach (var day in ForecastCalendarDays)
             {
-                <div class="budget-calendar-day @(day.IsOutsideMonth ? "is-outside" : "") @(day.Date.Date == DateTime.Today ? "is-today" : "")">
+                <div class="budget-calendar-day @(day.IsOutsideMonth ? "is-outside" : "") @(day.Date.Date == DateTime.Today ? "is-today" : "")" style="cursor:pointer" @onclick="() => _selectedCalDay = day.Date">
                     <div class="budget-calendar-date">
                         <span>@day.Date.Day</span>
                         @if (day.IsPayday)
@@ -1540,7 +1540,7 @@ else if (_tab == "Forecast")
         <div class="card-list" style="margin-top:0">
             @foreach (var day in eventDays)
             {
-                <div class="list-row">
+                <div class="list-row" style="cursor:pointer" @onclick="() => _selectedCalDay = day.Date">
                     <div style="text-align:center;width:38px;flex-shrink:0">
                         <div style="font-size:10px;color:@(day.Date==DateTime.Today?"var(--teal)":"var(--text3)")">@day.Date.ToString("ddd").ToUpper()</div>
                         <div style="font-size:16px;font-weight:700;color:@(day.Date==DateTime.Today?"var(--teal)":"var(--text)")">@day.Date.Day</div>
@@ -1636,6 +1636,111 @@ else if (_tab == "Holiday")
     <AddEditSavingsGoalModal Goal="@_goalDraft"
         OnClose="() => _goalDraft = null"
         OnSaved="() => _goalDraft = null" />
+}
+
+@if (_selectedCalDay.HasValue)
+{
+    <div class="modal-backdrop" @onclick="() => _selectedCalDay = null">
+        <div class="modal-card" @onclick:stopPropagation>
+        <div class="modal-sheet">
+            <div class="modal-handle"></div>
+            @{
+                var selDate = _selectedCalDay!.Value.Date;
+                var isPast   = selDate < DateTime.Today;
+                var isToday  = selDate == DateTime.Today;
+                var selForecast = ForecastCalendarDays.FirstOrDefault(d => d.Date.Date == selDate)?.Forecast;
+                var selBills   = State.GetUpcomingBillOccurrences(selDate, selDate);
+                var selTxns    = isPast || isToday
+                    ? State.Transactions.Where(t => t.Date.Date == selDate && t.AmountCents < 0 && t.TransferId == null).ToList()
+                    : new List<Transaction>();
+                var selBalance = isToday ? State.TotalBalance : selForecast?.Balance;
+            }
+            <div class="modal-title" style="font-size:16px">@selDate.ToString("dddd d MMMM")</div>
+
+            <div style="padding:0 16px 4px;display:flex;flex-direction:column;gap:12px">
+
+                @if (selBalance.HasValue)
+                {
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:13px;color:var(--text3)">@(isToday ? "Current balance" : "Projected balance")</span>
+                        <span style="font-size:18px;font-weight:700;color:@(selBalance.Value < 0 ? "var(--red)" : "var(--text)")">
+                            @selBalance.Value.ToString("C")
+                        </span>
+                    </div>
+                }
+
+                @if (IsForecastPayday(selDate))
+                {
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(52,211,153,0.08);border-radius:10px;border:1px solid rgba(52,211,153,0.2)">
+                        <span style="font-size:13px;color:var(--green);font-weight:600">Payday</span>
+                        <span style="font-size:15px;font-weight:700;color:var(--green)">+@ForecastWeeklyPayAmount.ToString("C")</span>
+                    </div>
+                }
+
+                @if (selBills.Count > 0)
+                {
+                    <div>
+                        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Bills due</div>
+                        @foreach (var occ in selBills)
+                        {
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+                                <span style="font-size:14px">@occ.Bill.Name</span>
+                                <span style="font-size:14px;font-weight:600;color:var(--red)">-@occ.Bill.AmountDollars.ToString("C")</span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (isPast || isToday)
+                {
+                    <div>
+                        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">
+                            Spending
+                        </div>
+                        @if (selTxns.Count == 0)
+                        {
+                            <div style="font-size:13px;color:var(--text3)">No spending recorded for this day.</div>
+                        }
+                        else
+                        {
+                            @foreach (var t in selTxns.OrderBy(t => t.AmountCents))
+                            {
+                                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+                                    <div>
+                                        <div style="font-size:14px">@t.Description</div>
+                                        @if (!string.IsNullOrEmpty(t.CategoryName))
+                                        {
+                                            <div style="font-size:11px;color:var(--text3)">@t.CategoryName</div>
+                                        }
+                                    </div>
+                                    <span style="font-size:14px;font-weight:600;color:var(--red)">@(t.AmountDollars.ToString("C"))</span>
+                                </div>
+                            }
+                            <div style="display:flex;justify-content:space-between;padding:8px 0">
+                                <span style="font-size:13px;color:var(--text3)">Total spent</span>
+                                <span style="font-size:14px;font-weight:700;color:var(--red)">
+                                    @(selTxns.Sum(t => t.AmountDollars).ToString("C"))
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:13px;color:var(--text3)">Daily avg (last 30 days)</span>
+                        <span style="font-size:14px;font-weight:600;color:var(--text2)">-@ForecastDailySpendAssumption.ToString("C")</span>
+                    </div>
+                }
+
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" style="flex:1" @onclick="() => _selectedCalDay = null">Close</button>
+            </div>
+        </div>
+        </div>
+    </div>
 }
 
 <div style="height:16px"></div>
@@ -1744,6 +1849,7 @@ else if (_tab == "Holiday")
     private bool _showBudgetEnvelopeForm;
     private string _newEnvelopeName = string.Empty;
     private string _newEnvelopeAmount = string.Empty;
+    private DateTime? _selectedCalDay;
 
     private void SelectTopPill(string tab)
     {
