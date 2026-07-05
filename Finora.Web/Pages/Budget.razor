@@ -1737,9 +1737,9 @@ else if (_tab == "Holiday")
     private readonly HashSet<int> _celebratedGoalIds = new();
     private readonly Dictionary<int, decimal> _goalWhatIfWeekly = new();
     private readonly Dictionary<string, decimal> _groupWhatIfWeekly = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _excludedBudgetLabels = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<int> _excludedBillIds = new();
-    private readonly HashSet<string> _expandedBudgetCategories = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _excludedBudgetLabels => State.BudgetExcludedLabels;
+    private HashSet<int> _excludedBillIds => State.BudgetExcludedBillIds;
+    private HashSet<string> _expandedBudgetCategories => State.BudgetExpandedCategories;
     private bool _showBudgetAddPicker;
     private bool _showBudgetEnvelopeForm;
     private string _newEnvelopeName = string.Empty;
@@ -2194,7 +2194,7 @@ else if (_tab == "Holiday")
     private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
     private decimal PeriodIncome   => State.WeeklyIncome * PayCycleWeeks;
     // Budget for non-bill spending = unallocated budget after bills, savings and planned allocations.
-    private decimal PeriodBudget   => Math.Max(State.BudgetLeftover * PayCycleWeeks, 0m);
+    private decimal PeriodBudget   => Math.Max(WhatIfUnallocated * PayCycleWeeks, 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
     private string PeriodNounLower => PeriodNoun.ToLowerInvariant();

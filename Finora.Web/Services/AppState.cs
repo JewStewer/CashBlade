@@ -4,6 +4,11 @@ namespace Finora.Web.Services;
 
 public class AppState(IndexedDbService db, SyncService sync)
 {
+    // ── What-if budget exclusions (session-only, not persisted) ──────────────
+    public HashSet<string> BudgetExcludedLabels { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<int> BudgetExcludedBillIds { get; } = new();
+    public HashSet<string> BudgetExpandedCategories { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     // ── Raw data ──────────────────────────────────────────────────────────────
     public List<Account> Accounts { get; private set; } = new();
     public List<Category> Categories { get; private set; } = new();
