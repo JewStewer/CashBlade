@@ -209,24 +209,32 @@
 
                     @if (hasSubItems && isExpanded && !isExcluded)
                     {
-                        <div style="margin-left:22px;margin-top:5px;background:var(--surface2);border-radius:8px;padding:2px 8px 2px">
+                        <div style="margin-left:22px;margin-top:5px;border:1px solid var(--border);border-radius:8px;overflow:hidden"
+                             @onclick:stopPropagation="true">
                             @foreach (var (bill, weekly) in subBills)
                             {
                                 var isBillExcluded = _excludedBillIds.Contains(bill.Id);
-                                <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer"
-                                     @onclick="@(() => ToggleBill(bill.Id))">
-                                    <div style="flex:1;min-width:0">
-                                        <div style="font-size:13px;text-decoration:@(isBillExcluded ? "line-through" : "none");opacity:@(isBillExcluded ? "0.45" : "1");overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
+                                <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:@(isBillExcluded ? "var(--surface3)" : "var(--surface)");border-bottom:1px solid var(--border);cursor:pointer;user-select:none"
+                                     @onclick="@(() => ToggleBill(bill.Id))" @onclick:stopPropagation="true">
+                                    <!-- Checkbox indicator -->
+                                    <div style="width:18px;height:18px;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:@(isBillExcluded ? "var(--surface2)" : color);border:@(isBillExcluded ? "1.5px solid var(--border)" : "none");transition:background 0.15s">
+                                        @if (!isBillExcluded)
+                                        {
+                                            <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4l3 3 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        }
+                                    </div>
+                                    <div style="flex:1;min-width:0;opacity:@(isBillExcluded ? "0.45" : "1")">
+                                        <div style="font-size:13px;text-decoration:@(isBillExcluded ? "line-through" : "none");overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
                                         <div style="font-size:10px;color:var(--text3)">@FreqAbbr(bill.Frequency) · @bill.AmountDollars.ToString("C")</div>
                                     </div>
-                                    <span style="font-size:12px;font-weight:600;flex-shrink:0;min-width:52px;text-align:right;text-decoration:@(isBillExcluded ? "line-through" : "none");opacity:@(isBillExcluded ? "0.45" : "1")">@weekly.ToString("C")/wk</span>
+                                    <span style="font-size:12px;font-weight:600;flex-shrink:0;min-width:52px;text-align:right;opacity:@(isBillExcluded ? "0.45" : "1");text-decoration:@(isBillExcluded ? "line-through" : "none")">@weekly.ToString("C")/wk</span>
                                 </div>
                             }
-                            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
-                                <span style="font-size:10px;color:var(--text3)">@subBills.Count bill@(subBills.Count == 1 ? "" : "s") · tap to exclude</span>
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:var(--surface2)">
+                                <span style="font-size:10px;color:var(--text3)">Tap to include / exclude from what-if</span>
                                 @if (subBills.Any(x => _excludedBillIds.Contains(x.Bill.Id)))
                                 {
-                                    <button @onclick="@(() => RestoreAllBillsInCategory(label))"
+                                    <button @onclick="@(() => RestoreAllBillsInCategory(label))" @onclick:stopPropagation="true"
                                             style="background:none;border:none;color:var(--teal);font-size:11px;cursor:pointer;padding:0;text-decoration:underline">
                                         Restore all
                                     </button>
