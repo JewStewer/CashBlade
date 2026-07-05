@@ -21,6 +21,28 @@ jobs:
       - name: Install web-push
         run: npm install web-push
 
+      - name: Send test notification (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_EMAIL: ${{ secrets.VAPID_EMAIL }}
+          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
+        run: |
+          node -e "
+            const wp = require('web-push');
+            const { sendToSubscription } = require('./.github/scripts/push-helpers');
+            wp.setVapidDetails(
+              process.env.VAPID_EMAIL || 'mailto:admin@cashblade.app',
+              process.env.VAPID_PUBLIC_KEY,
+              process.env.VAPID_PRIVATE_KEY
+            );
+            sendToSubscription(wp, process.env.PUSH_SUBSCRIPTION, JSON.stringify({
+              title: 'Evergrove — Test',
+              body: 'Push notifications are working!'
+            })).then(n => process.exit(n ? 0 : 1));
+          "
+
       - name: Send bill reminders
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
