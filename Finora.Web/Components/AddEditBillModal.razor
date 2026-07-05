@@ -42,6 +42,21 @@
                     }
                 </select>
             </div>
+            <div>
+                <label class="form-label">Budget Category</label>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+                    @foreach (var cat in State.GetAllBudgetCategories())
+                    {
+                        var isActive = string.Equals(cat, budgetCategory, StringComparison.OrdinalIgnoreCase);
+                        var color = CategoryColor(cat);
+                        <button type="button"
+                                style="padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:@(isActive ? $"2px solid {color}" : "2px solid transparent");background:@(isActive ? $"{color}22" : "var(--surface2)");color:@(isActive ? color : "var(--text3)")"
+                                @onclick="() => budgetCategory = cat">
+                            @cat
+                        </button>
+                    }
+                </div>
+            </div>
             <div style="display:flex;align-items:center;gap:8px;padding:2px 0">
                 <input type="checkbox" id="autoPay" @bind="isAutoPay" style="width:18px;height:18px;accent-color:var(--teal)" />
                 <label for="autoPay" style="font-size:14px;color:var(--text2)">Auto-pay</label>
@@ -95,6 +110,7 @@
     private int accountId;
     private bool isAutoPay;
     private bool isInstallment;
+    private string budgetCategory = "Bills";
     private string error = string.Empty;
     private bool saving;
 
@@ -110,11 +126,13 @@
             frequency = Bill.Frequency;
             accountId = Bill.AccountId != 0 ? Bill.AccountId : (State.Accounts.FirstOrDefault()?.Id ?? 0);
             isAutoPay = Bill.IsAutoPay;
+            budgetCategory = State.GetBillBudgetCategory(Bill);
         }
         if (IsNew)
         {
             isInstallment = InstallmentTotalDollars is > 0;
             installmentTotal = InstallmentTotalDollars ?? 0;
+            budgetCategory = "Bills";
         }
     }
 
@@ -149,6 +167,10 @@
         else
             await State.UpdateBillAsync(b);
 
+        // Save per-item budget category (b.Id is set by AddBillAsync for new bills)
+        if (!string.Equals(budgetCategory, "Bills", StringComparison.Ordinal))
+            await State.SaveSettingAsync($"BillItemBudgetCategory:{b.Id}", budgetCategory);
+
         saving = false;
         await OnSaved.InvokeAsync();
     }
@@ -166,4 +188,13 @@
     }
 
     private async Task Close() => await OnClose.InvokeAsync();
+
+    private static string CategoryColor(string cat) => cat switch
+    {
+        "Bills"      => "#10B981",
+        "Essentials" => "#F59E0B",
+        "Savings"    => "#8B5CF6",
+        "Unplanned"  => "#94A3B8",
+        _ => "#3B82F6"
+    };
 }
