@@ -32,7 +32,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal BudgetEssentials { get; private set; }
     public decimal BudgetSavings { get; private set; }
     public decimal PlannedSavingsTransfers { get; private set; }
-    public decimal BudgetWeeklyTransfers => BudgetBills + BudgetSavings;
+    public decimal BudgetWeeklyTransfers => BudgetBills + BudgetEssentials + BudgetSavings + BudgetUnplanned + CustomBudgetTotals.Values.Sum();
     public decimal BudgetUnplanned { get; private set; }
     public List<string> CustomBudgetCategories { get; private set; } = new();
     public Dictionary<string, decimal> CustomBudgetTotals { get; private set; } = new();

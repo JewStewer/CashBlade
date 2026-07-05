@@ -161,30 +161,41 @@
         }
         else
         {
-            var usedPct = State.WeeklyIncome > 0 ? Math.Min((State.WeeklyIncome - State.BudgetLeftover) / State.WeeklyIncome, 1) : 0;
+            var usedPct = State.WeeklyIncome > 0 ? Math.Min(WhatIfAllocated / State.WeeklyIncome, 1) : 0;
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
                 <span style="font-size:26px;font-weight:700">@State.WeeklyIncome.ToString("C")</span>
                 <span style="font-size:13px;color:var(--text3)">per week</span>
             </div>
             <div class="progress-bar" style="height:8px;margin-bottom:12px">
-                <div class="progress-fill" style="width:@((int)(usedPct*100))%;background:@(State.BudgetLeftover>=0?"var(--teal)":"var(--red)")"></div>
+                <div class="progress-fill" style="width:@((int)(usedPct*100))%;background:@(WhatIfUnallocated>=0?"var(--teal)":"var(--red)")"></div>
             </div>
 
             @foreach (var (label, amount, color) in BudgetRows().Where(r => r.Amount > 0))
             {
                 var pct = State.WeeklyIncome > 0 ? amount / State.WeeklyIncome : 0;
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                var isExcluded = _excludedBudgetLabels.Contains(label);
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;opacity:@(isExcluded?"0.35":"1")" @onclick="() => ToggleBudgetRow(label)">
                     <div class="dot" style="background:@color"></div>
                     <div style="flex:1">
                         <div style="display:flex;justify-content:space-between">
-                            <span style="font-size:14px">@label</span>
-                            <span style="font-size:14px;font-weight:600">@amount.ToString("C")</span>
+                            <span style="font-size:14px;text-decoration:@(isExcluded?"line-through":"none")">@label</span>
+                            <span style="font-size:14px;font-weight:600;text-decoration:@(isExcluded?"line-through":"none")">@amount.ToString("C")</span>
                         </div>
-                        <div class="progress-bar" style="margin-top:4px">
-                            <div class="progress-fill" style="width:@((int)(Math.Clamp(pct,0,1)*100))%;background:@color"></div>
-                        </div>
-                        <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
+                        @if (!isExcluded)
+                        {
+                            <div class="progress-bar" style="margin-top:4px">
+                                <div class="progress-fill" style="width:@((int)(Math.Clamp(pct,0,1)*100))%;background:@color"></div>
+                            </div>
+                            <div style="font-size:11px;color:var(--text3);margin-top:2px">@pct.ToString("P0") of income</div>
+                        }
                     </div>
+                </div>
+            }
+            @if (_excludedBudgetLabels.Count > 0)
+            {
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px;border-top:1px solid var(--border);margin-top:2px">
+                    <span style="font-size:12px;color:var(--text3)">@_excludedBudgetLabels.Count hidden · tap row to restore</span>
+                    <button @onclick="() => _excludedBudgetLabels.Clear()" style="background:none;border:none;color:var(--teal);font-size:12px;cursor:pointer;padding:0;text-decoration:underline">Reset</button>
                 </div>
             }
 
@@ -212,19 +223,26 @@
                 </div>
             }
 
-            @if (State.BudgetWeeklyTransfers > 0)
+            @if (AllocatedTotal > 0)
             {
                 <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
                     <span style="font-size:13px;color:var(--text3)">Weekly transfers total</span>
-                    <span style="font-size:15px;font-weight:700;color:var(--green)">@State.BudgetWeeklyTransfers.ToString("C")/wk</span>
+                    <span style="font-size:15px;font-weight:700;color:var(--green)">@WhatIfAllocated.ToString("C")/wk</span>
                 </div>
             }
 
-            <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">
-                <span style="font-size:14px;color:var(--text3)">Unallocated (your spending budget)</span>
-                <span style="font-size:16px;font-weight:700;color:@(State.BudgetLeftover>=0?"var(--green)":"var(--red)")">
-                    @State.BudgetLeftover.ToString("C")
-                </span>
+            <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:14px;color:var(--text3)">Unallocated (your spending budget)</span>
+                    <span style="font-size:16px;font-weight:700;color:@(WhatIfUnallocated>=0?"var(--green)":"var(--red)")">
+                        @WhatIfUnallocated.ToString("C")
+                    </span>
+                </div>
+                @if (_excludedBudgetLabels.Count > 0)
+                {
+                    var freed = WhatIfUnallocated - State.BudgetLeftover;
+                    <div style="font-size:12px;color:var(--green);text-align:right;margin-top:2px">+@freed.ToString("C") if those rows were removed</div>
+                }
             </div>
         }
     </div>
@@ -1558,6 +1576,7 @@ else if (_tab == "Holiday")
     private readonly HashSet<int> _celebratedGoalIds = new();
     private readonly Dictionary<int, decimal> _goalWhatIfWeekly = new();
     private readonly Dictionary<string, decimal> _groupWhatIfWeekly = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _excludedBudgetLabels = new(StringComparer.OrdinalIgnoreCase);
 
     private void SelectTopPill(string tab)
     {
@@ -2069,6 +2088,18 @@ else if (_tab == "Holiday")
 
     private decimal AllocatedTotal =>
         State.BudgetBills + State.BudgetEssentials + State.BudgetSavings + State.BudgetUnplanned + State.CustomBudgetTotals.Values.Sum();
+
+    private decimal WhatIfAllocated => BudgetRows()
+        .Where(r => r.Amount > 0 && !_excludedBudgetLabels.Contains(r.Label))
+        .Sum(r => r.Amount);
+
+    private decimal WhatIfUnallocated => State.WeeklyIncome - WhatIfAllocated;
+
+    private void ToggleBudgetRow(string label)
+    {
+        if (!_excludedBudgetLabels.Remove(label))
+            _excludedBudgetLabels.Add(label);
+    }
 
     private IEnumerable<(string Label, decimal Amount, string Color)> BudgetRows()
     {
