@@ -245,6 +245,7 @@
                 var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
                 var effectiveAmount = Math.Max(amount - excludedSubWeekly, 0m);
                 var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0;
+                var transferDone = IsBudgetCategoryTransferDone(label);
 
                 <div style="margin-bottom:10px">
                     <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;opacity:@(isExcluded ? "0.35" : "1")"
@@ -254,6 +255,14 @@
                             <div style="display:flex;justify-content:space-between;align-items:center">
                                 <span style="font-size:14px;text-decoration:@(isExcluded ? "line-through" : "none")">@label</span>
                                 <div style="display:flex;align-items:center;gap:5px">
+                                    @if (transferDone == true)
+                                    {
+                                        <span style="font-size:12px;color:var(--teal);font-weight:600" title="Transfer done">✓</span>
+                                    }
+                                    else if (transferDone == false)
+                                    {
+                                        <span style="font-size:11px;color:var(--amber)" title="Transfer needed">↑</span>
+                                    }
                                     @if (excludedSubWeekly > 0 && !isExcluded)
                                     {
                                         <span style="font-size:11px;color:var(--green)">−@excludedSubWeekly.ToString("C")</span>
@@ -2455,6 +2464,37 @@ else if (_tab == "Holiday")
             if (!string.IsNullOrEmpty(acct)) return acct;
         }
         return "Bills";
+    }
+
+    // Returns true when every account that covers bills in this budget category
+    // has received sufficient incoming transfers since the period start.
+    // Returns null when no accounts in this category appear in the transfer plan
+    // (nothing to transfer, so no indicator shown at all).
+    private bool? IsBudgetCategoryTransferDone(string label)
+    {
+        var plan = State.GetPaydayTransferPlan();
+        if (!plan.Any()) return null;
+
+        var periodFrom = PeriodRange.From.Date;
+        var transferredByAccount = State.Transactions
+            .Where(t => t.AmountCents > 0 && State.IsInternalMovement(t) && t.Date.Date >= periodFrom)
+            .GroupBy(t => t.AccountId)
+            .ToDictionary(g => g.Key, g => g.Sum(t => t.AmountCents) / 100m);
+
+        var billAccountNames = BillsForBudgetCategory(label)
+            .Where(x => !string.IsNullOrWhiteSpace(x.Bill.AccountName))
+            .Select(x => x.Bill.AccountName.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var relevantPlanItems = plan
+            .Where(p => billAccountNames.Any(n => string.Equals(n, p.AccountName, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (!relevantPlanItems.Any()) return null; // no transfers needed for this category
+
+        return relevantPlanItems.All(p =>
+            transferredByAccount.TryGetValue(p.AccountId, out var moved) && moved >= p.Amount);
     }
 
     private IEnumerable<(string Label, decimal Amount, string Color)> BudgetRows()
