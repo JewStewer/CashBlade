@@ -2481,14 +2481,21 @@ else if (_tab == "Holiday")
             .GroupBy(t => t.AccountId)
             .ToDictionary(g => g.Key, g => g.Sum(t => t.AmountCents) / 100m);
 
-        var billAccountNames = BillsForBudgetCategory(label)
-            .Where(x => !string.IsNullOrWhiteSpace(x.Bill.AccountName))
-            .Select(x => x.Bill.AccountName.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        // Match by AccountId (reliable) with AccountName as fallback
+        var planAccountIds = plan.Select(p => p.AccountId).ToHashSet();
+        var planByName = plan.ToDictionary(p => p.AccountName.Trim(), p => p, StringComparer.OrdinalIgnoreCase);
 
-        var relevantPlanItems = plan
-            .Where(p => billAccountNames.Any(n => string.Equals(n, p.AccountName, StringComparison.OrdinalIgnoreCase)))
+        var relevantPlanItems = BillsForBudgetCategory(label)
+            .Select(x => {
+                if (planAccountIds.Contains(x.Bill.AccountId))
+                    return plan.FirstOrDefault(p => p.AccountId == x.Bill.AccountId);
+                if (!string.IsNullOrWhiteSpace(x.Bill.AccountName) && planByName.TryGetValue(x.Bill.AccountName.Trim(), out var byName))
+                    return byName;
+                return null;
+            })
+            .Where(p => p != null)
+            .Select(p => p!)
+            .DistinctBy(p => p.AccountId)
             .ToList();
 
         if (!relevantPlanItems.Any()) return null; // no transfers needed for this category
