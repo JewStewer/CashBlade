@@ -413,7 +413,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
     private void ApplyManagedCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings)
     {
-        var raw = localSettings.FirstOrDefault(s => s.Key == CategoryManagementRulesSettingKey)?.Value;
+        var raw = localSettings.FirstOrDefault(s => s.Key == CategoryManagementRulesSettingKey)?.Value
+            ?? payload.AppSettings.FirstOrDefault(s => s.Key == CategoryManagementRulesSettingKey)?.Value;
         if (string.IsNullOrWhiteSpace(raw)) return;
 
         CategoryManagementRules? rules;
@@ -474,7 +475,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
     private void ApplyTransactionCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings)
     {
-        var raw = localSettings.FirstOrDefault(s => s.Key == TransactionCategoryRulesSettingKey)?.Value;
+        var raw = localSettings.FirstOrDefault(s => s.Key == TransactionCategoryRulesSettingKey)?.Value
+            ?? payload.AppSettings.FirstOrDefault(s => s.Key == TransactionCategoryRulesSettingKey)?.Value;
         if (string.IsNullOrWhiteSpace(raw)) return;
 
         TransactionCategoryRules? rules;
