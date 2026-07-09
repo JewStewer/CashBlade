@@ -137,7 +137,11 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                         existingTransaction.Description = description;
                         existingTransaction.AmountCents = amountCents;
                         existingTransaction.AccountId = account.Id;
-                        existingTransaction.CategoryId = category.Id;
+                        // Only assign the Up Bank category if the user hasn't manually overridden
+                        // this transaction's category — otherwise every Up Bank sync would revert
+                        // the user's choice even after it has been pushed and confirmed.
+                        if (!transactionOverrides.Any(ov => ov.Id == existingTransaction.Id))
+                            existingTransaction.CategoryId = category.Id;
                         existingTransaction.UpSettledAt = DateTime.SpecifyKind(occurredLocal, DateTimeKind.Unspecified);
                         await db.PutAsync("transactions", existingTransaction);
                         continue;

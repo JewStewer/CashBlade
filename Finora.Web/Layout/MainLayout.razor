@@ -138,7 +138,12 @@
     private bool IsTransactionsRoute => CurrentPath.Equals("transactions", StringComparison.OrdinalIgnoreCase);
     private bool IsBillsRoute => CurrentPath.Equals("bills", StringComparison.OrdinalIgnoreCase);
 
-    private int BillsDueSoonCount => State.IsLoaded ? State.GetUpcomingBills(3).Count : 0;
+    // Show only overdue + today occurrences (not upcoming future ones) so the badge
+    // clears as soon as the user marks the late bill as paid, rather than immediately
+    // re-lighting for the next billing cycle which hasn't been actioned yet.
+    private int BillsDueSoonCount => State.IsLoaded
+        ? State.GetOutstandingBillOccurrences().Count(o => o.DueDate.Date <= DateTime.Today)
+        : 0;
 
     private string PageAccentClass => CurrentPath.ToLowerInvariant() switch
     {
@@ -245,6 +250,7 @@
     public async Task TriggerPullRefreshAsync()
     {
         _lastSafeSyncAttemptUtc = DateTime.MinValue;
+        _lastUpBankSyncAttemptUtc = DateTime.MinValue;
         await SafeSyncAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -255,8 +261,9 @@
         // iOS may have suspended the app mid-sync, leaving _syncInProgress=true.
         // Reset it so the resume sync isn't silently blocked by the guard.
         State.ForceResetSyncGuard();
-        // Bypass the 20-second cooldown so the foreground resume always syncs.
+        // Bypass both cooldowns so the foreground resume always fetches latest Up Bank data.
         _lastSafeSyncAttemptUtc = DateTime.MinValue;
+        _lastUpBankSyncAttemptUtc = DateTime.MinValue;
         await SafeSyncAsync();
         await NotifySmartInsightsAsync();
         await EnsurePushSubscriptionAsync();

@@ -4542,9 +4542,17 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         if (string.IsNullOrWhiteSpace(normalizedName)) return 0;
 
+        // Individual per-transaction overrides (from UpdateTransactionCategoryAsync) take
+        // precedence over description-level rules. Don't let a rule silently revert a
+        // manual category change that's still waiting to be confirmed by the cloud.
+        var overriddenIds = (await db.GetPendingTransactionOverridesAsync())
+            .Select(o => o.Id)
+            .ToHashSet();
+
         var matches = Transactions
             .Where(t => t.AmountCents < 0 &&
                 !IsInternalMovement(t) &&
+                !overriddenIds.Contains(t.Id) &&
                 string.Equals(NormalizeRecurringDescription(t.Description), normalizedName, StringComparison.OrdinalIgnoreCase) &&
                 (t.CategoryId != category.Id || !string.Equals(t.CategoryName, category.Name, StringComparison.OrdinalIgnoreCase)))
             .ToList();
