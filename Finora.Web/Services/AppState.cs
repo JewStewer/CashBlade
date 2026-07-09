@@ -42,30 +42,13 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<string> CustomBudgetCategories { get; private set; } = new();
     public Dictionary<string, decimal> CustomBudgetTotals { get; private set; } = new();
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned - CustomBudgetTotals.Values.Sum();
-    public decimal WeeklyPaceSpendingBudget => Math.Max(BudgetEssentials + BudgetUnplanned + BudgetLeftover, 0);
-    public decimal BudgetSafeToSpendAmount => WeeklyPaceSpendingBudget;
-    public decimal BudgetPlanSafeToSpendAmount => WeeklyPaceSpendingBudget;
-    private bool IsPaceCashAccount(Account account) =>
-        (account.Type is AccountType.Spending or AccountType.Cash || account.Id == PayAccountId) &&
-        account.Type != AccountType.Credit;
-
-    public decimal PaceCashBalance =>
-        Math.Round(Accounts.Where(IsPaceCashAccount).Sum(a => GetAccountBalance(a.Id)), 2);
-
-    public decimal BillSaverShortfall =>
-        Math.Round(Accounts
-            .Where(a => !IsPaceCashAccount(a) && a.Type != AccountType.Credit)
-            .Sum(a => Math.Max(-GetAccountForecast(a.Id).AfterBills, 0m)), 2);
-
-    public decimal RequiredBillAccountTopUps => BillSaverShortfall;
-
-    public decimal CashAvailableForDiscretionarySpending =>
-        Math.Max(Math.Round(PaceCashBalance - BillSaverShortfall, 2), 0m);
+    public decimal BudgetSafeToSpendAmount => Math.Max(BudgetLeftover, 0);
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
-    // the everyday spending budget for the current pay cycle, subtracts real
-    // non-bill spending so far, then caps that by live Up cash after any
-    // bill/saver bucket shortfall. Bills may debit from spending accounts, but
-    // pace only reserves cash when their saver buckets cannot cover them.
+    // what's actually left in the current pay cycle (allowance minus real
+    // discretionary spend so far) rather than the flat weekly plan figure, then
+    // tightens further if today's spending rate projects you to run out before
+    // the cycle ends. BudgetSafeToSpendAmount stays untouched as the static plan
+    // number other features (challenges, the budget editor) key off.
     public decimal SafeToSpendAmount
     {
         get
@@ -74,14 +57,14 @@ public class AppState(IndexedDbService db, SyncService sync)
 
             var (from, to) = GetCurrentPeriod();
             var periodDays = Math.Max((to.Date - from.Date).Days + 1, 1);
-            var periodBudget = Math.Max(WeeklyPaceSpendingBudget * (periodDays / 7m), 0m);
+            var periodBudget = Math.Max(BudgetLeftover * (periodDays / 7m), 0m);
 
             var today = DateTime.Today.Date < from.Date ? from.Date
                 : DateTime.Today.Date > to.Date ? to.Date
                 : DateTime.Today.Date;
             var elapsedDays = Math.Clamp((today - from.Date).Days + 1, 1, periodDays);
             var spendToDate = GetDiscretionarySpendingForPeriod(from, today);
-            var remaining = Math.Min(periodBudget - spendToDate, CashAvailableForDiscretionarySpending);
+            var remaining = periodBudget - spendToDate;
             if (remaining <= 0) return 0m;
 
             var projectedOverrun = (spendToDate / elapsedDays) * periodDays - periodBudget;

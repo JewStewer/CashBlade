@@ -40,7 +40,7 @@
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
                 <div>
                     <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Payday Transfer Plan</div>
-                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so bills assigned to each account are covered</div>
+                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so each account can cover its own bills</div>
                 </div>
                 @if (allDone)
                 {
@@ -581,16 +581,11 @@
         var upcomingBills = State.GetUpcomingBillOccurrences(DateTime.Today.AddDays(1), PeriodRange.To);
         var upcomingBillsTotal = upcomingBills.Sum(o => o.Bill.AmountDollars);
 
-        var plannedPaceBudget = State.WeeklyPaceSpendingBudget * PayCycleWeeks;
-        var cashAvailableForPace = State.CashAvailableForDiscretionarySpending;
-        var isCashLimited = cashAvailableForPace < plannedPaceBudget;
-        var cashBudgetGap = Math.Max(plannedPaceBudget - cashAvailableForPace, 0m);
-        var paceBaseLabel = isCashLimited ? "cash cap" : "budget";
-        var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, remainingBudget, dailyRoom, daysRemaining, projectedDelta, PeriodNounLower, plannedPaceBudget, cashAvailableForPace, isCashLimited);
+        var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, remainingBudget, dailyRoom, daysRemaining, projectedDelta, PeriodNounLower);
         var paceCategoryOptions = PaceCategoryOptions();
         var paceNameOptions = PaceRecurringNameOptions();
         var paceExcludedCount = State.PaceExcludedCategories.Count + State.PaceExcludedTransactionNames.Count;
-        var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count, isCashLimited);
+        var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count);
         <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
@@ -607,18 +602,7 @@
                 </div>
             </div>
             <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.35">@paceSummary</div>
-            <div style="margin-top:9px;background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text2);line-height:1.35">
-                <strong style="color:var(--text)">@PeriodBudget.ToString("C")</strong>
-                <span style="color:var(--text3)"> @paceBaseLabel - </span>
-                <strong style="color:var(--text)">@spendToDate.ToString("C")</strong>
-                <span style="color:var(--text3)"> spent = </span>
-                <strong style="color:@(remainingBudget >= 0 ? "var(--green)" : "var(--red)")">@(remainingBudget >= 0 ? remainingBudget.ToString("C") : $"{Math.Abs(remainingBudget):C} over")</strong>
-                @if (isCashLimited)
-                {
-                    <span style="color:var(--text3)"> · budget is @cashBudgetGap.ToString("C") above cash</span>
-                }
-            </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only · @PeriodRange.From.ToString("d MMM")-@todayInPeriod.ToString("d MMM")</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only · @PeriodRange.From.ToString("d MMM")–@todayInPeriod.ToString("d MMM") · bills, transfers and exclusions ignored</div>
 
             <!-- Time-vs-budget bar: shows how far into the period you are vs how much budget you've used -->
             @{
@@ -1075,30 +1059,8 @@
             @(trulyOverBudget ? "Over budget" : State.SafeToSpendAmount.ToString("C"))
         </div>
         <div style="font-size:13px;color:var(--text3);margin-top:4px">
-            @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After saver shortfalls, savings, essentials and spending pace")
+            @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After bills, savings and essentials")
         </div>
-
-        @if (!State.NoSpendMode && State.WeeklyIncome > 0)
-        {
-            <div style="margin-top:10px;background:var(--surface2);border-radius:10px;padding:10px">
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Everyday budget</span>
-                    <strong>@State.BudgetPlanSafeToSpendAmount.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Cash in spending accounts</span>
-                    <strong>@State.PaceCashBalance.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Bill saver shortfall</span>
-                    <strong>@State.BillSaverShortfall.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px">
-                    <span style="color:var(--text3)">Cash available for pace</span>
-                    <strong style="color:@(State.CashAvailableForDiscretionarySpending >= State.BudgetPlanSafeToSpendAmount ? "var(--green)" : "var(--amber)")">@State.CashAvailableForDiscretionarySpending.ToString("C")</strong>
-                </div>
-            </div>
-        }
 
         @if (State.OutstandingLentDollars > 0)
         {
@@ -1392,7 +1354,7 @@ else if (_tab == "History")
         <div class="card">
             <div class="section-title" style="margin-bottom:2px">Everyday Spending This @PeriodNoun</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px;opacity:0.9">@PayCycleDateRange</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget protects bills and savings first (@PeriodBudget.ToString("C"))</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget = unallocated spending (@PeriodBudget.ToString("C"))</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
                 <span style="font-size:22px;font-weight:700;color:@(PeriodSpend>PeriodBudget?"var(--red)":"var(--text)")">
                     @PeriodSpend.ToString("C")
@@ -2200,13 +2162,10 @@ else if (_tab == "Holiday")
 
     private static string GroupWhatIfSettingKey(string groupName) => $"GoalGroupWhatIfWeekly:{groupName}";
 
-    private static string BuildSpendingPaceSummary(decimal spendToDate, decimal periodBudget, decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta, string periodNounLower, decimal plannedBudget, decimal cashAvailable, bool isCashLimited)
+    private static string BuildSpendingPaceSummary(decimal spendToDate, decimal periodBudget, decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta, string periodNounLower)
     {
         if (periodBudget <= 0)
             return "Set a discretionary budget to see how much room you have for the rest of the period.";
-
-        if (isCashLimited)
-            return $"Your {plannedBudget:C} {periodNounLower} budget is capped by {cashAvailable:C} in spending cash.";
 
         if (remainingBudget < 0)
             return $"You've spent {spendToDate:C} against a {periodBudget:C} {periodNounLower} budget, so you're {Math.Abs(remainingBudget):C} over already.";
@@ -2256,7 +2215,7 @@ else if (_tab == "Holiday")
     private static bool IsChecked(ChangeEventArgs e) =>
         e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
 
-    private static IReadOnlyList<string> BuildSpendingPaceRecommendations(decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta, int excludedCount, int repeatingNameCount, bool isCashLimited)
+    private static IReadOnlyList<string> BuildSpendingPaceRecommendations(decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta, int excludedCount, int repeatingNameCount)
     {
         var recommendations = new List<string>();
 
@@ -2271,7 +2230,7 @@ else if (_tab == "Holiday")
         if (projectedDelta > 0)
         {
             recommendations.Add($"Keep discretionary spending around {dailyRoom:C}/day for the next {daysRemaining} day{(daysRemaining == 1 ? "" : "s")}.");
-            if (!isCashLimited) recommendations.Add($"Cut about {projectedDelta:C} from planned discretionary spending to land inside budget.");
+            recommendations.Add($"Cut about {projectedDelta:C} from planned discretionary spending to land inside budget.");
             if (excludedCount == 0) recommendations.Add("If a recurring payment is inflating this, exclude its category or repeating name from pace.");
             return recommendations;
         }
@@ -2434,8 +2393,8 @@ else if (_tab == "Holiday")
     private decimal AllPeriodSpend => State.GetPeriodSpendingForPeriod(PeriodRange.From, PeriodRange.To);
     private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
     private decimal PeriodIncome   => State.WeeklyIncome * PayCycleWeeks;
-    // Non-bill spending budget, capped by live Up spending cash after any bill/saver shortfall.
-    private decimal PeriodBudget   => Math.Max(Math.Min(State.WeeklyPaceSpendingBudget * PayCycleWeeks, State.CashAvailableForDiscretionarySpending), 0m);
+    // Budget for non-bill spending = unallocated budget after bills, savings and planned allocations.
+    private decimal PeriodBudget   => Math.Max(WhatIfUnallocated * PayCycleWeeks, 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
     private string PeriodNounLower => PeriodNoun.ToLowerInvariant();
