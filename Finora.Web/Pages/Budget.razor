@@ -584,7 +584,7 @@
         var upcomingBills = State.GetUpcomingBillOccurrences(DateTime.Today.AddDays(1), PeriodRange.To);
         var upcomingBillsTotal = upcomingBills.Sum(o => o.Bill.AmountDollars);
 
-        var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, planRemainingBudget, planDailyRoom, daysRemaining, projectedDelta, PeriodNounLower);
+        var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, remainingBudget, dailyRoom, daysRemaining, projectedDelta, PeriodNounLower);
         var paceCategoryOptions = PaceCategoryOptions();
         var paceNameOptions = PaceRecurringNameOptions();
         var paceExcludedCount = State.PaceExcludedCategories.Count + State.PaceExcludedTransactionNames.Count;
@@ -2613,7 +2613,7 @@ else if (_tab == "Holiday")
                     BillsTotal: billsTotal
                 );
             })
-            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0)
+            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0 || x.TransferredThisPeriod > 0)
             .OrderBy(x => x.IsDone ? 1 : 0)
             .ThenByDescending(x => x.IsDone ? x.BillsTotal : x.Remaining)
             .ToList();
