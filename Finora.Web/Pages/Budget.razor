@@ -25,15 +25,27 @@
 
 @if (_tab == "Overview")
 {
+    <div style="display:flex;gap:6px;margin-bottom:4px">
+        <button class="pill @(_overviewSubTab=="Summary"?"pill-active":"pill-inactive")" @onclick='() => _overviewSubTab = "Summary"'>Summary</button>
+        <button class="pill @(_overviewSubTab=="Plan"?"pill-active":"pill-inactive")" @onclick='() => _overviewSubTab = "Plan"'>Plan</button>
+    </div>
     <div>
-    <!-- Payday transfer plan -->
     @{
         var transferPlan = GetFullTransferPlan();
         var allDone = transferPlan.All(x => x.IsDone);
         var payBalance = State.GetAccountBalance(State.PayAccountId);
         var totalStillNeeded = transferPlan.Where(x => !x.IsDone).Sum(x => x.Remaining);
         var afterTransfers = payBalance - totalStillNeeded;
+        var unrepaid = State.LentTransactions.Where(l => State.IsUnrepaid(l.Id))
+            .Select(l => (Lent: l, Txn: State.Transactions.FirstOrDefault(t => t.Id == l.Id)))
+            .Where(x => x.Txn is not null)
+            .OrderByDescending(x => x.Txn!.Date)
+            .ToList();
+        var trulyOverBudget = State.BudgetSafeToSpendAmount <= 0 && State.WeeklyIncome > 0;
     }
+    @if (_overviewSubTab == "Summary")
+    {
+    <!-- Payday transfer plan -->
     @if (transferPlan.Any())
     {
         <div class="card" style="margin-top:12px;border-color:@(allDone ? "rgba(16,185,129,0.4)" : "rgba(245,158,11,0.4)")">
@@ -99,13 +111,6 @@
     }
 
     <!-- Pending reimbursements -->
-    @{
-        var unrepaid = State.LentTransactions.Where(l => State.IsUnrepaid(l.Id))
-            .Select(l => (Lent: l, Txn: State.Transactions.FirstOrDefault(t => t.Id == l.Id)))
-            .Where(x => x.Txn is not null)
-            .OrderByDescending(x => x.Txn!.Date)
-            .ToList();
-    }
     @if (unrepaid.Any())
     {
         var totalOwed = unrepaid.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
@@ -147,7 +152,10 @@
             }
         </div>
     }
+    }
 
+    @if (_overviewSubTab == "Plan")
+    {
     <!-- Budget overview card -->
     <div class="card" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
@@ -541,8 +549,9 @@
             }
         </div>
     }
+    }
 
-    @if (State.WeeklyIncome > 0)
+    @if (_overviewSubTab == "Summary" && State.WeeklyIncome > 0)
     {
         var todayInPeriod = DateTime.Today.Date < PeriodRange.From.Date
             ? PeriodRange.From.Date
@@ -738,6 +747,8 @@
         </div>
     }
 
+    @if (_overviewSubTab == "Plan")
+    {
     <!-- Debts -->
     @if (State.Debts.Any())
     {
@@ -1055,13 +1066,6 @@
     </div>
 
     <!-- Safe to spend / Over budget breakdown -->
-    @{
-        // SafeToSpendAmount is forced to $0 while No-Spend Mode is on, regardless of
-        // the real underlying budget — BudgetSafeToSpendAmount ignores that override,
-        // so it's the only reliable signal for whether the user is actually over
-        // budget vs. just voluntarily holding spend at $0.
-        var trulyOverBudget = State.BudgetSafeToSpendAmount <= 0 && State.WeeklyIncome > 0;
-    }
     <div class="card" style="margin-top:12px;border-color:@(trulyOverBudget?"var(--red)":"var(--teal)")">
         <div class="section-title">Safe to Spend</div>
         <div style="font-size:28px;font-weight:700;color:@(trulyOverBudget?"var(--red)":"var(--green)")">
@@ -1117,6 +1121,7 @@
             </div>
         }
     </div>
+    }
     </div>
 }
 else if (_tab == "Spending")
@@ -1850,6 +1855,7 @@ else if (_tab == "Holiday")
 
 @code {
     private string _tab = "Overview";
+    private string _overviewSubTab = "Summary";
     private bool _showWeeklyBreakdown;
     private SavingsGoal? _goalDraft;
     private string? _expandedGoalGroupName;
