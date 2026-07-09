@@ -2607,8 +2607,9 @@ else if (_tab == "Holiday")
                     BillsTotal: billsTotal
                 );
             })
-            .Where(x => x.BaseShortfall > 0)
-            .OrderByDescending(x => x.BaseShortfall)
+            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0)
+            .OrderBy(x => x.IsDone ? 1 : 0)
+            .ThenByDescending(x => x.IsDone ? x.BillsTotal : x.Remaining)
             .ToList();
     }
 
