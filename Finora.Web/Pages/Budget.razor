@@ -268,7 +268,19 @@
                             <div class="progress-bar" style="margin-top:4px;opacity:@(isExcluded ? "0.25" : "1")">
                                 <div class="progress-fill" style="width:@((int)(Math.Clamp(effectivePct,0,1)*100))%;background:@color"></div>
                             </div>
-                            <div style="font-size:11px;color:var(--text3);margin-top:2px;opacity:@(isExcluded ? "0.4" : "1")">@pct.ToString("P0") of income</div>
+                            @{
+                                var paidBillCount = hasSubItems ? subBills.Count(x => State.IsBillPaid(x.Bill)) : 0;
+                            }
+                            <div style="display:flex;gap:6px;align-items:center;margin-top:2px;opacity:@(isExcluded ? "0.4" : "1")">
+                                <span style="font-size:11px;color:var(--text3)">@pct.ToString("P0") of income</span>
+                                @if (hasSubItems && subBills.Count > 0)
+                                {
+                                    var allBillsPaid = paidBillCount == subBills.Count;
+                                    <span style="font-size:10px;color:@(allBillsPaid ? "var(--teal)" : paidBillCount > 0 ? "var(--amber)" : "var(--text3)")">
+                                        · @paidBillCount/@subBills.Count paid
+                                    </span>
+                                }
+                            </div>
                         </div>
                     </div>
 
@@ -558,6 +570,31 @@
             </div>
             <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.35">@paceSummary</div>
             <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only · @PeriodRange.From.ToString("d MMM")–@todayInPeriod.ToString("d MMM") · bills, transfers and exclusions ignored</div>
+
+            <!-- Time-vs-budget bar: shows how far into the period you are vs how much budget you've used -->
+            @{
+                var timeFracD = PeriodDays > 0 ? (double)elapsedDays / PeriodDays : 0.0;
+                var budgetFracD = PeriodBudget > 0 ? Math.Min((double)(spendToDate / PeriodBudget), 1.5) : 0.0;
+                var aheadOfPace = !isOverBudget && budgetFracD < timeFracD - 0.05;
+                var behindPace  = !isOverBudget && budgetFracD > timeFracD + 0.05;
+                var paceBarColor = isOverBudget ? "var(--red)" : behindPace ? "var(--amber)" : "var(--teal)";
+            }
+            <div style="margin-top:10px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+                    <span style="font-size:10px;color:var(--text3)">Day @elapsedDays of @PeriodDays</span>
+                    <span style="font-size:10px;color:@paceBarColor">@($"{budgetFracD * 100:F0}")% of budget used</span>
+                </div>
+                <div style="position:relative;height:6px;border-radius:4px;overflow:hidden;background:var(--surface3)">
+                    <div style="position:absolute;top:0;left:0;height:100%;width:@($"{timeFracD * 100:F0}")%;background:var(--text3);opacity:0.2;border-radius:4px"></div>
+                    <div style="position:absolute;top:0;left:0;height:100%;width:@($"{Math.Min(budgetFracD, 1.0) * 100:F0}")%;background:@paceBarColor;border-radius:4px"></div>
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-top:3px">
+                    @if (isOverBudget) { <span style="color:var(--red)">Over budget</span> }
+                    else if (aheadOfPace) { <span style="color:var(--teal)">Ahead — spending less than time elapsed</span> }
+                    else if (behindPace) { <span style="color:var(--amber)">Spending faster than time elapsed</span> }
+                    else { <span>Spending in step with time</span> }
+                </div>
+            </div>
 
             <!-- Today mini-bar -->
             <div style="margin-top:10px;padding:8px 10px;background:var(--surface2);border-radius:8px">
@@ -2458,33 +2495,25 @@ else if (_tab == "Holiday")
     }
 
     // Returns true when every account that covers bills in this budget category
-    // has received sufficient incoming transfers since the period start.
-    // Returns null when no accounts in this category appear in the transfer plan
-    // (nothing to transfer, so no indicator shown at all).
+    // Returns true when every account that holds bills in this budget category
+    // can currently cover its bills (AfterBills >= 0), null when no bills are
+    // assigned to known accounts (nothing to check), false when any are short.
+    // Unlike the old transfer-plan lookup this works for categories like Afterpay
+    // or Subscriptions whose bills share an account that never needed a transfer.
     private bool? IsBudgetCategoryTransferDone(string label)
     {
-        var plan = GetFullTransferPlan();
-        if (!plan.Any()) return null;
+        var bills = BillsForBudgetCategory(label);
+        if (!bills.Any()) return null;
 
-        var planAccountIds = plan.Select(p => p.AccountId).ToHashSet();
-        var planByName = plan.ToDictionary(p => p.AccountName.Trim(), p => p, StringComparer.OrdinalIgnoreCase);
-
-        var relevantPlanItems = BillsForBudgetCategory(label)
-            .Select(x => {
-                if (planAccountIds.Contains(x.Bill.AccountId))
-                    return plan.FirstOrDefault(p => p.AccountId == x.Bill.AccountId);
-                if (!string.IsNullOrWhiteSpace(x.Bill.AccountName) && planByName.TryGetValue(x.Bill.AccountName.Trim(), out var byName))
-                    return byName;
-                return null;
-            })
-            .Where(p => p != null)
-            .Select(p => p!)
-            .DistinctBy(p => p.AccountId)
+        var accountIds = bills
+            .Select(x => x.Bill.AccountId)
+            .Where(id => id > 0)
+            .Distinct()
             .ToList();
 
-        if (!relevantPlanItems.Any()) return null;
+        if (!accountIds.Any()) return null;
 
-        return relevantPlanItems.All(p => p.IsDone);
+        return accountIds.All(id => State.GetAccountForecast(id).AfterBills >= 0);
     }
 
     private sealed record TransferPlanEntry(
