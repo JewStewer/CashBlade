@@ -37,18 +37,32 @@
     @if (transferPlan.Any())
     {
         <div class="card" style="margin-top:12px;border-color:@(allDone ? "rgba(16,185,129,0.4)" : "rgba(245,158,11,0.4)")">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
                 <div>
                     <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Payday Transfer Plan</div>
                     <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so each account can cover its own bills</div>
                 </div>
                 @if (allDone)
                 {
-                    <span style="font-size:13px;font-weight:600;color:var(--teal)">All done ✓</span>
+                    <span style="font-size:13px;font-weight:600;color:var(--teal);white-space:nowrap">All done ✓</span>
                 }
                 else
                 {
-                    <span style="font-size:14px;font-weight:700;color:var(--amber)">@totalStillNeeded.ToString("C") to go</span>
+                    <span style="font-size:14px;font-weight:700;color:var(--amber);white-space:nowrap">@totalStillNeeded.ToString("C") to go</span>
+                }
+            </div>
+            <!-- Spending account summary pinned below the header so it's always visible -->
+            <div style="display:flex;gap:12px;margin-bottom:10px;padding:6px 8px;background:var(--surface2);border-radius:8px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column">
+                    <span style="font-size:10px;color:var(--text3)">Spending account</span>
+                    <span style="font-size:13px;font-weight:700">@payBalance.ToString("C")</span>
+                </div>
+                @if (!allDone)
+                {
+                    <div style="display:flex;flex-direction:column">
+                        <span style="font-size:10px;color:var(--text3)">After transfers</span>
+                        <span style="font-size:13px;font-weight:700;color:@(afterTransfers >= 0 ? "var(--teal)" : "var(--red)")">@afterTransfers.ToString("C")</span>
+                    </div>
                 }
             </div>
             @foreach (var item in transferPlan)
@@ -81,19 +95,6 @@
                     }
                 </div>
             }
-            <div style="margin-top:6px;border-top:1px solid var(--border);padding-top:8px">
-                <div style="display:flex;justify-content:space-between;align-items:center;@(!allDone ? "margin-bottom:3px" : "")">
-                    <span style="font-size:11px;color:var(--text3)">Spending account now</span>
-                    <span style="font-size:12px;font-weight:600">@payBalance.ToString("C")</span>
-                </div>
-                @if (!allDone)
-                {
-                    <div style="display:flex;justify-content:space-between;align-items:center">
-                        <span style="font-size:11px;color:var(--text3)">After remaining transfers</span>
-                        <span style="font-size:13px;font-weight:700;color:@(afterTransfers >= 0 ? "var(--teal)" : "var(--red)")">@afterTransfers.ToString("C") left</span>
-                    </div>
-                }
-            </div>
         </div>
     }
 
