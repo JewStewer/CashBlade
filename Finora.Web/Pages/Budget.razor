@@ -586,6 +586,10 @@
         var paceNameOptions = PaceRecurringNameOptions();
         var paceExcludedCount = State.PaceExcludedCategories.Count + State.PaceExcludedTransactionNames.Count;
         var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count);
+        var plannedNonBillBudget = State.WeeklyNonBillSpendingBudget * PayCycleWeeks;
+        var cashAfterBills = State.CashAvailableForDiscretionarySpending;
+        var isCashLimited = cashAfterBills < plannedNonBillBudget;
+        var limitingLabel = isCashLimited ? "Up cash after bills" : "budget plan";
         <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
@@ -602,6 +606,25 @@
                 </div>
             </div>
             <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.35">@paceSummary</div>
+            <div style="margin-top:10px;background:var(--surface2);border-radius:8px;padding:9px 10px">
+                <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:6px">Why this number?</div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--text3)">Planned non-bill budget</span>
+                    <strong>@plannedNonBillBudget.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--text3)">Up cash after bills</span>
+                    <strong style="color:@(isCashLimited ? "var(--amber)" : "var(--green)")">@cashAfterBills.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--text3)">Pace starts from</span>
+                    <strong>@PeriodBudget.ToString("C") <span style="font-size:10px;color:var(--text3);font-weight:400">(@limitingLabel)</span></strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;border-top:1px solid var(--border);padding-top:5px;margin-top:5px">
+                    <span style="color:var(--text3)">Minus spending counted</span>
+                    <strong>@spendToDate.ToString("C")</strong>
+                </div>
+            </div>
             <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only · @PeriodRange.From.ToString("d MMM")–@todayInPeriod.ToString("d MMM") · bills, transfers and exclusions ignored</div>
 
             <!-- Time-vs-budget bar: shows how far into the period you are vs how much budget you've used -->
