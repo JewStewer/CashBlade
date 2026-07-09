@@ -586,9 +586,11 @@
         var paceNameOptions = PaceRecurringNameOptions();
         var paceExcludedCount = State.PaceExcludedCategories.Count + State.PaceExcludedTransactionNames.Count;
         var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count);
-        var plannedNonBillBudget = State.WeeklyNonBillSpendingBudget * PayCycleWeeks;
+        var plannedPaceBudget = State.WeeklyPaceSpendingBudget * PayCycleWeeks;
+        var spendableCashAfterOwnBills = State.SpendableCashAfterOwnBills;
+        var requiredBillTopUps = State.RequiredBillAccountTopUps;
         var cashAfterBills = State.CashAvailableForDiscretionarySpending;
-        var isCashLimited = cashAfterBills < plannedNonBillBudget;
+        var isCashLimited = cashAfterBills < plannedPaceBudget;
         var limitingLabel = isCashLimited ? "Up cash after bills" : "budget plan";
         <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
@@ -609,11 +611,19 @@
             <div style="margin-top:10px;background:var(--surface2);border-radius:8px;padding:9px 10px">
                 <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:6px">Why this number?</div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Planned non-bill budget</span>
-                    <strong>@plannedNonBillBudget.ToString("C")</strong>
+                    <span style="color:var(--text3)">Everyday budget</span>
+                    <strong>@plannedPaceBudget.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Up cash after bills</span>
+                    <span style="color:var(--text3)">Spending/cash after own bills</span>
+                    <strong>@spendableCashAfterOwnBills.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--text3)">Needed top-ups to bill accounts</span>
+                    <strong>@requiredBillTopUps.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--text3)">Cash after bills</span>
                     <strong style="color:@(isCashLimited ? "var(--amber)" : "var(--green)")">@cashAfterBills.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
@@ -1089,11 +1099,19 @@
         {
             <div style="margin-top:10px;background:var(--surface2);border-radius:10px;padding:10px">
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Non-bill budget</span>
+                    <span style="color:var(--text3)">Everyday budget</span>
                     <strong>@State.BudgetPlanSafeToSpendAmount.ToString("C")</strong>
                 </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
+                    <span style="color:var(--text3)">Spending/cash after own bills</span>
+                    <strong>@State.SpendableCashAfterOwnBills.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
+                    <span style="color:var(--text3)">Needed top-ups</span>
+                    <strong>@State.RequiredBillAccountTopUps.ToString("C")</strong>
+                </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px">
-                    <span style="color:var(--text3)">Cash after bills</span>
+                    <span style="color:var(--text3)">Cash after bills/top-ups</span>
                     <strong style="color:@(State.CashAvailableForDiscretionarySpending >= State.BudgetPlanSafeToSpendAmount ? "var(--green)" : "var(--amber)")">@State.CashAvailableForDiscretionarySpending.ToString("C")</strong>
                 </div>
             </div>
@@ -2431,7 +2449,7 @@ else if (_tab == "Holiday")
     private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
     private decimal PeriodIncome   => State.WeeklyIncome * PayCycleWeeks;
     // Non-bill spending budget, capped by live Up balances after unpaid bills and required top-ups.
-    private decimal PeriodBudget   => Math.Max(Math.Min(State.WeeklyNonBillSpendingBudget * PayCycleWeeks, State.CashAvailableForDiscretionarySpending), 0m);
+    private decimal PeriodBudget   => Math.Max(Math.Min(State.WeeklyPaceSpendingBudget * PayCycleWeeks, State.CashAvailableForDiscretionarySpending), 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
     private string PeriodNounLower => PeriodNoun.ToLowerInvariant();

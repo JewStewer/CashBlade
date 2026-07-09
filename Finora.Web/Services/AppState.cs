@@ -42,26 +42,26 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<string> CustomBudgetCategories { get; private set; } = new();
     public Dictionary<string, decimal> CustomBudgetTotals { get; private set; } = new();
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned - CustomBudgetTotals.Values.Sum();
-    public decimal WeeklyNonBillSpendingBudget => Math.Max(WeeklyIncome - BudgetBills - BudgetSavings, 0);
-    public decimal BudgetSafeToSpendAmount => WeeklyNonBillSpendingBudget;
-    public decimal BudgetPlanSafeToSpendAmount => WeeklyNonBillSpendingBudget;
-    public decimal CashAvailableForDiscretionarySpending
+    public decimal WeeklyPaceSpendingBudget => Math.Max(BudgetEssentials + BudgetUnplanned + BudgetLeftover, 0);
+    public decimal BudgetSafeToSpendAmount => WeeklyPaceSpendingBudget;
+    public decimal BudgetPlanSafeToSpendAmount => WeeklyPaceSpendingBudget;
+    public decimal SpendableCashAfterOwnBills
     {
         get
         {
             if (Accounts.Count == 0) return BudgetPlanSafeToSpendAmount;
 
-            var spendableAfterOwnBills = Accounts
+            return Math.Max(Math.Round(Accounts
                 .Where(a => a.Type is AccountType.Spending or AccountType.Cash || a.Id == PayAccountId)
                 .Where(a => a.Type != AccountType.Credit)
-                .Sum(a => GetAccountForecast(a.Id).AfterBills);
-
-            var requiredTopUps = GetPaydayTransferPlan().Sum(t => t.Amount);
-            return Math.Max(Math.Round(spendableAfterOwnBills - requiredTopUps, 2), 0m);
+                .Sum(a => GetAccountForecast(a.Id).AfterBills), 2), 0m);
         }
     }
+    public decimal RequiredBillAccountTopUps => Math.Round(GetPaydayTransferPlan().Sum(t => t.Amount), 2);
+    public decimal CashAvailableForDiscretionarySpending =>
+        Math.Max(Math.Round(SpendableCashAfterOwnBills - RequiredBillAccountTopUps, 2), 0m);
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
-    // the non-bill spending budget for the current pay cycle, subtracts real
+    // the everyday spending budget for the current pay cycle, subtracts real
     // non-bill spending so far, then caps that by live Up cash after unpaid
     // bills and required top-ups.
     public decimal SafeToSpendAmount
@@ -72,7 +72,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
             var (from, to) = GetCurrentPeriod();
             var periodDays = Math.Max((to.Date - from.Date).Days + 1, 1);
-            var periodBudget = Math.Max(WeeklyNonBillSpendingBudget * (periodDays / 7m), 0m);
+            var periodBudget = Math.Max(WeeklyPaceSpendingBudget * (periodDays / 7m), 0m);
 
             var today = DateTime.Today.Date < from.Date ? from.Date
                 : DateTime.Today.Date > to.Date ? to.Date
