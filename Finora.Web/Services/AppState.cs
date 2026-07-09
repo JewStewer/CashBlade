@@ -42,13 +42,28 @@ public class AppState(IndexedDbService db, SyncService sync)
     public List<string> CustomBudgetCategories { get; private set; } = new();
     public Dictionary<string, decimal> CustomBudgetTotals { get; private set; } = new();
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned - CustomBudgetTotals.Values.Sum();
-    public decimal BudgetSafeToSpendAmount => Math.Max(BudgetLeftover, 0);
+    public decimal WeeklyNonBillSpendingBudget => Math.Max(WeeklyIncome - BudgetBills - BudgetSavings, 0);
+    public decimal BudgetSafeToSpendAmount => WeeklyNonBillSpendingBudget;
+    public decimal BudgetPlanSafeToSpendAmount => WeeklyNonBillSpendingBudget;
+    public decimal CashAvailableForDiscretionarySpending
+    {
+        get
+        {
+            if (Accounts.Count == 0) return BudgetPlanSafeToSpendAmount;
+
+            var spendableAfterOwnBills = Accounts
+                .Where(a => a.Type is AccountType.Spending or AccountType.Cash || a.Id == PayAccountId)
+                .Where(a => a.Type != AccountType.Credit)
+                .Sum(a => GetAccountForecast(a.Id).AfterBills);
+
+            var requiredTopUps = GetPaydayTransferPlan().Sum(t => t.Amount);
+            return Math.Max(Math.Round(spendableAfterOwnBills - requiredTopUps, 2), 0m);
+        }
+    }
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
-    // what's actually left in the current pay cycle (allowance minus real
-    // discretionary spend so far) rather than the flat weekly plan figure, then
-    // tightens further if today's spending rate projects you to run out before
-    // the cycle ends. BudgetSafeToSpendAmount stays untouched as the static plan
-    // number other features (challenges, the budget editor) key off.
+    // the non-bill spending budget for the current pay cycle, subtracts real
+    // non-bill spending so far, then caps that by live Up cash after unpaid
+    // bills and required top-ups.
     public decimal SafeToSpendAmount
     {
         get
@@ -57,14 +72,14 @@ public class AppState(IndexedDbService db, SyncService sync)
 
             var (from, to) = GetCurrentPeriod();
             var periodDays = Math.Max((to.Date - from.Date).Days + 1, 1);
-            var periodBudget = Math.Max(BudgetLeftover * (periodDays / 7m), 0m);
+            var periodBudget = Math.Max(WeeklyNonBillSpendingBudget * (periodDays / 7m), 0m);
 
             var today = DateTime.Today.Date < from.Date ? from.Date
                 : DateTime.Today.Date > to.Date ? to.Date
                 : DateTime.Today.Date;
             var elapsedDays = Math.Clamp((today - from.Date).Days + 1, 1, periodDays);
             var spendToDate = GetDiscretionarySpendingForPeriod(from, today);
-            var remaining = periodBudget - spendToDate;
+            var remaining = Math.Min(periodBudget - spendToDate, CashAvailableForDiscretionarySpending);
             if (remaining <= 0) return 0m;
 
             var projectedOverrun = (spendToDate / elapsedDays) * periodDays - periodBudget;

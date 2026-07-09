@@ -1059,8 +1059,22 @@
             @(trulyOverBudget ? "Over budget" : State.SafeToSpendAmount.ToString("C"))
         </div>
         <div style="font-size:13px;color:var(--text3);margin-top:4px">
-            @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After bills, savings and essentials")
+            @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After unpaid bills, required top-ups, savings and essentials")
         </div>
+
+        @if (!State.NoSpendMode && State.WeeklyIncome > 0)
+        {
+            <div style="margin-top:10px;background:var(--surface2);border-radius:10px;padding:10px">
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
+                    <span style="color:var(--text3)">Non-bill budget</span>
+                    <strong>@State.BudgetPlanSafeToSpendAmount.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px">
+                    <span style="color:var(--text3)">Cash after bills</span>
+                    <strong style="color:@(State.CashAvailableForDiscretionarySpending >= State.BudgetPlanSafeToSpendAmount ? "var(--green)" : "var(--amber)")">@State.CashAvailableForDiscretionarySpending.ToString("C")</strong>
+                </div>
+            </div>
+        }
 
         @if (State.OutstandingLentDollars > 0)
         {
@@ -1354,7 +1368,7 @@ else if (_tab == "History")
         <div class="card">
             <div class="section-title" style="margin-bottom:2px">Everyday Spending This @PeriodNoun</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px;opacity:0.9">@PayCycleDateRange</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget = unallocated spending (@PeriodBudget.ToString("C"))</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget protects bills and savings first (@PeriodBudget.ToString("C"))</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
                 <span style="font-size:22px;font-weight:700;color:@(PeriodSpend>PeriodBudget?"var(--red)":"var(--text)")">
                     @PeriodSpend.ToString("C")
@@ -2393,8 +2407,8 @@ else if (_tab == "Holiday")
     private decimal AllPeriodSpend => State.GetPeriodSpendingForPeriod(PeriodRange.From, PeriodRange.To);
     private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
     private decimal PeriodIncome   => State.WeeklyIncome * PayCycleWeeks;
-    // Budget for non-bill spending = unallocated budget after bills, savings and planned allocations.
-    private decimal PeriodBudget   => Math.Max(WhatIfUnallocated * PayCycleWeeks, 0m);
+    // Non-bill spending budget, capped by live Up balances after unpaid bills and required top-ups.
+    private decimal PeriodBudget   => Math.Max(Math.Min(State.WeeklyNonBillSpendingBudget * PayCycleWeeks, State.CashAvailableForDiscretionarySpending), 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
     private string PeriodNounLower => PeriodNoun.ToLowerInvariant();
