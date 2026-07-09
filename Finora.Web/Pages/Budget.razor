@@ -582,17 +582,15 @@
         var upcomingBillsTotal = upcomingBills.Sum(o => o.Bill.AmountDollars);
 
         var plannedPaceBudget = State.WeeklyPaceSpendingBudget * PayCycleWeeks;
-        var paceCashBalance = State.PaceCashBalance;
-        var billSaverShortfall = State.BillSaverShortfall;
         var cashAvailableForPace = State.CashAvailableForDiscretionarySpending;
         var isCashLimited = cashAvailableForPace < plannedPaceBudget;
         var cashBudgetGap = Math.Max(plannedPaceBudget - cashAvailableForPace, 0m);
-        var limitingLabel = isCashLimited ? "live spending cash" : "budget plan";
+        var paceBaseLabel = isCashLimited ? "cash cap" : "budget";
         var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, remainingBudget, dailyRoom, daysRemaining, projectedDelta, PeriodNounLower, plannedPaceBudget, cashAvailableForPace, isCashLimited);
         var paceCategoryOptions = PaceCategoryOptions();
         var paceNameOptions = PaceRecurringNameOptions();
         var paceExcludedCount = State.PaceExcludedCategories.Count + State.PaceExcludedTransactionNames.Count;
-        var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count, plannedPaceBudget, cashAvailableForPace, isCashLimited);
+        var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count, isCashLimited);
         <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
@@ -609,41 +607,18 @@
                 </div>
             </div>
             <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.35">@paceSummary</div>
-            <div style="margin-top:10px;background:var(--surface2);border-radius:8px;padding:9px 10px">
-                <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:6px">Why this number?</div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Everyday budget</span>
-                    <strong>@plannedPaceBudget.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Cash in spending accounts</span>
-                    <strong>@paceCashBalance.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Bill saver shortfall</span>
-                    <strong>@billSaverShortfall.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Cash available for pace</span>
-                    <strong style="color:@(isCashLimited ? "var(--amber)" : "var(--green)")">@cashAvailableForPace.ToString("C")</strong>
-                </div>
+            <div style="margin-top:9px;background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text2);line-height:1.35">
+                <strong style="color:var(--text)">@PeriodBudget.ToString("C")</strong>
+                <span style="color:var(--text3)"> @paceBaseLabel - </span>
+                <strong style="color:var(--text)">@spendToDate.ToString("C")</strong>
+                <span style="color:var(--text3)"> spent = </span>
+                <strong style="color:@(remainingBudget >= 0 ? "var(--green)" : "var(--red)")">@(remainingBudget >= 0 ? remainingBudget.ToString("C") : $"{Math.Abs(remainingBudget):C} over")</strong>
                 @if (isCashLimited)
                 {
-                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                        <span style="color:var(--text3)">Budget above cash</span>
-                        <strong>@cashBudgetGap.ToString("C")</strong>
-                    </div>
+                    <span style="color:var(--text3)"> · budget is @cashBudgetGap.ToString("C") above cash</span>
                 }
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Pace starts from</span>
-                    <strong>@PeriodBudget.ToString("C") <span style="font-size:10px;color:var(--text3);font-weight:400">(@limitingLabel)</span></strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;border-top:1px solid var(--border);padding-top:5px;margin-top:5px">
-                    <span style="color:var(--text3)">Minus spending counted</span>
-                    <strong>@spendToDate.ToString("C")</strong>
-                </div>
             </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only · @PeriodRange.From.ToString("d MMM")-@todayInPeriod.ToString("d MMM") · bills are covered by saver buckets</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only · @PeriodRange.From.ToString("d MMM")-@todayInPeriod.ToString("d MMM")</div>
 
             <!-- Time-vs-budget bar: shows how far into the period you are vs how much budget you've used -->
             @{
@@ -2231,7 +2206,7 @@ else if (_tab == "Holiday")
             return "Set a discretionary budget to see how much room you have for the rest of the period.";
 
         if (isCashLimited)
-            return $"Your {plannedBudget:C} {periodNounLower} budget is capped by {cashAvailable:C} in live spending cash. After {spendToDate:C} counted spending, you have {remainingBudget:C} left.";
+            return $"Your {plannedBudget:C} {periodNounLower} budget is capped by {cashAvailable:C} in spending cash.";
 
         if (remainingBudget < 0)
             return $"You've spent {spendToDate:C} against a {periodBudget:C} {periodNounLower} budget, so you're {Math.Abs(remainingBudget):C} over already.";
@@ -2281,7 +2256,7 @@ else if (_tab == "Holiday")
     private static bool IsChecked(ChangeEventArgs e) =>
         e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
 
-    private static IReadOnlyList<string> BuildSpendingPaceRecommendations(decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta, int excludedCount, int repeatingNameCount, decimal plannedBudget, decimal cashAvailable, bool isCashLimited)
+    private static IReadOnlyList<string> BuildSpendingPaceRecommendations(decimal remainingBudget, decimal dailyRoom, int daysRemaining, decimal projectedDelta, int excludedCount, int repeatingNameCount, bool isCashLimited)
     {
         var recommendations = new List<string>();
 
@@ -2296,15 +2271,12 @@ else if (_tab == "Holiday")
         if (projectedDelta > 0)
         {
             recommendations.Add($"Keep discretionary spending around {dailyRoom:C}/day for the next {daysRemaining} day{(daysRemaining == 1 ? "" : "s")}.");
-            recommendations.Add(isCashLimited
-                ? $"The cap is live spending cash: {cashAvailable:C} available vs {plannedBudget:C} planned."
-                : $"Cut about {projectedDelta:C} from planned discretionary spending to land inside budget.");
+            if (!isCashLimited) recommendations.Add($"Cut about {projectedDelta:C} from planned discretionary spending to land inside budget.");
             if (excludedCount == 0) recommendations.Add("If a recurring payment is inflating this, exclude its category or repeating name from pace.");
             return recommendations;
         }
 
         recommendations.Add($"You can spend about {dailyRoom:C}/day and stay inside budget.");
-        if (isCashLimited) recommendations.Add($"This is cash-capped at {cashAvailable:C}; the budget plan itself is {plannedBudget:C}.");
         recommendations.Add(excludedCount > 0
             ? $"{excludedCount} manual exclusion{(excludedCount == 1 ? "" : "s")} currently keep pace focused on flexible spending."
             : "Add exclusions for recurring payments so future pace stays focused on flexible spending.");
