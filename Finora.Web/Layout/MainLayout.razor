@@ -227,6 +227,8 @@
         // iOS may have suspended the app mid-sync, leaving _syncInProgress=true.
         // Reset it so the resume sync isn't silently blocked by the guard.
         State.ForceResetSyncGuard();
+        // Bypass the 20-second cooldown so the foreground resume always syncs.
+        _lastSafeSyncAttemptUtc = DateTime.MinValue;
         await SafeSyncAsync();
         await NotifySmartInsightsAsync();
         await EnsurePushSubscriptionAsync();
@@ -304,7 +306,7 @@
     private async Task<bool> SafeUpBankSyncAsync()
     {
         if (UpSync.IsSyncing) return false;
-        if ((DateTime.UtcNow - _lastUpBankSyncAttemptUtc).TotalMinutes < 10) return false;
+        if ((DateTime.UtcNow - _lastUpBankSyncAttemptUtc).TotalMinutes < 2) return false;
 
         string token;
         try { token = await UpSync.GetAccessTokenAsync(); }

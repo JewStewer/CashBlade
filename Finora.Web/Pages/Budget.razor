@@ -236,7 +236,7 @@
                 var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
                 var effectiveAmount = Math.Max(amount - excludedSubWeekly, 0m);
                 var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0;
-                var transferDone = IsBudgetCategoryTransferDone(label);
+                var (transferDone, transferNeeded) = GetBudgetCategoryTransferInfo(label);
 
                 <div style="margin-bottom:10px">
                     <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;opacity:@(isExcluded ? "0.35" : "1")"
@@ -252,7 +252,7 @@
                                     }
                                     else if (transferDone == false)
                                     {
-                                        <span style="font-size:11px;color:var(--amber)" title="Transfer needed">↑</span>
+                                        <span style="font-size:11px;color:var(--amber);font-weight:600" title="Transfer needed">↑@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
                                     }
                                     @if (excludedSubWeekly > 0 && !isExcluded)
                                     {
@@ -2494,26 +2494,39 @@ else if (_tab == "Holiday")
         return "Bills";
     }
 
-    // Returns true when every account that covers bills in this budget category
-    // Returns true when every account that holds bills in this budget category
-    // can currently cover its bills (AfterBills >= 0), null when no bills are
-    // assigned to known accounts (nothing to check), false when any are short.
-    // Unlike the old transfer-plan lookup this works for categories like Afterpay
-    // or Subscriptions whose bills share an account that never needed a transfer.
-    private bool? IsBudgetCategoryTransferDone(string label)
+    // Returns (Done, Needed) for the budget category's transfer status.
+    // Done=true: every account covering bills here has AfterBills >= 0.
+    // Done=false: at least one is short; Needed = total shortfall in dollars.
+    // Done=null: no bills map to a known account (nothing to check).
+    // Resolves accounts by AccountId first, then AccountName fallback for bills
+    // with AccountId=0 (e.g. Afterpay, Subscriptions shared-account bills).
+    private (bool? Done, decimal Needed) GetBudgetCategoryTransferInfo(string label)
     {
         var bills = BillsForBudgetCategory(label);
-        if (!bills.Any()) return null;
+        if (!bills.Any()) return (null, 0);
 
-        var accountIds = bills
-            .Select(x => x.Bill.AccountId)
-            .Where(id => id > 0)
-            .Distinct()
-            .ToList();
+        var accountIds = new HashSet<int>();
+        foreach (var (bill, _) in bills)
+        {
+            if (bill.AccountId > 0)
+            {
+                accountIds.Add(bill.AccountId);
+            }
+            else if (!string.IsNullOrWhiteSpace(bill.AccountName))
+            {
+                var acct = State.Accounts.FirstOrDefault(a =>
+                    string.Equals(a.Name, bill.AccountName.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (acct != null) accountIds.Add(acct.Id);
+            }
+        }
+        if (!accountIds.Any()) return (null, 0);
 
-        if (!accountIds.Any()) return null;
+        var needed = accountIds
+            .Select(id => State.GetAccountForecast(id).AfterBills)
+            .Where(ab => ab < 0)
+            .Sum(ab => -ab);
 
-        return accountIds.All(id => State.GetAccountForecast(id).AfterBills >= 0);
+        return (needed <= 0, needed);
     }
 
     private sealed record TransferPlanEntry(
