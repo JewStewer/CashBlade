@@ -30,6 +30,9 @@
     @{
         var transferPlan = GetFullTransferPlan();
         var allDone = transferPlan.All(x => x.IsDone);
+        var payBalance = State.GetAccountBalance(State.PayAccountId);
+        var totalStillNeeded = transferPlan.Where(x => !x.IsDone).Sum(x => x.Remaining);
+        var afterTransfers = payBalance - totalStillNeeded;
     }
     @if (transferPlan.Any())
     {
@@ -45,22 +48,50 @@
                 }
                 else
                 {
-                    <span style="font-size:14px;font-weight:700;color:var(--amber)">@transferPlan.Where(x => !x.IsDone).Sum(x => x.Remaining).ToString("C")</span>
+                    <span style="font-size:14px;font-weight:700;color:var(--amber)">@totalStillNeeded.ToString("C") to go</span>
                 }
             </div>
             @foreach (var item in transferPlan)
             {
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;opacity:@(item.IsDone ? "0.5" : "1")">
-                    <div class="dot" style="background:@item.AccountColorHex"></div>
-                    <span style="flex:1;font-size:14px">@item.AccountName</span>
-                    @if (item.IsDone)
+                <div style="margin-bottom:10px;opacity:@(item.IsDone ? "0.5" : "1")">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <div class="dot" style="background:@item.AccountColorHex;flex-shrink:0"></div>
+                        <span style="flex:1;font-size:14px">@item.AccountName</span>
+                        @if (item.IsDone)
+                        {
+                            <span style="font-size:14px;color:var(--teal);font-weight:600">✓</span>
+                        }
+                        else
+                        {
+                            <span style="font-size:14px;font-weight:700;color:var(--amber)">@item.Remaining.ToString("C")</span>
+                        }
+                    </div>
+                    @if (item.BillsTotal > 0 || item.TransferredThisPeriod > 0)
                     {
-                        <span style="font-size:14px;color:var(--teal);font-weight:600">✓</span>
+                        <div style="margin-left:22px;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
+                            @if (item.BillsTotal > 0)
+                            {
+                                <span style="font-size:10px;color:var(--text3)">@item.BillsTotal.ToString("C") in bills</span>
+                            }
+                            @if (item.TransferredThisPeriod > 0)
+                            {
+                                <span style="font-size:10px;color:var(--teal)">· @item.TransferredThisPeriod.ToString("C") sent ✓</span>
+                            }
+                        </div>
                     }
-                    else
-                    {
-                        <span style="font-size:14px;font-weight:600">@item.Remaining.ToString("C")</span>
-                    }
+                </div>
+            }
+            @if (!allDone)
+            {
+                <div style="margin-top:6px;border-top:1px solid var(--border);padding-top:8px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                        <span style="font-size:11px;color:var(--text3)">Spending account now</span>
+                        <span style="font-size:12px;font-weight:600">@payBalance.ToString("C")</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:11px;color:var(--text3)">After remaining transfers</span>
+                        <span style="font-size:13px;font-weight:700;color:@(afterTransfers >= 0 ? "var(--teal)" : "var(--red)")">@afterTransfers.ToString("C") left</span>
+                    </div>
                 </div>
             }
         </div>
@@ -2531,7 +2562,8 @@ else if (_tab == "Holiday")
 
     private sealed record TransferPlanEntry(
         int AccountId, string AccountName, string AccountColorHex,
-        decimal BaseShortfall, decimal Remaining, bool IsDone);
+        decimal BaseShortfall, decimal Remaining, bool IsDone,
+        decimal TransferredThisPeriod, decimal BillsTotal);
 
     // Builds the payday transfer plan including accounts that are already fully
     // funded this period — so ticks can show even after AfterBills flips positive.
@@ -2543,6 +2575,7 @@ else if (_tab == "Holiday")
     private List<TransferPlanEntry> GetFullTransferPlan()
     {
         var periodFrom = PeriodRange.From.Date;
+        var payEnd = State.NextPayDate.Date >= DateTime.Today ? State.NextPayDate.Date : DateTime.Today.AddDays(14);
         var transferredByAccount = State.Transactions
             .Where(t => t.AmountCents > 0 && State.IsInternalMovement(t) && t.Date.Date >= periodFrom)
             .GroupBy(t => t.AccountId)
@@ -2554,13 +2587,18 @@ else if (_tab == "Holiday")
             {
                 var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
                 var afterBills = State.GetAccountForecast(a.Id).AfterBills;
+                var billsTotal = State.Bills
+                    .Where(b => b.AccountId == a.Id && !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd)
+                    .Sum(b => b.AmountDollars);
                 return new TransferPlanEntry(
                     AccountId: a.Id,
                     AccountName: a.Name,
                     AccountColorHex: a.ColorHex,
                     BaseShortfall: transferred - afterBills,
                     Remaining: Math.Max(0m, -afterBills),
-                    IsDone: afterBills >= 0m
+                    IsDone: afterBills >= 0m,
+                    TransferredThisPeriod: transferred,
+                    BillsTotal: billsTotal
                 );
             })
             .Where(x => x.BaseShortfall > 0)
