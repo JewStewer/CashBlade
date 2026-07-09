@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Evergrove" />
     <title>Evergrove</title>
     <base href="/" />
-    <link rel="stylesheet" href="css/app.css?v=v2026.07.09.25" />
+    <link rel="stylesheet" href="css/app.css?v=v2026.07.09.26" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
 </head>
@@ -31,8 +31,8 @@
         <a class="dismiss">🗙</a>
     </div>
     <!-- db.js must load synchronously BEFORE Blazor -->
-    <script src="js/db.js?v=v2026.07.09.25"></script>
-    <script src="js/push.js?v=v2026.07.09.25"></script>
+    <script src="js/db.js?v=v2026.07.09.26"></script>
+    <script src="js/push.js?v=v2026.07.09.26"></script>
     <script>
         // Tracked so nudgeRepaint (below) can defer instead of fighting an
         // in-progress touch-scroll gesture or the short momentum phase after
@@ -208,10 +208,20 @@
             let startY = 0, isPulling = false, indicator = null;
             const THRESHOLD = 72;
             const page = () => document.querySelector('.page-content');
+            const dismissIndicator = (ind, delay) => {
+                setTimeout(() => {
+                    ind.style.transition = 'opacity 0.25s ease, padding 0.25s ease';
+                    ind.style.opacity = '0';
+                    ind.style.setProperty('--ptr-h', '0px');
+                    setTimeout(() => ind.remove(), 280);
+                }, delay);
+            };
             document.addEventListener('touchstart', e => {
                 const p = page(); if (!p || p.scrollTop > 2) return;
                 if (e.target.closest('button,a,input,select,textarea,[role="button"]')) return;
                 if (!e.target.closest('.page-content')) return;
+                // Ignore touches starting in the iOS home-indicator zone (bottom ~80 px)
+                if (e.touches[0].clientY > window.innerHeight - 80) return;
                 startY = e.touches[0].clientY; isPulling = false;
             }, { passive: true });
             document.addEventListener('touchmove', e => {
@@ -221,6 +231,7 @@
                 isPulling = true;
                 if (!indicator) { indicator = document.createElement('div'); indicator.className = 'ptr-indicator'; p.prepend(indicator); }
                 const pull = Math.min(dy, 110);
+                indicator.style.transition = '';
                 indicator.style.setProperty('--ptr-h', Math.min(pull * 0.35, 36) + 'px');
                 indicator.style.opacity = String(Math.min((pull / THRESHOLD) * 1.5, 1));
                 indicator.textContent = pull >= THRESHOLD ? '↑ Release to sync' : '↓ Pull to sync';
@@ -230,9 +241,9 @@
                 const dy = e.changedTouches[0].clientY - startY;
                 const go = dy >= THRESHOLD; isPulling = false;
                 if (indicator) {
-                    if (go) { indicator.textContent = 'Syncing…'; indicator.style.opacity = '1'; }
                     const ind = indicator; indicator = null;
-                    setTimeout(() => ind.remove(), go ? 1200 : 200);
+                    if (go) { ind.textContent = 'Syncing…'; ind.style.opacity = '1'; dismissIndicator(ind, 900); }
+                    else { dismissIndicator(ind, 0); }
                 }
                 if (go) try { await dotnetRef.invokeMethodAsync('TriggerPullRefreshAsync'); } catch {}
             }, { passive: true });
