@@ -197,6 +197,37 @@ button, a, input, select, textarea, [role="button"] {
 .nav-item:active { transform: scale(0.92); }
 .nav-item svg { width: 22px; height: 22px; }
 
+.nav-badge {
+    position: absolute;
+    top: -5px;
+    right: -7px;
+    min-width: 15px;
+    height: 15px;
+    border-radius: 8px;
+    background: var(--red);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    pointer-events: none;
+    line-height: 1;
+}
+
+.ptr-indicator {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--teal);
+    padding: calc(var(--ptr-h, 24px) / 2) 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+    user-select: none;
+}
+
 /* ── Cards ── */
 .card {
     background:

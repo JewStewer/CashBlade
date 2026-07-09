@@ -64,11 +64,17 @@
             Txns
         </NavLink>
         <NavLink class="nav-item" href="bills">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
+            <div style="position:relative;display:inline-flex">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                @if (BillsDueSoonCount > 0)
+                {
+                    <span class="nav-badge">@BillsDueSoonCount</span>
+                }
+            </div>
             Bills
         </NavLink>
         <NavLink class="nav-item" href="budget">
@@ -115,6 +121,7 @@
 
 @code {
     private string? _initError;
+    private bool _isOffline;
     private PeriodicTimer? _syncTimer;
     private CancellationTokenSource? _syncCts;
     private DotNetObjectReference<MainLayout>? _dotNetRef;
@@ -130,6 +137,8 @@
     private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
     private bool IsTransactionsRoute => CurrentPath.Equals("transactions", StringComparison.OrdinalIgnoreCase);
     private bool IsBillsRoute => CurrentPath.Equals("bills", StringComparison.OrdinalIgnoreCase);
+
+    private int BillsDueSoonCount => State.IsLoaded ? State.GetUpcomingBills(3).Count : 0;
 
     private string PageAccentClass => CurrentPath.ToLowerInvariant() switch
     {
@@ -200,6 +209,10 @@
                 await JS.InvokeVoidAsync("financeBlade.registerOnVisible", _dotNetRef);
             }
             catch { }
+            try { _isOffline = !(await JS.InvokeAsync<bool>("financeBlade.getOnlineStatus")); } catch { }
+            try { await JS.InvokeVoidAsync("financeBlade.listenNetworkStatus", _dotNetRef); } catch { }
+            try { await JS.InvokeVoidAsync("financeBlade.setupPullToRefresh", _dotNetRef); } catch { }
+            try { await JS.InvokeVoidAsync("financeBlade.enableSwipeDismiss"); } catch { }
         }
 
         // The render that switches the dashboard from its loading spinner to
@@ -219,6 +232,21 @@
             try { await JS.InvokeVoidAsync("financeBlade.nudgeRepaint"); }
             catch { }
         }
+    }
+
+    [JSInvokable]
+    public void OnNetworkStatusChanged(bool isOnline)
+    {
+        _isOffline = !isOnline;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task TriggerPullRefreshAsync()
+    {
+        _lastSafeSyncAttemptUtc = DateTime.MinValue;
+        await SafeSyncAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -325,6 +353,7 @@
 
     private (string Text, string Css)? GetSyncBadge()
     {
+        if (_isOffline) return ("offline", "badge-red");
         if (State.IsSyncing || UpSync.IsSyncing) return ("syncing", "badge-teal");
         if (State.HasPendingChanges || State.HasUnconfirmedSettingOverrides) return ("unsync'd", "badge-amber");
         if (Sync.LastSyncedAt is not null) return ("synced", "badge-green");

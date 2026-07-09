@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Evergrove" />
     <title>Evergrove</title>
     <base href="./" />
-    <link rel="stylesheet" href="css/app.css?v=v2026.07.09.23" />
+    <link rel="stylesheet" href="css/app.css?v=v2026.07.09.24" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
 </head>
@@ -31,8 +31,8 @@
         <a class="dismiss">🗙</a>
     </div>
     <!-- db.js must load synchronously BEFORE Blazor -->
-    <script src="js/db.js?v=v2026.07.09.23"></script>
-    <script src="js/push.js?v=v2026.07.09.23"></script>
+    <script src="js/db.js?v=v2026.07.09.24"></script>
+    <script src="js/push.js?v=v2026.07.09.24"></script>
     <script>
         // Tracked so nudgeRepaint (below) can defer instead of fighting an
         // in-progress touch-scroll gesture or the short momentum phase after
@@ -190,6 +190,89 @@
                 requestAnimationFrame(() => requestAnimationFrame(nudgeOnce));
                 [50, 150, 400, 900].forEach(ms => setTimeout(nudgeOnce, ms));
             }
+        };
+        // ── Network status ────────────────────────────────────────────────────
+        window.financeBlade.getOnlineStatus = () => navigator.onLine;
+        window.financeBlade.listenNetworkStatus = dotnetRef => {
+            const notify = () => {
+                try { dotnetRef.invokeMethodAsync('OnNetworkStatusChanged', navigator.onLine); } catch {}
+            };
+            window.addEventListener('online',  notify, { passive: true });
+            window.addEventListener('offline', notify, { passive: true });
+        };
+        // ── Pull-to-refresh ───────────────────────────────────────────────────
+        // Detect a downward drag from the top of .page-content and invoke a sync.
+        // .page-content has overscroll-behavior-y:contain so there's no native
+        // bounce to fight — we just translate a custom indicator with touch events.
+        window.financeBlade.setupPullToRefresh = dotnetRef => {
+            let startY = 0, isPulling = false, indicator = null;
+            const THRESHOLD = 72;
+            const page = () => document.querySelector('.page-content');
+            document.addEventListener('touchstart', e => {
+                const p = page(); if (!p || p.scrollTop > 2) return;
+                if (e.target.closest('button,a,input,select,textarea,[role="button"]')) return;
+                if (!e.target.closest('.page-content')) return;
+                startY = e.touches[0].clientY; isPulling = false;
+            }, { passive: true });
+            document.addEventListener('touchmove', e => {
+                const p = page(); if (!p || p.scrollTop > 2) { isPulling = false; return; }
+                const dy = e.touches[0].clientY - startY;
+                if (dy < 10) { return; }
+                isPulling = true;
+                if (!indicator) { indicator = document.createElement('div'); indicator.className = 'ptr-indicator'; p.prepend(indicator); }
+                const pull = Math.min(dy, 110);
+                indicator.style.setProperty('--ptr-h', Math.min(pull * 0.35, 36) + 'px');
+                indicator.style.opacity = String(Math.min((pull / THRESHOLD) * 1.5, 1));
+                indicator.textContent = pull >= THRESHOLD ? '↑ Release to sync' : '↓ Pull to sync';
+            }, { passive: true });
+            document.addEventListener('touchend', async e => {
+                if (!isPulling) return;
+                const dy = e.changedTouches[0].clientY - startY;
+                const go = dy >= THRESHOLD; isPulling = false;
+                if (indicator) {
+                    if (go) { indicator.textContent = 'Syncing…'; indicator.style.opacity = '1'; }
+                    const ind = indicator; indicator = null;
+                    setTimeout(() => ind.remove(), go ? 1200 : 200);
+                }
+                if (go) try { await dotnetRef.invokeMethodAsync('TriggerPullRefreshAsync'); } catch {}
+            }, { passive: true });
+        };
+        // ── Swipe-to-dismiss modals ───────────────────────────────────────────
+        // Downward swipe on a .modal-card (from the handle/title or when the
+        // scrollable .modal-sheet is at the top) clicks the .modal-backdrop to
+        // close — the same as tapping the backdrop overlay.
+        window.financeBlade.enableSwipeDismiss = () => {
+            let startY = 0, card = null, backdrop = null, sheet = null;
+            const THRESHOLD = 90;
+            document.addEventListener('touchstart', e => {
+                const c = e.target.closest('.modal-card'); if (!c) return;
+                const sh = c.querySelector('.modal-sheet');
+                const onHandle = !!e.target.closest('.modal-handle,.modal-title');
+                if (!onHandle && sh && sh.scrollTop > 4) return;
+                card = c; sheet = sh; backdrop = c.closest('.modal-backdrop');
+                startY = e.touches[0].clientY; card.style.transition = 'none';
+            }, { passive: true });
+            document.addEventListener('touchmove', e => {
+                if (!card) return;
+                if (sheet && sheet.scrollTop > 0) { card.style.transform = ''; card = null; return; }
+                const dy = e.touches[0].clientY - startY;
+                if (dy < 0) return;
+                card.style.transform = `translateY(${dy}px)`;
+            }, { passive: true });
+            document.addEventListener('touchend', e => {
+                if (!card) return;
+                const dy = e.changedTouches[0].clientY - startY;
+                if (dy >= THRESHOLD && backdrop) {
+                    card.style.transition = 'transform 0.2s ease';
+                    card.style.transform = 'translateY(100%)';
+                    const bd = backdrop;
+                    setTimeout(() => { try { bd.click(); } catch {} }, 180);
+                } else {
+                    card.style.transition = 'transform 0.25s cubic-bezier(0.34,1.56,0.64,1)';
+                    card.style.transform = '';
+                }
+                card = null; backdrop = null; sheet = null;
+            }, { passive: true });
         };
         (() => {
             let startX = 0;
