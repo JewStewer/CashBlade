@@ -43,6 +43,10 @@ public class AppState(IndexedDbService db, SyncService sync)
     public Dictionary<string, decimal> CustomBudgetTotals { get; private set; } = new();
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned - CustomBudgetTotals.Values.Sum();
     public decimal BudgetSafeToSpendAmount => Math.Max(BudgetLeftover, 0);
+    public decimal SpendingCashBalance =>
+        Math.Round(Accounts
+            .Where(a => (a.Type == AccountType.Spending || a.Id == PayAccountId) && a.Type != AccountType.Credit)
+            .Sum(a => GetAccountBalance(a.Id)), 2);
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
     // what's actually left in the current pay cycle (allowance minus real
     // discretionary spend so far) rather than the flat weekly plan figure, then
@@ -65,6 +69,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             var elapsedDays = Math.Clamp((today - from.Date).Days + 1, 1, periodDays);
             var spendToDate = GetDiscretionarySpendingForPeriod(from, today);
             var remaining = periodBudget - spendToDate;
+            remaining = Math.Min(remaining, SpendingCashBalance);
             if (remaining <= 0) return 0m;
 
             var projectedOverrun = (spendToDate / elapsedDays) * periodDays - periodBudget;

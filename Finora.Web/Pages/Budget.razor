@@ -550,7 +550,9 @@
         var elapsedDays = Math.Clamp((todayInPeriod - PeriodRange.From.Date).Days + 1, 1, PeriodDays);
         var daysRemaining = Math.Max((PeriodRange.To.Date - todayInPeriod).Days + 1, 1);
         var spendToDate = State.GetDiscretionarySpendingForPeriod(PeriodRange.From, todayInPeriod);
-        var remainingBudget = PeriodBudget - spendToDate;
+        var planRemainingBudget = PeriodBudget - spendToDate;
+        var spendingCash = State.SpendingCashBalance;
+        var remainingBudget = planRemainingBudget > 0 ? Math.Min(planRemainingBudget, spendingCash) : planRemainingBudget;
         var dailyRoom = Math.Max(remainingBudget / daysRemaining, 0);
         var currentDailyAverage = spendToDate / elapsedDays;
 
@@ -568,7 +570,8 @@
         // from "spend excluding today" × daysRemaining avoids a double-count).
         var todaySpend = State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
         var projectedSpend = Math.Round((spendToDate - todaySpend) + projectionRate * daysRemaining, 2);
-        var projectedDelta = projectedSpend - PeriodBudget;
+        var effectivePaceBudget = spendToDate + Math.Max(remainingBudget, 0m);
+        var projectedDelta = projectedSpend - effectivePaceBudget;
 
         var isOverBudget = remainingBudget < 0;
         var isTrendingOver = !isOverBudget && projectedDelta > 0;
