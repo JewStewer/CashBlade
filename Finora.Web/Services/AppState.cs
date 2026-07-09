@@ -45,21 +45,37 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal WeeklyPaceSpendingBudget => Math.Max(BudgetEssentials + BudgetUnplanned + BudgetLeftover, 0);
     public decimal BudgetSafeToSpendAmount => WeeklyPaceSpendingBudget;
     public decimal BudgetPlanSafeToSpendAmount => WeeklyPaceSpendingBudget;
-    public decimal SpendableCashAfterOwnBills
+    private bool IsPaceCashAccount(Account account) =>
+        (account.Type is AccountType.Spending or AccountType.Cash || account.Id == PayAccountId) &&
+        account.Type != AccountType.Credit;
+
+    public decimal PaceCashBalance =>
+        Math.Round(Accounts.Where(IsPaceCashAccount).Sum(a => GetAccountBalance(a.Id)), 2);
+
+    public decimal PaceCashBillsDue
     {
         get
         {
-            if (Accounts.Count == 0) return BudgetPlanSafeToSpendAmount;
+            var today = DateTime.Today;
+            var payEnd = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
+            var paceAccountIds = Accounts
+                .Where(IsPaceCashAccount)
+                .Select(a => a.Id)
+                .ToHashSet();
 
-            return Math.Max(Math.Round(Accounts
-                .Where(a => a.Type is AccountType.Spending or AccountType.Cash || a.Id == PayAccountId)
-                .Where(a => a.Type != AccountType.Credit)
-                .Sum(a => GetAccountForecast(a.Id).AfterBills), 2), 0m);
+            return Math.Round(Bills
+                .Where(b => paceAccountIds.Contains(b.AccountId) && !IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd)
+                .Sum(b => b.AmountDollars), 2);
         }
     }
+
+    public decimal PaceCashAfterAccountBills =>
+        Math.Max(Math.Round(PaceCashBalance - PaceCashBillsDue, 2), 0m);
+
     public decimal RequiredBillAccountTopUps => Math.Round(GetPaydayTransferPlan().Sum(t => t.Amount), 2);
+
     public decimal CashAvailableForDiscretionarySpending =>
-        Math.Max(Math.Round(SpendableCashAfterOwnBills - RequiredBillAccountTopUps, 2), 0m);
+        Math.Max(Math.Round(PaceCashAfterAccountBills - RequiredBillAccountTopUps, 2), 0m);
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
     // the everyday spending budget for the current pay cycle, subtracts real
     // non-bill spending so far, then caps that by live Up cash after unpaid

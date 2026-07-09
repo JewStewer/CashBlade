@@ -40,7 +40,7 @@
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
                 <div>
                     <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Payday Transfer Plan</div>
-                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so each account can cover its own bills</div>
+                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so bills assigned to each account are covered</div>
                 </div>
                 @if (allDone)
                 {
@@ -587,7 +587,9 @@
         var paceExcludedCount = State.PaceExcludedCategories.Count + State.PaceExcludedTransactionNames.Count;
         var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count);
         var plannedPaceBudget = State.WeeklyPaceSpendingBudget * PayCycleWeeks;
-        var spendableCashAfterOwnBills = State.SpendableCashAfterOwnBills;
+        var paceCashBalance = State.PaceCashBalance;
+        var paceCashBillsDue = State.PaceCashBillsDue;
+        var paceCashAfterAccountBills = State.PaceCashAfterAccountBills;
         var requiredBillTopUps = State.RequiredBillAccountTopUps;
         var cashAfterBills = State.CashAvailableForDiscretionarySpending;
         var isCashLimited = cashAfterBills < plannedPaceBudget;
@@ -615,15 +617,23 @@
                     <strong>@plannedPaceBudget.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Spending/cash after own bills</span>
-                    <strong>@spendableCashAfterOwnBills.ToString("C")</strong>
+                    <span style="color:var(--text3)">Cash in spending accounts</span>
+                    <strong>@paceCashBalance.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Needed top-ups to bill accounts</span>
+                    <span style="color:var(--text3)">Bills from spending accounts</span>
+                    <strong>@paceCashBillsDue.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--text3)">Left after those bills</span>
+                    <strong>@paceCashAfterAccountBills.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
+                    <span style="color:var(--text3)">Transfers needed for bill accounts</span>
                     <strong>@requiredBillTopUps.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Cash after bills</span>
+                    <span style="color:var(--text3)">Cash available for pace</span>
                     <strong style="color:@(isCashLimited ? "var(--amber)" : "var(--green)")">@cashAfterBills.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
@@ -1103,15 +1113,23 @@
                     <strong>@State.BudgetPlanSafeToSpendAmount.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Spending/cash after own bills</span>
-                    <strong>@State.SpendableCashAfterOwnBills.ToString("C")</strong>
+                    <span style="color:var(--text3)">Cash in spending accounts</span>
+                    <strong>@State.PaceCashBalance.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Needed top-ups</span>
+                    <span style="color:var(--text3)">Bills from those accounts</span>
+                    <strong>@State.PaceCashBillsDue.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
+                    <span style="color:var(--text3)">Left after those bills</span>
+                    <strong>@State.PaceCashAfterAccountBills.ToString("C")</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
+                    <span style="color:var(--text3)">Transfers needed</span>
                     <strong>@State.RequiredBillAccountTopUps.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px">
-                    <span style="color:var(--text3)">Cash after bills/top-ups</span>
+                    <span style="color:var(--text3)">Cash available for pace</span>
                     <strong style="color:@(State.CashAvailableForDiscretionarySpending >= State.BudgetPlanSafeToSpendAmount ? "var(--green)" : "var(--amber)")">@State.CashAvailableForDiscretionarySpending.ToString("C")</strong>
                 </div>
             </div>
