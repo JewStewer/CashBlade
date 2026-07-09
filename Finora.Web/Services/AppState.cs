@@ -43,9 +43,19 @@ public class AppState(IndexedDbService db, SyncService sync)
     public Dictionary<string, decimal> CustomBudgetTotals { get; private set; } = new();
     public decimal BudgetLeftover => WeeklyIncome - BudgetBills - BudgetEssentials - BudgetSavings - BudgetUnplanned - CustomBudgetTotals.Values.Sum();
     public decimal BudgetSafeToSpendAmount => Math.Max(BudgetLeftover, 0);
+    private const string SpendingCashAccountSettingPrefix = "SpendingCashAccount:";
+    private static string SpendingCashAccountSettingKey(int accountId) => $"{SpendingCashAccountSettingPrefix}{accountId}";
+    public bool IsAccountIncludedInSpendingCash(Account account)
+    {
+        if (account.Type == AccountType.Credit) return false;
+        var raw = GetSetting(SpendingCashAccountSettingKey(account.Id));
+        if (bool.TryParse(raw, out var included)) return included;
+        return account.Type == AccountType.Spending || account.Id == PayAccountId;
+    }
+
     public decimal SpendingCashBalance =>
         Math.Round(Accounts
-            .Where(a => (a.Type == AccountType.Spending || a.Id == PayAccountId) && a.Type != AccountType.Credit)
+            .Where(IsAccountIncludedInSpendingCash)
             .Sum(a => GetAccountBalance(a.Id)), 2);
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
     // what's actually left in the current pay cycle (allowance minus real
@@ -5215,6 +5225,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         else if (!enabled)
             await SaveSettingAsync("NoSpendModeSince", string.Empty);
     }
+
+    public Task SetAccountIncludedInSpendingCashAsync(int accountId, bool included) =>
+        SaveSettingAsync(SpendingCashAccountSettingKey(accountId), included ? "true" : "false");
 
     private static bool ShouldSyncSetting(string key) =>
         key is not ("AffordabilityMode"

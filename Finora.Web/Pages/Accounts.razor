@@ -138,6 +138,19 @@ else
                                     <div style="font-size:14px;font-weight:700;color:@(acctAfterPay >= 0 ? "var(--green)" : "var(--red)")">@acctAfterPay.ToString("C")</div>
                                 </div>
                             </div>
+                            @if (acct.Type != AccountType.Credit)
+                            {
+                                <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface2);border-radius:8px;padding:9px 10px;font-size:12px;color:var(--text2)" @onclick:stopPropagation="true">
+                                    <span>
+                                        <strong style="display:block;color:var(--text);font-size:13px">Count in spending pace cash</strong>
+                                        <span style="color:var(--text3)">Turn off for essentials, bills or holding accounts</span>
+                                    </span>
+                                    <input type="checkbox"
+                                           checked="@State.IsAccountIncludedInSpendingCash(acct)"
+                                           @onchange="(ChangeEventArgs e) => SetSpendingCashAccountAsync(acct.Id, e)"
+                                           style="width:18px;height:18px;accent-color:var(--teal)" />
+                                </label>
+                            }
                             @if (accountBills.Any())
                             {
                                 <div>
@@ -295,4 +308,10 @@ else
 
     private void ToggleAccount(int accountId) =>
         _expandedAccountId = _expandedAccountId == accountId ? 0 : accountId;
+
+    private async Task SetSpendingCashAccountAsync(int accountId, ChangeEventArgs e)
+    {
+        var included = e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
+        await State.SetAccountIncludedInSpendingCashAsync(accountId, included);
+    }
 }

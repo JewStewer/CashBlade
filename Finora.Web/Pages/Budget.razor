@@ -554,6 +554,7 @@
         var spendingCash = State.SpendingCashBalance;
         var remainingBudget = planRemainingBudget > 0 ? Math.Min(planRemainingBudget, spendingCash) : planRemainingBudget;
         var dailyRoom = Math.Max(remainingBudget / daysRemaining, 0);
+        var planDailyRoom = Math.Max(planRemainingBudget / daysRemaining, 0);
         var currentDailyAverage = spendToDate / elapsedDays;
 
         // Recent 3-day trend for smarter projection
@@ -570,10 +571,9 @@
         // from "spend excluding today" × daysRemaining avoids a double-count).
         var todaySpend = State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
         var projectedSpend = Math.Round((spendToDate - todaySpend) + projectionRate * daysRemaining, 2);
-        var effectivePaceBudget = spendToDate + Math.Max(remainingBudget, 0m);
-        var projectedDelta = projectedSpend - effectivePaceBudget;
+        var projectedDelta = projectedSpend - PeriodBudget;
 
-        var isOverBudget = remainingBudget < 0;
+        var isOverBudget = planRemainingBudget < 0;
         var isTrendingOver = !isOverBudget && projectedDelta > 0;
         var paceColor = isOverBudget ? "var(--red)" : isTrendingOver ? "var(--amber)" : "var(--green)";
         var paceTitle = isOverBudget ? "Over budget" : isTrendingOver ? "Slow down" : "On track";
@@ -584,11 +584,11 @@
         var upcomingBills = State.GetUpcomingBillOccurrences(DateTime.Today.AddDays(1), PeriodRange.To);
         var upcomingBillsTotal = upcomingBills.Sum(o => o.Bill.AmountDollars);
 
-        var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, remainingBudget, dailyRoom, daysRemaining, projectedDelta, PeriodNounLower);
+        var paceSummary = BuildSpendingPaceSummary(spendToDate, PeriodBudget, planRemainingBudget, planDailyRoom, daysRemaining, projectedDelta, PeriodNounLower);
         var paceCategoryOptions = PaceCategoryOptions();
         var paceNameOptions = PaceRecurringNameOptions();
         var paceExcludedCount = State.PaceExcludedCategories.Count + State.PaceExcludedTransactionNames.Count;
-        var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count);
+        var paceRecommendations = BuildSpendingPaceRecommendations(planRemainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count);
         <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
