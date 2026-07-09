@@ -704,7 +704,11 @@ public class AppState(IndexedDbService db, SyncService sync)
                 transaction.IsReimbursement == updated.IsReimbursement;
             if (alreadyApplied)
             {
-                await db.ClearTransactionOverrideAsync(updated.Id);
+                // The local store already reflects this edit, but the push to the
+                // cloud hasn't been confirmed yet (override is only cleared by the
+                // push success handler). Re-queue so the value reaches the cloud;
+                // don't clear the override here or the next pull will revert it.
+                QueueUpdatedTransaction(transaction);
                 continue;
             }
 
