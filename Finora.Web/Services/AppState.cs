@@ -52,34 +52,20 @@ public class AppState(IndexedDbService db, SyncService sync)
     public decimal PaceCashBalance =>
         Math.Round(Accounts.Where(IsPaceCashAccount).Sum(a => GetAccountBalance(a.Id)), 2);
 
-    public decimal PaceCashBillsDue
-    {
-        get
-        {
-            var today = DateTime.Today;
-            var payEnd = NextPayDate.Date >= today ? NextPayDate.Date : today.AddDays(14);
-            var paceAccountIds = Accounts
-                .Where(IsPaceCashAccount)
-                .Select(a => a.Id)
-                .ToHashSet();
+    public decimal BillSaverShortfall =>
+        Math.Round(Accounts
+            .Where(a => !IsPaceCashAccount(a) && a.Type != AccountType.Credit)
+            .Sum(a => Math.Max(-GetAccountForecast(a.Id).AfterBills, 0m)), 2);
 
-            return Math.Round(Bills
-                .Where(b => paceAccountIds.Contains(b.AccountId) && !IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd)
-                .Sum(b => b.AmountDollars), 2);
-        }
-    }
-
-    public decimal PaceCashAfterAccountBills =>
-        Math.Max(Math.Round(PaceCashBalance - PaceCashBillsDue, 2), 0m);
-
-    public decimal RequiredBillAccountTopUps => Math.Round(GetPaydayTransferPlan().Sum(t => t.Amount), 2);
+    public decimal RequiredBillAccountTopUps => BillSaverShortfall;
 
     public decimal CashAvailableForDiscretionarySpending =>
-        Math.Max(Math.Round(PaceCashAfterAccountBills - RequiredBillAccountTopUps, 2), 0m);
+        Math.Max(Math.Round(PaceCashBalance - BillSaverShortfall, 2), 0m);
     // Reactive, pace-aware version of the safe-to-spend headline: starts from
     // the everyday spending budget for the current pay cycle, subtracts real
-    // non-bill spending so far, then caps that by live Up cash after unpaid
-    // bills and required top-ups.
+    // non-bill spending so far, then caps that by live Up cash after any
+    // bill/saver bucket shortfall. Bills may debit from spending accounts, but
+    // pace only reserves cash when their saver buckets cannot cover them.
     public decimal SafeToSpendAmount
     {
         get

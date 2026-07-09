@@ -588,12 +588,10 @@
         var paceRecommendations = BuildSpendingPaceRecommendations(remainingBudget, dailyRoom, daysRemaining, projectedDelta, paceExcludedCount, paceNameOptions.Count);
         var plannedPaceBudget = State.WeeklyPaceSpendingBudget * PayCycleWeeks;
         var paceCashBalance = State.PaceCashBalance;
-        var paceCashBillsDue = State.PaceCashBillsDue;
-        var paceCashAfterAccountBills = State.PaceCashAfterAccountBills;
-        var requiredBillTopUps = State.RequiredBillAccountTopUps;
-        var cashAfterBills = State.CashAvailableForDiscretionarySpending;
-        var isCashLimited = cashAfterBills < plannedPaceBudget;
-        var limitingLabel = isCashLimited ? "Up cash after bills" : "budget plan";
+        var billSaverShortfall = State.BillSaverShortfall;
+        var cashAvailableForPace = State.CashAvailableForDiscretionarySpending;
+        var isCashLimited = cashAvailableForPace < plannedPaceBudget;
+        var limitingLabel = isCashLimited ? "Up cash after saver shortfall" : "budget plan";
         <div class="card" style="margin-top:12px;border-color:@(isOverBudget ? "rgba(248,113,113,0.35)" : isTrendingOver ? "rgba(251,191,36,0.35)" : "rgba(52,211,153,0.35)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
                 <div>
@@ -621,20 +619,12 @@
                     <strong>@paceCashBalance.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Bills from spending accounts</span>
-                    <strong>@paceCashBillsDue.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Left after those bills</span>
-                    <strong>@paceCashAfterAccountBills.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
-                    <span style="color:var(--text3)">Transfers needed for bill accounts</span>
-                    <strong>@requiredBillTopUps.ToString("C")</strong>
+                    <span style="color:var(--text3)">Bill saver shortfall</span>
+                    <strong>@billSaverShortfall.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
                     <span style="color:var(--text3)">Cash available for pace</span>
-                    <strong style="color:@(isCashLimited ? "var(--amber)" : "var(--green)")">@cashAfterBills.ToString("C")</strong>
+                    <strong style="color:@(isCashLimited ? "var(--amber)" : "var(--green)")">@cashAvailableForPace.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:4px">
                     <span style="color:var(--text3)">Pace starts from</span>
@@ -1102,7 +1092,7 @@
             @(trulyOverBudget ? "Over budget" : State.SafeToSpendAmount.ToString("C"))
         </div>
         <div style="font-size:13px;color:var(--text3);margin-top:4px">
-            @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After unpaid bills, required top-ups, savings and essentials")
+            @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After saver shortfalls, savings, essentials and spending pace")
         </div>
 
         @if (!State.NoSpendMode && State.WeeklyIncome > 0)
@@ -1117,16 +1107,8 @@
                     <strong>@State.PaceCashBalance.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Bills from those accounts</span>
-                    <strong>@State.PaceCashBillsDue.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Left after those bills</span>
-                    <strong>@State.PaceCashAfterAccountBills.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:5px">
-                    <span style="color:var(--text3)">Transfers needed</span>
-                    <strong>@State.RequiredBillAccountTopUps.ToString("C")</strong>
+                    <span style="color:var(--text3)">Bill saver shortfall</span>
+                    <strong>@State.BillSaverShortfall.ToString("C")</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px">
                     <span style="color:var(--text3)">Cash available for pace</span>
@@ -2466,7 +2448,7 @@ else if (_tab == "Holiday")
     private decimal AllPeriodSpend => State.GetPeriodSpendingForPeriod(PeriodRange.From, PeriodRange.To);
     private decimal BillsSpend     => AllPeriodSpend - PeriodSpend;
     private decimal PeriodIncome   => State.WeeklyIncome * PayCycleWeeks;
-    // Non-bill spending budget, capped by live Up balances after unpaid bills and required top-ups.
+    // Non-bill spending budget, capped by live Up spending cash after any bill/saver shortfall.
     private decimal PeriodBudget   => Math.Max(Math.Min(State.WeeklyPaceSpendingBudget * PayCycleWeeks, State.CashAvailableForDiscretionarySpending), 0m);
     private decimal PeriodSpendPct => PeriodBudget > 0 ? Math.Min(PeriodSpend / PeriodBudget, 1.5m) : 0;
     private string PeriodNoun => State.SummaryPeriod == "Weekly" ? "Week" : "Month";
