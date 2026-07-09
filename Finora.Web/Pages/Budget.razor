@@ -2587,10 +2587,15 @@ else if (_tab == "Holiday")
             .Select(a =>
             {
                 var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
-                var afterBills = State.GetAccountForecast(a.Id).AfterBills;
-                var billsTotal = State.Bills
-                    .Where(b => b.AccountId == a.Id && !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd)
-                    .Sum(b => b.AmountDollars);
+                // Match bills by AccountId OR by AccountName (for bills entered with AccountId=0)
+                var accountBills = State.Bills
+                    .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd &&
+                        (b.AccountId == a.Id ||
+                         (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
+                          string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
+                    .ToList();
+                var billsTotal = accountBills.Sum(b => b.AmountDollars);
+                var afterBills = State.GetAccountBalance(a.Id) - billsTotal;
                 return new TransferPlanEntry(
                     AccountId: a.Id,
                     AccountName: a.Name,
