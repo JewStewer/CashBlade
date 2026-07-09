@@ -368,7 +368,7 @@ public class IndexedDbService(IJSRuntime js)
         GetAllAsync<PendingSettingOverride>("settingOverrides");
 
     public Task SetSettingOverrideAsync(AppSetting setting) =>
-        PutAsync("settingOverrides", new PendingSettingOverride { Id = setting.Key, Setting = setting });
+        PutAsync("settingOverrides", new PendingSettingOverride { Id = setting.Key, Setting = setting, CreatedAt = DateTime.UtcNow });
 
     public Task ClearSettingOverrideAsync(string key) =>
         DeleteAsync("settingOverrides", key);
@@ -901,6 +901,7 @@ public class PendingSettingOverride
 {
     public string Id { get; set; } = string.Empty; // = Setting Key
     public AppSetting Setting { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingTransactionDelete

@@ -326,7 +326,7 @@
     private (string Text, string Css)? GetSyncBadge()
     {
         if (State.IsSyncing || UpSync.IsSyncing) return ("syncing", "badge-teal");
-        if (State.HasPendingChanges) return ("unsync'd", "badge-amber");
+        if (State.HasPendingChanges || State.HasUnconfirmedSettingOverrides) return ("unsync'd", "badge-amber");
         if (Sync.LastSyncedAt is not null) return ("synced", "badge-green");
         return null;
     }

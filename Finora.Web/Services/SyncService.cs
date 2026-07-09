@@ -371,6 +371,13 @@ public class SyncService(HttpClient http, IndexedDbService db)
         var settingOverrides = await db.GetPendingSettingOverridesAsync();
         foreach (var ov in settingOverrides)
         {
+            if (ov.CreatedAt != default && DateTime.UtcNow - ov.CreatedAt > TimeSpan.FromHours(72))
+            {
+                // Override is stale — WPF had ample time to reconcile the push.
+                // Drop it so the canonical finance_sync value wins on the next pull.
+                await db.ClearSettingOverrideAsync(ov.Setting.Key);
+                continue;
+            }
             var existing = payload.AppSettings.FirstOrDefault(s => s.Key == ov.Setting.Key);
             if (existing is not null)
             {

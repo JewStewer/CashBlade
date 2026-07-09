@@ -216,6 +216,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private PushPayload? _lastConfirmedPush;
     private DateTime _lastConfirmedPushAt;
     private static readonly TimeSpan ConfirmedPushGrace = TimeSpan.FromMinutes(6);
+    private int _unconfirmedSettingOverrideCount;
 
     // LoadAsync() wholesale-replaces each Trip object from IndexedDB, then
     // ReapplyPushChangesAsync/ReapplyPendingChangesAsync correct it back up a
@@ -289,6 +290,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         _pendingNewTrips.Count > 0 ||
         _pendingUpdatedTrips.Count > 0 ||
         _pendingDeletedTripIds.Count > 0;
+
+    // Push succeeded but finance_sync hasn't been updated by WPF yet — the IndexedDB
+    // override is still protecting the value from being reverted by the next pull.
+    public bool HasUnconfirmedSettingOverrides => _unconfirmedSettingOverrideCount > 0;
 
     public List<SyncQueueItem> GetPendingSyncQueue()
     {
@@ -375,6 +380,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 break;
             case "Settings":
                 _pendingUpdatedSettings.Clear();
+                _unconfirmedSettingOverrideCount = 0;
                 await db.ClearSettingOverridesAsync();
                 break;
             case "Savings":
@@ -941,6 +947,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         var overrides = await db.GetPendingSettingOverridesAsync();
         foreach (var ov in overrides)
         {
+            if (ov.CreatedAt != default && DateTime.UtcNow - ov.CreatedAt > TimeSpan.FromHours(72))
+            {
+                // Override is stale — WPF had ample time to reconcile the push.
+                await db.ClearSettingOverrideAsync(ov.Setting.Key);
+                continue;
+            }
             var setting = ov.Setting;
             await db.SaveSettingAsync(setting.Key, setting.Value);
             var existing = AppSettings.FirstOrDefault(s => s.Key == setting.Key);
@@ -5792,6 +5804,9 @@ public class AppState(IndexedDbService db, SyncService sync)
                     finally { _suppressLoadOnChange = false; _suppressPendingReseed = false; }
                     AdoptPulledTripIds(tripsBeforeLoad);
                     LastSyncChangeSummary = BuildSyncChangeSummary(beforeTransactions, beforeBills, beforeDebts, beforeDebtPayments);
+                    // Reflect how many overrides SyncService's lazy-clear left behind —
+                    // the badge stays "unsync'd" until WPF confirms every pushed setting.
+                    _unconfirmedSettingOverrideCount = (await db.GetPendingSettingOverridesAsync()).Count;
                     // Sync wipes IndexedDB and replaces with server data; reapply any
                     // phone-side changes that weren't pushed so they aren't lost.
                     if (sentPush is not null)
@@ -6388,22 +6403,6 @@ public class AppState(IndexedDbService db, SyncService sync)
             account.TargetStartDate = ua.TargetStartDate;
             account.TargetStartingBalanceCents = ua.TargetStartingBalanceCents;
             await db.PutAsync("accounts", account);
-            changed = true;
-        }
-
-        // Re-apply phone-side settings such as category limits/payday/summary period.
-        foreach (var ps in push.UpdatedSettings)
-        {
-            await db.SaveSettingAsync(ps.Key, ps.Value);
-            var existing = AppSettings.FirstOrDefault(s => s.Key == ps.Key);
-            if (existing is null)
-            {
-                AppSettings.Add(ps);
-            }
-            else
-            {
-                existing.Value = ps.Value;
-            }
             changed = true;
         }
 
