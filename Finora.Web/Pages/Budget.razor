@@ -2588,15 +2588,17 @@ else if (_tab == "Holiday")
             .Select(a =>
             {
                 var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
-                // Match bills by AccountId OR by AccountName (for bills entered with AccountId=0)
-                var accountBills = State.Bills
+                // GetAccountForecast is the authoritative source for afterBills — it uses
+                // the app's own date-windowing logic and won't include historical unpaid bills.
+                var afterBills = State.GetAccountForecast(a.Id).AfterBills;
+                // billsTotal is display-only: match by AccountId OR AccountName fallback
+                // (for bills entered with AccountId=0). This doesn't affect IsDone/Remaining.
+                var billsTotal = State.Bills
                     .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd &&
                         (b.AccountId == a.Id ||
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
-                    .ToList();
-                var billsTotal = accountBills.Sum(b => b.AmountDollars);
-                var afterBills = State.GetAccountBalance(a.Id) - billsTotal;
+                    .Sum(b => b.AmountDollars);
                 return new TransferPlanEntry(
                     AccountId: a.Id,
                     AccountName: a.Name,
