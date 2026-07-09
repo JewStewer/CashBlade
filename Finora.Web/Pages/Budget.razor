@@ -562,16 +562,17 @@
         var projectionRate = elapsedDays >= 4
             ? recentDailyRate * 0.6m + currentDailyAverage * 0.4m
             : currentDailyAverage;
-        var projectedSpend = Math.Round(spendToDate + projectionRate * (PeriodDays - elapsedDays), 2);
+        // Today's spend — needed before projectedSpend so we can exclude it from the
+        // projection base (today is already counted in daysRemaining, so projecting
+        // from "spend excluding today" × daysRemaining avoids a double-count).
+        var todaySpend = State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
+        var projectedSpend = Math.Round((spendToDate - todaySpend) + projectionRate * daysRemaining, 2);
         var projectedDelta = projectedSpend - PeriodBudget;
 
         var isOverBudget = remainingBudget < 0;
         var isTrendingOver = !isOverBudget && projectedDelta > 0;
         var paceColor = isOverBudget ? "var(--red)" : isTrendingOver ? "var(--amber)" : "var(--green)";
         var paceTitle = isOverBudget ? "Over budget" : isTrendingOver ? "Slow down" : "On track";
-
-        // Today's spend for the mini-bar
-        var todaySpend = State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
         var todayRemaining = Math.Max(dailyRoom - todaySpend, 0);
         var todayPct = dailyRoom > 0 ? (double)Math.Min(todaySpend / dailyRoom, 1.5m) : 0;
 
