@@ -372,8 +372,22 @@ public class SyncService(HttpClient http, IndexedDbService db)
         foreach (var ov in settingOverrides)
         {
             var existing = payload.AppSettings.FirstOrDefault(s => s.Key == ov.Setting.Key);
-            if (existing is not null) existing.Value = ov.Setting.Value;
-            else payload.AppSettings.Add(ov.Setting);
+            if (existing is not null)
+            {
+                if (string.Equals(existing.Value, ov.Setting.Value, StringComparison.Ordinal))
+                {
+                    // finance_sync already has our value — WPF processed the push; safe to drop the override.
+                    await db.ClearSettingOverrideAsync(ov.Setting.Key);
+                }
+                else
+                {
+                    existing.Value = ov.Setting.Value;
+                }
+            }
+            else
+            {
+                payload.AppSettings.Add(ov.Setting);
+            }
         }
     }
 

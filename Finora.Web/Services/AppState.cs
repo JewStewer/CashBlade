@@ -5716,8 +5716,12 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var s in push.UpdatedSettings)
                     {
                         _pendingUpdatedSettings.Remove(s);
-                        if (!_pendingUpdatedSettings.Any(p => p.Key == s.Key))
-                            await db.ClearSettingOverrideAsync(s.Key);
+                        // Do NOT clear the IndexedDB override here. A successful push only
+                        // means our change reached phone_push/Supabase — it doesn't mean WPF
+                        // has reconciled it into finance_sync yet. If the app restarts before
+                        // WPF processes the push, _lastConfirmedPush is lost and the next pull
+                        // would silently revert the setting. The override lives until
+                        // SyncService confirms finance_sync reflects our value.
                     }
 
                     // Savings goal tombstones are deliberately NOT cleared here. A
