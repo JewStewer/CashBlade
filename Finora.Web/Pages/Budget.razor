@@ -28,16 +28,8 @@
     <div>
     <!-- Payday transfer plan -->
     @{
-        var transferPlan = State.GetPaydayTransferPlan();
-        // For each account, sum incoming internal-movement transactions since period start
-        var periodFrom = PeriodRange.From.Date;
-        var transferredByAccount = State.Transactions
-            .Where(t => t.AmountCents > 0 && State.IsInternalMovement(t) && t.Date.Date >= periodFrom)
-            .GroupBy(t => t.AccountId)
-            .ToDictionary(g => g.Key, g => g.Sum(t => t.AmountCents) / 100m);
-        bool AllTransferred(PaydayTransferItem item) =>
-            transferredByAccount.TryGetValue(item.AccountId, out var moved) && moved >= item.Amount;
-        var allDone = transferPlan.All(AllTransferred);
+        var transferPlan = GetFullTransferPlan();
+        var allDone = transferPlan.All(x => x.IsDone);
     }
     @if (transferPlan.Any())
     {
@@ -53,22 +45,21 @@
                 }
                 else
                 {
-                    <span style="font-size:14px;font-weight:700;color:var(--amber)">@transferPlan.Where(i => !AllTransferred(i)).Sum(t => t.Amount).ToString("C")</span>
+                    <span style="font-size:14px;font-weight:700;color:var(--amber)">@transferPlan.Where(x => !x.IsDone).Sum(x => x.Remaining).ToString("C")</span>
                 }
             </div>
             @foreach (var item in transferPlan)
             {
-                var done = AllTransferred(item);
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;opacity:@(done ? "0.5" : "1")">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;opacity:@(item.IsDone ? "0.5" : "1")">
                     <div class="dot" style="background:@item.AccountColorHex"></div>
                     <span style="flex:1;font-size:14px">@item.AccountName</span>
-                    @if (done)
+                    @if (item.IsDone)
                     {
                         <span style="font-size:14px;color:var(--teal);font-weight:600">✓</span>
                     }
                     else
                     {
-                        <span style="font-size:14px;font-weight:600">@item.Amount.ToString("C")</span>
+                        <span style="font-size:14px;font-weight:600">@item.Remaining.ToString("C")</span>
                     }
                 </div>
             }
@@ -2472,16 +2463,9 @@ else if (_tab == "Holiday")
     // (nothing to transfer, so no indicator shown at all).
     private bool? IsBudgetCategoryTransferDone(string label)
     {
-        var plan = State.GetPaydayTransferPlan();
+        var plan = GetFullTransferPlan();
         if (!plan.Any()) return null;
 
-        var periodFrom = PeriodRange.From.Date;
-        var transferredByAccount = State.Transactions
-            .Where(t => t.AmountCents > 0 && State.IsInternalMovement(t) && t.Date.Date >= periodFrom)
-            .GroupBy(t => t.AccountId)
-            .ToDictionary(g => g.Key, g => g.Sum(t => t.AmountCents) / 100m);
-
-        // Match by AccountId (reliable) with AccountName as fallback
         var planAccountIds = plan.Select(p => p.AccountId).ToHashSet();
         var planByName = plan.ToDictionary(p => p.AccountName.Trim(), p => p, StringComparer.OrdinalIgnoreCase);
 
@@ -2498,10 +2482,48 @@ else if (_tab == "Holiday")
             .DistinctBy(p => p.AccountId)
             .ToList();
 
-        if (!relevantPlanItems.Any()) return null; // no transfers needed for this category
+        if (!relevantPlanItems.Any()) return null;
 
-        return relevantPlanItems.All(p =>
-            transferredByAccount.TryGetValue(p.AccountId, out var moved) && moved >= p.Amount);
+        return relevantPlanItems.All(p => p.IsDone);
+    }
+
+    private sealed record TransferPlanEntry(
+        int AccountId, string AccountName, string AccountColorHex,
+        decimal BaseShortfall, decimal Remaining, bool IsDone);
+
+    // Builds the payday transfer plan including accounts that are already fully
+    // funded this period — so ticks can show even after AfterBills flips positive.
+    //
+    // baseShortfall = transferred_this_period - AfterBills
+    //               = billsDue - balanceBeforeThisPeriod'sTransfers
+    // An account appears if baseShortfall > 0 (it needed money at period start).
+    // IsDone = AfterBills >= 0 (account can now cover its bills).
+    private List<TransferPlanEntry> GetFullTransferPlan()
+    {
+        var periodFrom = PeriodRange.From.Date;
+        var transferredByAccount = State.Transactions
+            .Where(t => t.AmountCents > 0 && State.IsInternalMovement(t) && t.Date.Date >= periodFrom)
+            .GroupBy(t => t.AccountId)
+            .ToDictionary(g => g.Key, g => g.Sum(t => t.AmountCents) / 100m);
+
+        return State.Accounts
+            .Where(a => a.Id != State.PayAccountId && a.Type != AccountType.Credit)
+            .Select(a =>
+            {
+                var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
+                var afterBills = State.GetAccountForecast(a.Id).AfterBills;
+                return new TransferPlanEntry(
+                    AccountId: a.Id,
+                    AccountName: a.Name,
+                    AccountColorHex: a.ColorHex,
+                    BaseShortfall: transferred - afterBills,
+                    Remaining: Math.Max(0m, -afterBills),
+                    IsDone: afterBills >= 0m
+                );
+            })
+            .Where(x => x.BaseShortfall > 0)
+            .OrderByDescending(x => x.BaseShortfall)
+            .ToList();
     }
 
     private IEnumerable<(string Label, decimal Amount, string Color)> BudgetRows()
