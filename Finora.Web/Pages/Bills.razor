@@ -182,7 +182,7 @@ else
                             {
                                 <span class="badge badge-gray" style="margin-left:4px">Auto</span>
                             }
-                            @if (bill.DebtId is not null && occ.DueDate.Date > DateTime.Today)
+                            @if (bill.DebtId is not null && occ.DueDate.Date > DateTime.Today && occ.DueDate.Date <= DateTime.Today.AddDays(14))
                             {
                                 <span class="badge badge-teal" style="margin-left:4px">Pay early</span>
                             }
@@ -240,26 +240,16 @@ else
             .ToList();
     }
 
-    // Installment-debt bills (Bill.DebtId set) support paying the next cycle
-    // early — e.g. settling next fortnight's Afterpay installment before it's
-    // due. "Pay early" only makes sense when the current occurrence is already
-    // at hand (due today or overdue); for future-dated debt bills the single
-    // outstanding occurrence is shown and no additional preview is needed.
-    private List<BillOccurrencePreview> UnpaidWithEarlyInstallments()
+    // Every unpaid occurrence for every bill within a 90-day window — weekly
+    // bills show a row per week, fortnightly per fortnight, monthly per month.
+    // Past unpaid (overdue) occurrences up to 60 days back are included via
+    // GetOutstandingBillOccurrences so missed cycles don't silently disappear.
+    private List<BillOccurrencePreview> GetAllUnpaidOccurrences()
     {
-        var outstanding = State.GetOutstandingBillOccurrences();
-        // Debt bills that are already due today or overdue — only these get the
-        // "next occurrence" surfaced so the user can pay it early.
-        var currentDebtBillIds = outstanding
-            .Where(o => o.Bill.DebtId is not null && o.DueDate.Date <= DateTime.Today)
-            .Select(o => o.Bill.Id)
-            .ToHashSet();
-        var futureInstallments = State.GetUpcomingBillOccurrences(DateTime.Today.AddDays(1), DateTime.Today.AddDays(90))
-            .Where(o => o.Bill.DebtId is not null && currentDebtBillIds.Contains(o.Bill.Id))
-            .GroupBy(o => o.Bill.Id)
-            .Select(g => g.OrderBy(o => o.DueDate).First());
-        return outstanding
-            .Concat(futureInstallments)
+        var past = State.GetOutstandingBillOccurrences();
+        var upcoming = State.GetUpcomingBillOccurrences(DateTime.Today, DateTime.Today.AddDays(90));
+        return past
+            .Concat(upcoming)
             .GroupBy(o => (o.Bill.Id, o.DueDate.Date))
             .Select(g => g.First())
             .OrderBy(o => o.DueDate)
@@ -270,9 +260,9 @@ else
     {
         IEnumerable<BillOccurrencePreview> q = filter switch
         {
-            "Unpaid" => UnpaidWithEarlyInstallments(),
+            "Unpaid" => GetAllUnpaidOccurrences(),
             "Paid"   => State.GetPaidBillOccurrences(),
-            _        => UnpaidWithEarlyInstallments()
+            _        => GetAllUnpaidOccurrences()
                             .Concat(State.GetPaidBillOccurrences())
                             .OrderBy(o => o.DueDate)
         };
