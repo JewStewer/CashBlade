@@ -2160,18 +2160,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         return payday.AddDays(PayIntervalDays * (Math.Max(n, 1) - 1));
     }
 
-    // Returns the last payday that falls on or before `date`.
-    // Used on the Bills page to show when money should be transferred
-    // for a bill, rather than the bill's raw due date.
-    public DateTime PaydayBeforeOrOn(DateTime date)
-    {
-        if (PayIntervalDays <= 0) return date;
-        var anchor = NextPayDate.Date;
-        var diff = (date.Date - anchor).TotalDays;
-        var intervals = (int)Math.Floor(diff / PayIntervalDays);
-        return anchor.AddDays(intervals * PayIntervalDays);
-    }
-
     // ── Week spending helpers ──────────────────────────────────────────────────
     /// <summary>Total spending for the ISO week N weeks ago (0 = current week).</summary>
     public decimal GetWeekSpending(int weeksAgo = 0)

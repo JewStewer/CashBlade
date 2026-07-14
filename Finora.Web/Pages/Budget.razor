@@ -42,6 +42,7 @@
             .OrderByDescending(x => x.Txn!.Date)
             .ToList();
         var trulyOverBudget = State.BudgetSafeToSpendAmount <= 0 && State.WeeklyIncome > 0;
+        var futureBillContribs = GetFutureBillWeeklyContributions();
     }
     @if (_overviewSubTab == "Summary")
     {
@@ -105,6 +106,31 @@
                             }
                         </div>
                     }
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Future bills: save weekly before they're due -->
+    @if (futureBillContribs.Any())
+    {
+        var totalFutureWeekly = futureBillContribs.Sum(x => x.WeeklyAmount);
+        <div class="card" style="margin-top:12px;border-color:rgba(251,191,36,0.35)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                <div>
+                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="calendar" Size="14" /> Bills Coming Up</div>
+                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">These fall after next payday — set aside weekly to be ready</div>
+                </div>
+                <span style="font-size:14px;font-weight:700;color:var(--amber);white-space:nowrap">@totalFutureWeekly.ToString("C")/wk</span>
+            </div>
+            @foreach (var (bill, weekly, weeks) in futureBillContribs)
+            {
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
+                        <div style="font-size:11px;color:var(--text3)">@bill.AmountDollars.ToString("C") due @bill.EffectiveDueDate.ToString("dd MMM") · @weeks wk@(weeks != 1 ? "s" : "") away</div>
+                    </div>
+                    <span style="font-size:14px;font-weight:600;color:var(--amber);white-space:nowrap">@weekly.ToString("C")/wk</span>
                 </div>
             }
         </div>
@@ -2575,6 +2601,25 @@ else if (_tab == "Holiday")
             .Sum(ab => -ab);
 
         return (needed <= 0, needed);
+    }
+
+    private sealed record FutureBillContrib(Bill Bill, decimal WeeklyAmount, int WeeksRemaining);
+
+    private List<FutureBillContrib> GetFutureBillWeeklyContributions()
+    {
+        var payEnd = State.NextPayDate.Date >= DateTime.Today ? State.NextPayDate.Date : DateTime.Today.AddDays(14);
+        var horizon = DateTime.Today.AddDays(91);
+        return State.Bills
+            .Where(b => !State.IsBillPaid(b) &&
+                        b.EffectiveDueDate.Date > payEnd &&
+                        b.EffectiveDueDate.Date <= horizon)
+            .Select(b =>
+            {
+                var weeks = Math.Max(State.PaydaysBefore(b.EffectiveDueDate), 1);
+                return new FutureBillContrib(b, Math.Round(b.AmountDollars / weeks, 2), weeks);
+            })
+            .OrderBy(x => x.Bill.EffectiveDueDate)
+            .ToList();
     }
 
     private sealed record TransferPlanEntry(
