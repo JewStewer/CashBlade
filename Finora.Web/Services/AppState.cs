@@ -4090,6 +4090,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         b.DebtId = debt.Id;
         await db.PutAsync("bills", b);
+        Compute();
         OnChange?.Invoke();
         return b;
     }
