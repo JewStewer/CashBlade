@@ -32,7 +32,7 @@
     <div>
     @{
         var transferPlan = GetFullTransferPlan();
-        var allDone = transferPlan.All(x => x.IsDone);
+        var allDone = transferPlan.All(x => x.IsDone && x.FutureBillsWeekly == 0);
         var payBalance = State.GetAccountBalance(State.PayAccountId);
         var totalStillNeeded = transferPlan.Where(x => !x.IsDone).Sum(x => x.Remaining);
         var afterTransfers = payBalance - totalStillNeeded;
@@ -42,7 +42,6 @@
             .OrderByDescending(x => x.Txn!.Date)
             .ToList();
         var trulyOverBudget = State.BudgetSafeToSpendAmount <= 0 && State.WeeklyIncome > 0;
-        var futureBillContribs = GetFutureBillWeeklyContributions();
     }
     @if (_overviewSubTab == "Summary")
     {
@@ -80,20 +79,25 @@
             </div>
             @foreach (var item in transferPlan)
             {
-                <div style="margin-bottom:10px;opacity:@(item.IsDone ? "0.5" : "1")">
+                var fullyDone = item.IsDone && item.FutureBillsWeekly == 0;
+                <div style="margin-bottom:10px;opacity:@(fullyDone ? "0.5" : "1")">
                     <div style="display:flex;align-items:center;gap:10px">
                         <div class="dot" style="background:@item.AccountColorHex;flex-shrink:0"></div>
                         <span style="flex:1;font-size:14px">@item.AccountName</span>
-                        @if (item.IsDone)
+                        @if (fullyDone)
                         {
                             <span style="font-size:14px;color:var(--teal);font-weight:600">✓</span>
                         }
-                        else
+                        else if (!item.IsDone)
                         {
                             <span style="font-size:14px;font-weight:700;color:var(--amber)">@item.Remaining.ToString("C")</span>
                         }
+                        else
+                        {
+                            <span style="font-size:13px;font-weight:700;color:var(--amber)">@item.FutureBillsWeekly.ToString("C")/wk</span>
+                        }
                     </div>
-                    @if (item.BillsTotal > 0 || item.TransferredThisPeriod > 0)
+                    @if (item.BillsTotal > 0 || item.TransferredThisPeriod > 0 || item.FutureBillsWeekly > 0)
                     {
                         <div style="margin-left:22px;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
                             @if (item.BillsTotal > 0)
@@ -104,33 +108,12 @@
                             {
                                 <span style="font-size:10px;color:var(--teal)">· @item.TransferredThisPeriod.ToString("C") sent ✓</span>
                             }
+                            @if (item.FutureBillsWeekly > 0)
+                            {
+                                <span style="font-size:10px;color:var(--amber)">· @item.FutureBillsWeekly.ToString("C")/wk until due</span>
+                            }
                         </div>
                     }
-                </div>
-            }
-        </div>
-    }
-
-    <!-- Future bills: save weekly before they're due -->
-    @if (futureBillContribs.Any())
-    {
-        var totalFutureWeekly = futureBillContribs.Sum(x => x.WeeklyAmount);
-        <div class="card" style="margin-top:12px;border-color:rgba(251,191,36,0.35)">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-                <div>
-                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="calendar" Size="14" /> Bills Coming Up</div>
-                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">These fall after next payday — set aside weekly to be ready</div>
-                </div>
-                <span style="font-size:14px;font-weight:700;color:var(--amber);white-space:nowrap">@totalFutureWeekly.ToString("C")/wk</span>
-            </div>
-            @foreach (var (bill, weekly, weeks) in futureBillContribs)
-            {
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                    <div style="flex:1;min-width:0">
-                        <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
-                        <div style="font-size:11px;color:var(--text3)">@bill.AmountDollars.ToString("C") due @bill.EffectiveDueDate.ToString("dd MMM") · @weeks wk@(weeks != 1 ? "s" : "") away</div>
-                    </div>
-                    <span style="font-size:14px;font-weight:600;color:var(--amber);white-space:nowrap">@weekly.ToString("C")/wk</span>
                 </div>
             }
         </div>
@@ -2603,29 +2586,11 @@ else if (_tab == "Holiday")
         return (needed <= 0, needed);
     }
 
-    private sealed record FutureBillContrib(Bill Bill, decimal WeeklyAmount, int WeeksRemaining);
-
-    private List<FutureBillContrib> GetFutureBillWeeklyContributions()
-    {
-        var payEnd = State.NextPayDate.Date >= DateTime.Today ? State.NextPayDate.Date : DateTime.Today.AddDays(14);
-        var horizon = DateTime.Today.AddDays(91);
-        return State.Bills
-            .Where(b => !State.IsBillPaid(b) &&
-                        b.EffectiveDueDate.Date > payEnd &&
-                        b.EffectiveDueDate.Date <= horizon)
-            .Select(b =>
-            {
-                var weeks = Math.Max(State.PaydaysBefore(b.EffectiveDueDate), 1);
-                return new FutureBillContrib(b, Math.Round(b.AmountDollars / weeks, 2), weeks);
-            })
-            .OrderBy(x => x.Bill.EffectiveDueDate)
-            .ToList();
-    }
-
     private sealed record TransferPlanEntry(
         int AccountId, string AccountName, string AccountColorHex,
         decimal BaseShortfall, decimal Remaining, bool IsDone,
-        decimal TransferredThisPeriod, decimal BillsTotal);
+        decimal TransferredThisPeriod, decimal BillsTotal,
+        decimal FutureBillsWeekly);
 
     // Builds the payday transfer plan including accounts that are already fully
     // funded this period — so ticks can show even after AfterBills flips positive.
@@ -2638,6 +2603,7 @@ else if (_tab == "Holiday")
     {
         var periodFrom = PeriodRange.From.Date;
         var payEnd = State.NextPayDate.Date >= DateTime.Today ? State.NextPayDate.Date : DateTime.Today.AddDays(14);
+        var futureHorizon = DateTime.Today.AddDays(91);
         var transferredByAccount = State.Transactions
             .Where(t => t.AmountCents > 0 && State.IsInternalMovement(t) && t.Date.Date >= periodFrom)
             .GroupBy(t => t.AccountId)
@@ -2659,6 +2625,16 @@ else if (_tab == "Holiday")
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .Sum(b => b.AmountDollars);
+                // futureBillsWeekly: bills due after this pay period but within 91 days.
+                // Uses BillWeekly so a weekly $83 bill shows $83/wk, not a pro-rated fraction.
+                var futureBillsWeekly = State.Bills
+                    .Where(b => !State.IsBillPaid(b) &&
+                                b.EffectiveDueDate.Date > payEnd &&
+                                b.EffectiveDueDate.Date <= futureHorizon &&
+                                (b.AccountId == a.Id ||
+                                 (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
+                                  string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
+                    .Sum(b => BillWeekly(b));
                 return new TransferPlanEntry(
                     AccountId: a.Id,
                     AccountName: a.Name,
@@ -2667,12 +2643,13 @@ else if (_tab == "Holiday")
                     Remaining: Math.Max(0m, -afterBills),
                     IsDone: afterBills >= 0m,
                     TransferredThisPeriod: transferred,
-                    BillsTotal: billsTotal
+                    BillsTotal: billsTotal,
+                    FutureBillsWeekly: futureBillsWeekly
                 );
             })
-            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0 || x.TransferredThisPeriod > 0)
-            .OrderBy(x => x.IsDone ? 1 : 0)
-            .ThenByDescending(x => x.IsDone ? x.BillsTotal : x.Remaining)
+            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0 || x.TransferredThisPeriod > 0 || x.FutureBillsWeekly > 0)
+            .OrderBy(x => x.IsDone && x.FutureBillsWeekly == 0 ? 1 : 0)
+            .ThenByDescending(x => x.IsDone && x.FutureBillsWeekly == 0 ? x.BillsTotal : x.IsDone ? x.FutureBillsWeekly : x.Remaining)
             .ToList();
     }
 
