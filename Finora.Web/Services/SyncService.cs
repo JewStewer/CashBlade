@@ -194,6 +194,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
         var localSettings = await db.GetAppSettingsAsync();
 
         var overrides = await db.GetPendingTransactionOverridesAsync();
+        var overriddenIds = new HashSet<int>();
+        var overriddenUpIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var ov in overrides)
         {
             var updated = ov.Transaction;
@@ -209,6 +211,12 @@ public class SyncService(HttpClient http, IndexedDbService db)
             transaction.UpTransactionId = updated.UpTransactionId;
             transaction.IsUnnecessary = updated.IsUnnecessary;
             transaction.IsReimbursement = updated.IsReimbursement;
+
+            // Track which payload transactions were manually overridden so category
+            // rules applied below don't immediately undo the override.
+            overriddenIds.Add(transaction.Id);
+            if (!string.IsNullOrWhiteSpace(transaction.UpTransactionId))
+                overriddenUpIds.Add(transaction.UpTransactionId);
         }
 
         var deletes = await db.GetPendingTransactionDeletesAsync();
@@ -351,8 +359,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
             CopyTripFields(updated, trip);
         }
 
-        ApplyManagedCategoryRules(payload, localSettings);
-        ApplyTransactionCategoryRules(payload, localSettings);
+        ApplyManagedCategoryRules(payload, localSettings, overriddenIds, overriddenUpIds);
+        ApplyTransactionCategoryRules(payload, localSettings, overriddenIds, overriddenUpIds);
 
         // CategoryLimit:* and other phone-only keys are invisible to WPF, so
         // every WPF push overwrites appSettings without them.  Re-add any local
@@ -432,7 +440,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
         public string CategoryName { get; set; } = string.Empty;
     }
 
-    private void ApplyManagedCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings)
+    private void ApplyManagedCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings,
+        IReadOnlySet<int> skipIds, IReadOnlySet<string> skipUpIds)
     {
         var raw = localSettings.FirstOrDefault(s => s.Key == CategoryManagementRulesSettingKey)?.Value
             ?? payload.AppSettings.FirstOrDefault(s => s.Key == CategoryManagementRulesSettingKey)?.Value;
@@ -483,8 +492,9 @@ public class SyncService(HttpClient http, IndexedDbService db)
                 .ToHashSet();
 
             foreach (var transaction in payload.Transactions.Where(t =>
-                deletedIds.Contains(t.CategoryId) ||
-                string.Equals(t.CategoryName, rule.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
+                !IsOverridden(t, skipIds, skipUpIds) &&
+                (deletedIds.Contains(t.CategoryId) ||
+                string.Equals(t.CategoryName, rule.Name.Trim(), StringComparison.OrdinalIgnoreCase))))
             {
                 transaction.CategoryId = replacement.Id;
                 transaction.CategoryName = replacement.Name;
@@ -494,7 +504,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
         }
     }
 
-    private void ApplyTransactionCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings)
+    private void ApplyTransactionCategoryRules(SyncPayload payload, IReadOnlyList<AppSetting> localSettings,
+        IReadOnlySet<int> skipIds, IReadOnlySet<string> skipUpIds)
     {
         var raw = localSettings.FirstOrDefault(s => s.Key == TransactionCategoryRulesSettingKey)?.Value
             ?? payload.AppSettings.FirstOrDefault(s => s.Key == TransactionCategoryRulesSettingKey)?.Value;
@@ -514,6 +525,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
 
             foreach (var transaction in payload.Transactions.Where(t =>
                 t.AmountCents < 0 &&
+                !IsOverridden(t, skipIds, skipUpIds) &&
                 string.Equals(NormalizeRecurringDescription(t.Description), rule.NormalizedName.Trim(), StringComparison.OrdinalIgnoreCase)))
             {
                 transaction.CategoryId = category.Id;
@@ -521,6 +533,10 @@ public class SyncService(HttpClient http, IndexedDbService db)
             }
         }
     }
+
+    private static bool IsOverridden(Transaction t, IReadOnlySet<int> skipIds, IReadOnlySet<string> skipUpIds) =>
+        skipIds.Contains(t.Id) ||
+        (!string.IsNullOrWhiteSpace(t.UpTransactionId) && skipUpIds.Contains(t.UpTransactionId));
 
     private static string NormalizeRecurringDescription(string description)
     {
