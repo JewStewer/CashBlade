@@ -240,17 +240,24 @@ else
             .ToList();
     }
 
-    // Installment-debt bills (Bill.DebtId set) are the one case where users want
-    // to settle a FUTURE cycle ahead of schedule — e.g. paying next fortnight's
-    // Afterpay installment early. GetOutstandingBillOccurrences only walks up to
-    // the current cycle, so for those bills specifically this also pulls in
-    // upcoming occurrences (90 days out) so every remaining installment shows as
-    // its own row with the same paid-toggle, regardless of whether it's due yet.
+    // Installment-debt bills (Bill.DebtId set) support paying the next cycle
+    // early — e.g. settling next fortnight's Afterpay installment before it's
+    // due. "Pay early" only makes sense when the current occurrence is already
+    // at hand (due today or overdue); for future-dated debt bills the single
+    // outstanding occurrence is shown and no additional preview is needed.
     private List<BillOccurrencePreview> UnpaidWithEarlyInstallments()
     {
         var outstanding = State.GetOutstandingBillOccurrences();
-        var futureInstallments = State.GetUpcomingBillOccurrences(DateTime.Today, DateTime.Today.AddDays(90))
-            .Where(o => o.Bill.DebtId is not null);
+        // Debt bills that are already due today or overdue — only these get the
+        // "next occurrence" surfaced so the user can pay it early.
+        var currentDebtBillIds = outstanding
+            .Where(o => o.Bill.DebtId is not null && o.DueDate.Date <= DateTime.Today)
+            .Select(o => o.Bill.Id)
+            .ToHashSet();
+        var futureInstallments = State.GetUpcomingBillOccurrences(DateTime.Today.AddDays(1), DateTime.Today.AddDays(90))
+            .Where(o => o.Bill.DebtId is not null && currentDebtBillIds.Contains(o.Bill.Id))
+            .GroupBy(o => o.Bill.Id)
+            .Select(g => g.OrderBy(o => o.DueDate).First());
         return outstanding
             .Concat(futureInstallments)
             .GroupBy(o => (o.Bill.Id, o.DueDate.Date))
@@ -278,8 +285,9 @@ else
     {
         var (covered, _) = State.GetBillCoverage(bill);
         if (!covered && dueDate.Date <= State.NextPayDate.Date) return "Danger";
-        if (!covered) return "Short";
-        if (dueDate.Date <= State.NextPayDate.Date) return "Ready";
+        if (covered && dueDate.Date <= State.NextPayDate.Date) return "Ready";
+        // Not covered + future: "Short $X" main badge already communicates this.
+        // Covered + future: no additional badge needed.
         return string.Empty;
     }
 
