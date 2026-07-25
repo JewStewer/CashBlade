@@ -326,7 +326,7 @@
 
             var upSynced = await SafeUpBankSyncAsync();
             if (upSynced)
-                await State.LoadAsync();
+                await State.RefreshUpBankDataAsync();
             await NotifySmartInsightsAsync();
             await NotifyUpcomingBillsAsync();
             await EnsurePushSubscriptionAsync();

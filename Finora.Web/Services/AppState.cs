@@ -504,6 +504,23 @@ public class AppState(IndexedDbService db, SyncService sync)
         if (!_suppressLoadOnChange) OnChange?.Invoke();
     }
 
+    // Lightweight post-Up-Bank-sync refresh: reloads only what Up Bank sync
+    // can change (transactions, accounts, categories) so new bank transactions
+    // appear in memory without running ApplyPersisted* functions. A full
+    // LoadAsync() after Up Bank sync would call ApplyPersistedDebtDeletesAsync,
+    // which clears tombstones when a debt is absent from IndexedDB — even when
+    // the absence is correct (ApplyLocalIntentsAsync filtered it during the
+    // preceding SyncAndReloadAsync), wrongly signalling "server confirmed the
+    // deletion" and leaving the next pull undefended.
+    public async Task RefreshUpBankDataAsync()
+    {
+        Transactions = await db.GetTransactionsAsync();
+        Accounts = await db.GetAccountsAsync();
+        Categories = await db.GetCategoriesAsync();
+        Compute();
+        OnChange?.Invoke();
+    }
+
     private async Task LoadStoresAsync()
     {
         Accounts = await db.GetAccountsAsync();
