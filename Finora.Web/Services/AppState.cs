@@ -5706,8 +5706,12 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var d in push.DeletedBills)
                         _pendingDeletedBills.Remove(d);
 
-                    foreach (var id in push.DeletedDebtIds.Where(id => id > 0))
-                        await db.ClearDebtDeleteAsync(id);
+                    // Debt delete tombstones are deliberately NOT cleared here — same
+                    // reasoning as savings goals below. The tombstone must survive until
+                    // ApplyLocalIntentsAsync confirms the server snapshot no longer carries
+                    // the deleted debt; clearing it here left nothing to filter the record
+                    // from an incoming pull that still had it, so the debt silently
+                    // reappeared once ConfirmedPushGrace expired.
                     foreach (var d in push.NewDebts)
                     {
                         _pendingNewDebts.Remove(d);

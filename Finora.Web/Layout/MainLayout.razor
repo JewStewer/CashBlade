@@ -317,15 +317,16 @@
         _lastSafeSyncAttemptUtc = DateTime.UtcNow;
         try
         {
-            var upSynced = await SafeUpBankSyncAsync();
+            // Pull server data FIRST so Up Bank writes land on top of a fresh
+            // baseline. The old order (Up Bank first, then SyncAndReloadAsync) wiped
+            // newly fetched transactions because db.replaceAll replaced IndexedDB
+            // with stale Supabase data after Up Bank had already saved them.
             if (Sync.HasCloudSync || Sync.HasLocalSync)
-            {
                 await State.SyncAndReloadAsync();
-            }
-            else if (upSynced)
-            {
+
+            var upSynced = await SafeUpBankSyncAsync();
+            if (upSynced)
                 await State.LoadAsync();
-            }
             await NotifySmartInsightsAsync();
             await NotifyUpcomingBillsAsync();
             await EnsurePushSubscriptionAsync();
