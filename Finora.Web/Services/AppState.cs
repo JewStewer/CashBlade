@@ -1032,9 +1032,16 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .ToHashSet();
             if (removedIds.Count == 0)
             {
-                // Debt no longer in the canonical store — the delete was already
-                // reconciled by WPF. Clear the tombstone so it doesn't linger.
-                await db.ClearDebtDeleteAsync(deleted.Id);
+                // Debt is absent from IndexedDB — but we must NOT clear the
+                // tombstone here. The absence means ApplyLocalIntentsAsync
+                // already filtered it from the last server pull (Supabase still
+                // has the debt), not that the server confirmed the deletion.
+                // ApplyLocalIntentsAsync clears the tombstone itself once a fresh
+                // snapshot actually confirms the debt is gone; clearing it here
+                // leaves the next Supabase pull completely undefended and brings
+                // the debt back. When the server truly has reconciled the delete,
+                // ApplyLocalIntentsAsync will have cleared the tombstone before
+                // this code even runs, so we'll never reach this branch for it.
                 continue;
             }
 

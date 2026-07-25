@@ -234,11 +234,17 @@ public class UpBankWebSyncService(HttpClient http, IndexedDbService db, SyncServ
                     NewTransactions = newTransactionsForPush,
                     UpdatedBillStatuses = matchedBillStatusesForPush
                 };
-                if (sync.HasLocalSync) await sync.PushToPcAsync(push);
-                if (sync.HasCloudSync) await sync.PushToSupabaseAsync(push);
+                // Swallow push errors — transactions are already in local IndexedDB;
+                // a transient network failure here must not prevent RefreshUpBankDataAsync
+                // from running and showing the newly fetched transactions in the UI.
+                try { if (sync.HasLocalSync) await sync.PushToPcAsync(push); } catch { }
+                try { if (sync.HasCloudSync) await sync.PushToSupabaseAsync(push); } catch { }
             }
 
-            var pushedSnapshot = await PushCurrentSnapshotToCloudAsync();
+            // Same rationale: push failure is non-fatal; the transactions are local
+            // and will be included in the next successful snapshot push.
+            bool pushedSnapshot = false;
+            try { pushedSnapshot = await PushCurrentSnapshotToCloudAsync(); } catch { }
 
             return new UpBankWebSyncResult(imported, balanceAdjustments, matchedBills, pushedSnapshot);
         }

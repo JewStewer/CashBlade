@@ -2,6 +2,7 @@
 @page "/more"
 @inject AppState State
 @inject SyncService Sync
+@inject UpBankWebSyncService UpSync
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -474,7 +475,12 @@ else if (_tab == "Cleanup")
         _syncStatusColor = "var(--text3)";
         try
         {
+            // Pull from server first (same order as SafeSyncAsync), then run
+            // Up Bank sync on top so new bank transactions appear immediately.
             await State.SyncAndReloadAsync();
+            var upResult = await UpSync.SyncAsync();
+            if (upResult is not null)
+                await State.RefreshUpBankDataAsync();
             if (State.HasPendingChanges && State.LastSyncPushStatus is not null)
             {
                 _syncStatus = $"Saved locally — cloud write failed: {State.LastSyncPushStatus}. Will retry. Don't repair the queue.";
