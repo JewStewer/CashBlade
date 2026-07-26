@@ -1,6 +1,7 @@
 @page "/budget"
 @inject AppState State
 @inject NavigationManager Nav
+@inject UiState Ui
 
 <PageTitle>Budget — Evergrove</PageTitle>
 
@@ -9,16 +10,6 @@
     {
         <button class="pill @(_tab==t?"pill-active":"pill-inactive")" @onclick="() => SelectTopPill(t)">@t</button>
     }
-</div>
-
-<div style="padding:0 16px 8px;display:flex;align-items:center;gap:8px">
-    <span style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase">Budget period</span>
-    <div style="display:flex;gap:6px;flex:1;justify-content:flex-end">
-        @foreach (var p in new[]{"Weekly","Monthly"})
-        {
-            <button class="pill @(State.SummaryPeriod==p?"pill-active":"pill-inactive")" @onclick="() => SetPeriodAsync(p)">@p</button>
-        }
-    </div>
 </div>
 
 <div style="padding:16px">
@@ -187,7 +178,7 @@
                 {
                     <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:600">What would you like to add?</div>
                     <div style="display:flex;flex-direction:column;gap:6px">
-                        <button class="btn btn-secondary btn-sm" style="text-align:left;justify-content:flex-start" @onclick="() => { _billDraft = new Bill(); _showBudgetAddPicker = false; }">
+                        <button class="btn btn-secondary btn-sm" style="text-align:left;justify-content:flex-start" @onclick="() => { Ui.OpenAddBill(); _showBudgetAddPicker = false; }">
                             A recurring bill
                         </button>
                         <button class="btn btn-secondary btn-sm" style="text-align:left;justify-content:flex-start" @onclick="() => { _goalDraft = new SavingsGoal(); _showBudgetAddPicker = false; }">
@@ -277,13 +268,12 @@
 
             @foreach (var (label, amount, color) in BudgetRows().Where(r => r.Amount > 0))
             {
-                var pct = State.WeeklyIncome > 0 ? amount / State.WeeklyIncome : 0;
                 var isExcluded = _excludedBudgetLabels.Contains(label);
                 var subBills = BillsForBudgetCategory(label);
                 var hasSubItems = subBills.Count > 0;
                 var isExpanded = _expandedBudgetCategories.Contains(label);
                 var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
-                var effectiveAmount = Math.Max(amount - excludedSubWeekly, 0m);
+                var effectiveAmount = isExcluded ? 0m : Math.Max(amount - excludedSubWeekly, 0m);
                 var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0;
                 var (transferDone, transferNeeded) = GetBudgetCategoryTransferInfo(label);
 
@@ -321,7 +311,7 @@
                                 var paidBillCount = hasSubItems ? subBills.Count(x => State.IsBillPaid(x.Bill)) : 0;
                             }
                             <div style="display:flex;gap:6px;align-items:center;margin-top:2px;opacity:@(isExcluded ? "0.4" : "1")">
-                                <span style="font-size:11px;color:var(--text3)">@pct.ToString("P0") of income</span>
+                                <span style="font-size:11px;color:var(--text3)">@effectivePct.ToString("P0") of income</span>
                                 @if (hasSubItems && subBills.Count > 0)
                                 {
                                     var allBillsPaid = paidBillCount == subBills.Count;
@@ -935,28 +925,41 @@
 
                 @if (cycleSpare > 0)
                 {
-                    <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
-                        <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-weight:600">Savings pace for @_affordAmount.ToString("C")</div>
-                        @foreach (var (label, multiplier, color) in PaceOptions)
-                        {
-                            var paceWeeks = Math.Max((int)Math.Ceiling(cycles * multiplier), 1);
-                            var cycleAmount = Math.Round(_affordAmount / paceWeeks, 2);
-                            var paceLeftOver = cycleSpare - cycleAmount;
-                            var paceDate = State.NthPaydayFromNow(paceWeeks + 1);
-                            var isSelected = paceWeeks == cycles;
-                            <div @onclick="() => SelectPaceAsync(paceWeeks)" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:var(--surface);border:1px solid @(isSelected ? color : "transparent")">
-                                <div>
-                                    <div style="font-size:13px;font-weight:700;color:@color">@label</div>
-                                    <div style="font-size:11px;color:var(--text3)">@cycleAmount.ToString("C")/@cycleLabel</div>
-                                    <div style="font-size:11px;color:@(paceLeftOver>=0?"var(--green)":"var(--red)")">@paceLeftOver.ToString("C")/@cycleLabel left</div>
-                                </div>
-                                <div style="text-align:right">
-                                    <div style="font-size:13px;font-weight:600">@paceWeeks pay@(paceWeeks == 1 ? "" : "s")</div>
-                                    <div style="font-size:11px;color:var(--text3)">by @paceDate.ToString("dd MMM yy")</div>
-                                </div>
+                    @if (!_showPaceOptions)
+                    {
+                        <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;margin-top:10px;text-decoration:underline"
+                                @onclick="() => _showPaceOptions = true">
+                            Compare faster/slower paces
+                        </button>
+                    }
+                    else
+                    {
+                        <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
+                            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+                                <span style="font-size:12px;color:var(--text3);font-weight:600">Savings pace for @_affordAmount.ToString("C")</span>
+                                <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline" @onclick="() => _showPaceOptions = false">Hide</button>
                             </div>
-                        }
-                    </div>
+                            @foreach (var (label, multiplier, color) in PaceOptions)
+                            {
+                                var paceWeeks = Math.Max((int)Math.Ceiling(cycles * multiplier), 1);
+                                var cycleAmount = Math.Round(_affordAmount / paceWeeks, 2);
+                                var paceLeftOver = cycleSpare - cycleAmount;
+                                var paceDate = State.NthPaydayFromNow(paceWeeks + 1);
+                                var isSelected = paceWeeks == cycles;
+                                <div @onclick="() => SelectPaceAsync(paceWeeks)" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:var(--surface);border:1px solid @(isSelected ? color : "transparent")">
+                                    <div>
+                                        <div style="font-size:13px;font-weight:700;color:@color">@label</div>
+                                        <div style="font-size:11px;color:var(--text3)">@cycleAmount.ToString("C")/@cycleLabel</div>
+                                        <div style="font-size:11px;color:@(paceLeftOver>=0?"var(--green)":"var(--red)")">@paceLeftOver.ToString("C")/@cycleLabel left</div>
+                                    </div>
+                                    <div style="text-align:right">
+                                        <div style="font-size:13px;font-weight:600">@paceWeeks pay@(paceWeeks == 1 ? "" : "s")</div>
+                                        <div style="font-size:11px;color:var(--text3)">by @paceDate.ToString("dd MMM yy")</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
                 }
 
                 <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
@@ -1088,62 +1091,6 @@
         }
     </div>
 
-    <!-- Safe to spend / Over budget breakdown -->
-    <div class="card" style="margin-top:12px;border-color:@(trulyOverBudget?"var(--red)":"var(--teal)")">
-        <div class="section-title">Safe to Spend</div>
-        <div style="font-size:28px;font-weight:700;color:@(trulyOverBudget?"var(--red)":"var(--green)")">
-            @(trulyOverBudget ? "Over budget" : State.SafeToSpendAmount.ToString("C"))
-        </div>
-        <div style="font-size:13px;color:var(--text3);margin-top:4px">
-            @(State.NoSpendMode ? "No-spend mode is holding this at $0" : "After bills, savings and essentials")
-        </div>
-
-        @if (State.OutstandingLentDollars > 0)
-        {
-            <div style="margin-top:10px;background:rgba(99,102,241,0.12);border:1px solid rgba(129,140,248,0.35);border-radius:10px;padding:10px">
-                <div style="display:flex;justify-content:space-between;gap:10px">
-                    <span style="font-size:12px;color:#A5B4FC">Owed back</span>
-                    <strong style="font-size:14px;color:#A5B4FC">@State.OutstandingLentDollars.ToString("C")</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;margin-top:4px">
-                    <span style="font-size:12px;color:var(--text3)">If paid back</span>
-                    <strong style="font-size:14px;color:var(--green)">@State.SafeToSpendIfReimbursed.ToString("C")</strong>
-                </div>
-            </div>
-        }
-
-        @if (trulyOverBudget)
-        {
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-                <div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:8px">Why you're over budget</div>
-                @foreach (var (label, amount, color) in OverBudgetRows())
-                {
-                    var pct = State.WeeklyIncome > 0 ? amount / State.WeeklyIncome : 0;
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <div class="dot" style="background:@color"></div>
-                            <span style="font-size:13px;color:var(--text2)">@label</span>
-                        </div>
-                        <div style="text-align:right">
-                            <span style="font-size:13px;font-weight:600">@amount.ToString("C")</span>
-                            <span style="font-size:11px;color:var(--text3);margin-left:4px">@pct.ToString("P0")</span>
-                        </div>
-                    </div>
-                }
-                <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between">
-                    <span style="font-size:12px;color:var(--text3)">Total allocated</span>
-                    <span style="font-size:13px;font-weight:700;color:var(--red)">
-                        @AllocatedTotal.ToString("C")
-                        <span style="font-size:11px;font-weight:400;color:var(--text3)"> of @State.WeeklyIncome.ToString("C")</span>
-                    </span>
-                </div>
-                <div style="font-size:12px;color:var(--red);margin-top:4px;text-align:right">
-                    @((AllocatedTotal - State.WeeklyIncome).ToString("C")) over your weekly income
-                </div>
-                <button class="btn btn-sm btn-secondary btn-full" style="margin-top:10px" @onclick='() => Nav.NavigateTo("settings")'>Open Settings</button>
-            </div>
-        }
-    </div>
     }
     </div>
 }
@@ -1294,44 +1241,6 @@ else if (_tab == "Spending")
                     }
                 </div>
                 <div style="font-size:11px;color:var(--text3);margin-top:10px">Set to 0 to disable limit for that category.</div>
-            }
-        </div>
-    }
-
-    <!-- What-if budget simulator -->
-    @if (State.WeeklyIncome > 0)
-    {
-        var newLeftover = State.BudgetLeftover - _whatIfAmount;
-        var flips = (State.BudgetLeftover >= 0) != (newLeftover >= 0) && _whatIfAmount != 0;
-        <div class="card" style="margin-top:12px">
-            <div style="font-size:14px;font-weight:600;margin-bottom:4px">Budget What-If</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">See how a spending change would affect your weekly budget — nothing is saved.</div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:13px;color:var(--text2);flex:1">Extra spending per week</span>
-                <span style="font-size:16px;color:var(--text3);font-weight:300">$</span>
-                <input class="form-input" style="width:100px;text-align:right;padding:6px 10px;font-size:14px"
-                       type="number" step="1" @bind="_whatIfAmount" @bind:event="oninput"
-                       placeholder="e.g. -50" />
-            </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:4px">Use a negative number to model cutting spending instead.</div>
-
-            @if (_whatIfAmount != 0)
-            {
-                <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;font-size:13px">
-                    <span style="color:var(--text3)">New weekly budget</span>
-                    <span style="font-weight:700;color:@(newLeftover>=0?"var(--green)":"var(--red)")">@newLeftover.ToString("C")/wk</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px">
-                    <span style="color:var(--text3)">≈ monthly impact</span>
-                    <span style="font-weight:600">@((_whatIfAmount * 52m / 12m).ToString("C"))/mo</span>
-                </div>
-                @if (flips)
-                {
-                    <div style="font-size:12px;font-weight:600;color:@(newLeftover>=0?"var(--green)":"var(--red)");margin-top:8px;display:flex;align-items:center;gap:5px">
-                        <Icon Name="@(newLeftover >= 0 ? "check" : "alert-triangle")" Size="13" />
-                        @(newLeftover >= 0 ? "This would bring you back under budget" : "This would put you over budget")
-                    </div>
-                }
             }
         </div>
     }
@@ -1804,7 +1713,7 @@ else if (_tab == "Holiday")
                 {
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(52,211,153,0.08);border-radius:10px;border:1px solid rgba(52,211,153,0.2)">
                         <span style="font-size:13px;color:var(--green);font-weight:600">Payday</span>
-                        <span style="font-size:15px;font-weight:700;color:var(--green)">+@ForecastWeeklyPayAmount.ToString("C")</span>
+                        <span style="font-size:15px;font-weight:700;color:var(--green)">+@ForecastPayAmount.ToString("C")</span>
                     </div>
                 }
 
@@ -1882,9 +1791,16 @@ else if (_tab == "Holiday")
     private bool _showWeeklyBreakdown;
     private SavingsGoal? _goalDraft;
     private string? _expandedGoalGroupName;
+    private readonly HashSet<int> _expandedGoalWhatIf = new();
 
     private void ToggleGoalGroup(string name) =>
         _expandedGoalGroupName = string.Equals(_expandedGoalGroupName, name, StringComparison.OrdinalIgnoreCase) ? null : name;
+
+    private void ToggleGoalWhatIf(int goalId)
+    {
+        if (!_expandedGoalWhatIf.Add(goalId))
+            _expandedGoalWhatIf.Remove(goalId);
+    }
 
     private RenderFragment<SavingsGoal> GoalCardTemplate => goal => @<div style="cursor:pointer" @onclick="() => _goalDraft = goal">
         @{
@@ -1923,15 +1839,6 @@ else if (_tab == "Holiday")
         {
             <span class="badge @pace.Value.CssClass" style="margin-top:6px;display:inline-block">@pace.Value.Label</span>
         }
-        @if (goal.WeeklyContributionDollars > 0 && !reached)
-        {
-            var weeksLeft = goal.WeeklyContributionDollars > 0
-                ? (int)Math.Ceiling((double)(remaining / goal.WeeklyContributionDollars))
-                : 0;
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">
-                @goal.WeeklyContributionDollars.ToString("C")/wk · ~@weeksLeft weeks to goal
-            </div>
-        }
         @if (goal.TargetDate.HasValue)
         {
             var daysLeft = (goal.TargetDate.Value.Date - DateTime.Today).Days;
@@ -1942,17 +1849,33 @@ else if (_tab == "Holiday")
         }
         @if (!reached)
         {
+            var isWhatIfOpen = _expandedGoalWhatIf.Contains(goal.Id);
             var whatIfWeekly = _goalWhatIfWeekly.TryGetValue(goal.Id, out var w) && w > 0 ? w : Math.Max(goal.WeeklyContributionDollars, 5m);
             var whatIfWeeks = GoalMath.WeeksToTarget(goal.TargetDollars, goal.CurrentDollars, whatIfWeekly);
-            <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)" @onclick:stopPropagation="true">
-                <div style="font-size:11px;color:var(--text3);margin-bottom:4px">What if I saved @whatIfWeekly.ToString("C")/week?</div>
-                <input type="range" min="5" max="@(Math.Max((double)goal.TargetDollars / 4, 50))" step="5"
-                       value="@whatIfWeekly" style="width:100%"
-                       @oninput="@((ChangeEventArgs e) => OnWhatIfSliderChanged(goal.Id, e))" />
-                <div style="font-size:12px;color:var(--text2);margin-top:2px">
-                    @(whatIfWeeks < 0 ? "Add a weekly amount to estimate" : $"Reached in ~{whatIfWeeks} week{(whatIfWeeks == 1 ? "" : "s")}")
+            @if (!isWhatIfOpen)
+            {
+                <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;margin-top:2px;text-decoration:underline"
+                        @onclick="() => ToggleGoalWhatIf(goal.Id)" @onclick:stopPropagation="true">
+                    @(goal.WeeklyContributionDollars > 0
+                        ? $"{goal.WeeklyContributionDollars:C}/wk · ~{whatIfWeeks} weeks to goal"
+                        : "What if I saved toward this?")
+                </button>
+            }
+            else
+            {
+                <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)" @onclick:stopPropagation="true">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+                        <span style="font-size:11px;color:var(--text3)">What if I saved @whatIfWeekly.ToString("C")/week?</span>
+                        <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline" @onclick="() => ToggleGoalWhatIf(goal.Id)">Hide</button>
+                    </div>
+                    <input type="range" min="5" max="@(Math.Max((double)goal.TargetDollars / 4, 50))" step="5"
+                           value="@whatIfWeekly" style="width:100%"
+                           @oninput="@((ChangeEventArgs e) => OnWhatIfSliderChanged(goal.Id, e))" />
+                    <div style="font-size:12px;color:var(--text2);margin-top:2px">
+                        @(whatIfWeeks < 0 ? "Add a weekly amount to estimate" : $"Reached in ~{whatIfWeeks} week{(whatIfWeeks == 1 ? "" : "s")}")
+                    </div>
                 </div>
-            </div>
+            }
         }
     </div>;
     private bool _editingBudget;
@@ -1963,13 +1886,13 @@ else if (_tab == "Holiday")
     private string _newCategoryName = "";
     private bool _showNewCatInput;
     private bool _showPaceExclusions;
+    private bool _showPaceOptions;
     private decimal _affordAmount;
     private string _affordMode = "OneOff"; // OneOff | Savings | Installments
     private int _goalWeeks = 4;
     private string _goalAccountName = string.Empty;
     private int _installmentCount = 4;
     private int _installmentFrequencyWeeks = 2;
-    private decimal _whatIfAmount;
     private Bill? _billDraft;
     private readonly HashSet<int> _celebratedGoalIds = new();
     private readonly Dictionary<int, decimal> _goalWhatIfWeekly = new();
@@ -2093,11 +2016,6 @@ else if (_tab == "Holiday")
             : dollars;
         var cents = (int)Math.Round(monthlyDollars * 100m);
         await State.SaveSettingAsync($"CategoryLimit:{categoryName}", cents.ToString());
-    }
-
-    private async Task SetPeriodAsync(string period)
-    {
-        await State.SaveSettingAsync("SummaryPeriod", period);
     }
 
     private async Task SetAffordModeAsync(string mode)
@@ -2725,7 +2643,7 @@ else if (_tab == "Holiday")
                 balance -= billsTotal;
 
                 var isPayday = IsForecastPayday(date);
-                var pay = isPayday ? ForecastWeeklyPayAmount : 0m;
+                var pay = isPayday ? ForecastPayAmount : 0m;
                 if (pay > 0) balance += pay;
 
                 string? note = billsToday.Count switch
@@ -2768,8 +2686,17 @@ else if (_tab == "Holiday")
     }
 
 
-    private decimal ForecastWeeklyPayAmount =>
-        State.WeeklyIncome > 0 ? State.WeeklyIncome : State.EstimatedPayAmount;
+    // The actual lump sum that lands each payday — NOT State.WeeklyIncome, which
+    // is a weekly-normalized figure used for budgeting math elsewhere. Injecting
+    // WeeklyIncome here (as this used to) understates the real deposit for
+    // anyone not paid weekly (fortnightly/4-weekly), since it's roughly a
+    // quarter to a half of what actually arrives — that made the forecast
+    // between real paydays look like it was dropping far more than it really
+    // will, because the simulated "raises" were too small to offset real bills.
+    private decimal ForecastPayAmount =>
+        State.HasPayEstimate ? State.EstimatedPayAmount
+        : State.WeeklyIncome > 0 ? Math.Round(State.WeeklyIncome * State.PayIntervalDays / 7m, 2)
+        : 0m;
 
     private decimal ForecastDailySpendAssumption
     {
@@ -2785,13 +2712,18 @@ else if (_tab == "Holiday")
 
     private bool IsForecastPayday(DateTime date)
     {
-        if (ForecastWeeklyPayAmount <= 0) return false;
+        if (ForecastPayAmount <= 0) return false;
 
+        // Must advance by the user's actual pay interval, not a hardcoded 7 —
+        // otherwise a fortnightly/4-weekly earner gets a fake payday injected
+        // every single week, which desyncs the projected balance from the real
+        // one more and more the further out the forecast runs.
+        var cycleDays = Math.Max(State.PayIntervalDays, 1);
         var payday = State.NextPayDate.Date;
         while (payday < DateTime.Today)
-            payday = payday.AddDays(7);
+            payday = payday.AddDays(cycleDays);
 
-        return date.Date >= payday && (date.Date - payday).Days % 7 == 0;
+        return date.Date >= payday && (date.Date - payday).Days % cycleDays == 0;
     }
 
     private static decimal ForecastZeroY(decimal min, decimal max)

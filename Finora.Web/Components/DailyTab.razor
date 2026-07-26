@@ -69,7 +69,19 @@ else
         }
     </div>
 
-    <div class="stat-grid" style="margin-top:4px">
+    <div class="stat-grid stat-grid-3" style="margin-top:4px">
+        <div class="stat-tile">
+            <div class="stat-label">Weekly Score</div>
+            @if (WeeklyScore.HasValue)
+            {
+                <div class="stat-value" style="font-size:18px;color:@GradeColor(WeeklyScore.Value)">@WeeklyGrade(WeeklyScore.Value)</div>
+            }
+            else
+            {
+                <div class="stat-value" style="font-size:18px;color:var(--text3)">—</div>
+            }
+            <div class="stat-sub">last 7 days</div>
+        </div>
         <div class="stat-tile">
             <div class="stat-label">Unnecessary</div>
             <div class="stat-value" style="font-size:18px;color:@(TotalUnnecessary > 0 ? "var(--red)" : "var(--green)")">@TotalUnnecessary.ToString("C")</div>
@@ -170,8 +182,17 @@ else
     {
         get
         {
-            var days = Scores.Where(d => d.HasSpending).ToList();
+            var days = Scores;
             return days.Any() ? (int)days.Average(d => d.Score) : null;
+        }
+    }
+
+    private int? WeeklyScore
+    {
+        get
+        {
+            var week = Scores.TakeLast(7).ToList();
+            return week.Any() ? (int)week.Average(d => d.Score) : null;
         }
     }
 
@@ -202,6 +223,11 @@ else
         >= 60 => "#FBBF24",
         >= 40 => "#F97316",
         _ => "#F87171"
+    };
+
+    private static string WeeklyGrade(int score) => score switch
+    {
+        100 => "A+", >= 90 => "A", >= 80 => "B", >= 70 => "C", >= 50 => "D", _ => "F"
     };
 
     private static readonly (string Grade, string Color)[] Legend =

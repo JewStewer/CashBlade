@@ -2,6 +2,7 @@
 @using System.Globalization
 @inject AppState State
 @inject NavigationManager Nav
+@inject UiState Ui
 
 <PageTitle>Dashboard - Evergrove</PageTitle>
 
@@ -107,7 +108,7 @@ else
         }
 
         <div class="quick-actions quick-actions-ultimate">
-            <button class="quick-action tone-spend" @onclick="() => showAddTxn = true">
+            <button class="quick-action tone-spend" @onclick="() => Ui.OpenAddTransaction()">
                 <span><Icon Name="plus" Size="14" /></span>
                 <strong>Spend</strong>
                 <small>Record transaction</small>
@@ -117,7 +118,7 @@ else
                 <strong>Budget</strong>
                 <small>Safe-to-spend</small>
             </button>
-            <button class="quick-action tone-bill" @onclick="() => showAddBill = true">
+            <button class="quick-action tone-bill" @onclick="() => Ui.OpenAddBill()">
                 <span><Icon Name="clipboard" Size="14" /></span>
                 <strong>Bill</strong>
                 <small>Add payment</small>
@@ -285,19 +286,7 @@ else
     </div>
 }
 
-@if (showAddTxn)
-{
-    <AddTransactionModal OnClose="() => showAddTxn = false" OnSaved="OnTxnSaved" />
-}
-
-@if (showAddBill)
-{
-    <AddEditBillModal Bill="@((Bill?)null)" OnClose="() => showAddBill = false" OnSaved="OnBillSaved" />
-}
-
 @code {
-    private bool showAddTxn;
-    private bool showAddBill;
     private bool _quickSyncing;
     private string _quickSyncStatus = string.Empty;
 
@@ -503,20 +492,6 @@ else
     private async Task ToggleNoSpendModeAsync()
     {
         await State.SetNoSpendModeAsync(!State.NoSpendMode);
-    }
-
-    private Task OnTxnSaved()
-    {
-        showAddTxn = false;
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
-    private Task OnBillSaved()
-    {
-        showAddBill = false;
-        StateHasChanged();
-        return Task.CompletedTask;
     }
 
 }

@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @inject SyncService Sync
 @inject UpBankWebSyncService UpSync
+@inject UiState Ui
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -165,6 +166,20 @@
         State.OnChange += OnStateChanged;
         Sync.OnSyncStateChanged += OnSyncStateChanged;
         Nav.LocationChanged += OnLocationChanged;
+        Ui.RequestAddTransaction += OnRequestAddTransaction;
+        Ui.RequestAddBill += OnRequestAddBill;
+    }
+
+    private void OnRequestAddTransaction()
+    {
+        _showAddTxn = true;
+        StateHasChanged();
+    }
+
+    private void OnRequestAddBill()
+    {
+        _showAddBill = true;
+        StateHasChanged();
     }
 
     // State.OnChange fires for EVERY mutation, including ones made directly
@@ -469,6 +484,8 @@
         State.OnChange -= OnStateChanged;
         Sync.OnSyncStateChanged -= OnSyncStateChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        Ui.RequestAddTransaction -= OnRequestAddTransaction;
+        Ui.RequestAddBill -= OnRequestAddBill;
         _syncCts?.Cancel();
         _syncCts?.Dispose();
         _syncTimer?.Dispose();

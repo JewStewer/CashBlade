@@ -558,7 +558,6 @@ public class AppState(IndexedDbService db, SyncService sync)
             await ApplyPersistedTransactionOverridesAsync();
             await ApplyPersistedTransactionDeletesAsync();
             await ApplyPersistedBillDeletesAsync();
-            await ApplyPersistedDebtDeletesAsync();
             await ApplyPersistedSavingsGoalDeletesAsync();
             await ApplyPersistedTripDeletesAsync();
             await ApplyPersistedTripOverridesAsync();
@@ -569,6 +568,16 @@ public class AppState(IndexedDbService db, SyncService sync)
             await ApplyPersistedSavingsGoalOverridesAsync();
             await ApplyPersistedSettingOverridesAsync();
         }
+        // Unlike the overrides/deletes above, this one is NOT skipped during
+        // suppressed mid-session reloads: it's a pure, idempotent check against
+        // the durable IndexedDB tombstone (safe to re-run any time — it only
+        // acts if the tombstoned debt is actually still present), and it's the
+        // only defense once the in-memory ConfirmedPushGrace window (6 min)
+        // elapses without the PC having reconciled the deletion yet. Skipping
+        // it here left a deleted debt undefended for the rest of the session
+        // until a full app restart — it would silently reappear on the next
+        // stale pull.
+        await ApplyPersistedDebtDeletesAsync();
         await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: false);
         await ApplyTransactionCategoryRulesAsync(persistTransactionOverrides: false);
     }
@@ -3409,11 +3418,11 @@ public class AppState(IndexedDbService db, SyncService sync)
             var unnecessaryCount = unnecessaryTxns.Count;
             var score = CalculateDailyScore(spending, unnecessary, transactionCount, unnecessaryCount);
             var explanation = BuildDailyScoreExplanation(spending, unnecessary, transactionCount, unnecessaryCount);
-            var grade = spending == 0 ? "-" : score switch
+            var grade = score switch
             {
                 100 => "A+", >= 90 => "A", >= 80 => "B", >= 70 => "C", >= 50 => "D", _ => "F"
             };
-            var color = spending == 0 ? "#6E7681" : score switch
+            var color = score switch
             {
                 100 => "#34D399", >= 80 => "#6EE7B7", >= 60 => "#FBBF24", >= 40 => "#F97316", _ => "#F87171"
             };
@@ -3424,7 +3433,10 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private static int CalculateDailyScore(decimal spending, decimal unnecessary, int transactionCount, int unnecessaryCount)
     {
-        if (spending <= 0 || transactionCount <= 0) return 0;
+        // No spending at all is the best possible outcome (perfect discipline),
+        // not a failing day — score it the same as a spend day with zero
+        // unnecessary spending.
+        if (spending <= 0 || transactionCount <= 0) return 100;
         if (unnecessary <= 0 || unnecessaryCount <= 0) return 100;
 
         var unnecessarySpendRatio = (double)Math.Clamp(unnecessary / spending, 0m, 1m);
@@ -3446,7 +3458,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private static string BuildDailyScoreExplanation(decimal spending, decimal unnecessary, int transactionCount, int unnecessaryCount)
     {
-        if (spending <= 0 || transactionCount <= 0) return "No spending recorded.";
+        if (spending <= 0 || transactionCount <= 0) return "No spending recorded — perfect discipline.";
         if (unnecessary <= 0 || unnecessaryCount <= 0)
             return $"{transactionCount} transaction{(transactionCount == 1 ? "" : "s")}, none marked unnecessary.";
 

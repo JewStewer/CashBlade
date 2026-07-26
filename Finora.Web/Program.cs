@@ -12,5 +12,6 @@ builder.Services.AddSingleton<IndexedDbService>();
 builder.Services.AddSingleton<SyncService>();
 builder.Services.AddSingleton<UpBankWebSyncService>();
 builder.Services.AddSingleton<AppState>();
+builder.Services.AddSingleton<UiState>();
 
 await builder.Build().RunAsync();

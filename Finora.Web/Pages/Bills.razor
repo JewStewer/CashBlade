@@ -1,6 +1,7 @@
 @page "/bills"
 @inject AppState State
 @inject NavigationManager Nav
+@inject UiState Ui
 
 <PageTitle>Bills — Evergrove</PageTitle>
 
@@ -42,24 +43,21 @@
 @if (filter != "List")
 {
 <!-- Summary bar -->
-<div style="padding:0 16px 12px;display:flex;gap:8px">
-    <div class="card-sm" style="flex:1;text-align:center">
-        <div class="stat-label">Owed before @State.NextPayDate.ToString("dd MMM")</div>
+<div style="padding:0 16px 12px">
+    <div class="card-sm" style="text-align:center">
+        <div class="stat-label">Payday · @State.NextPayDate.ToString("dd MMM")</div>
         <div style="font-size:18px;font-weight:700;color:var(--red)">@State.TotalBillsDue.ToString("C")</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">@State.BillsDueBeforePayday.Count bill@(State.BillsDueBeforePayday.Count == 1 ? "" : "s") unpaid</div>
-    </div>
-    <div class="card-sm" style="flex:1;text-align:center">
-        <div class="stat-label">Payday</div>
-        <div style="font-size:15px;font-weight:600;color:var(--text)">@State.NextPayDate.ToString("dd MMM")</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">in @(Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0))d</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">
+            @State.BillsDueBeforePayday.Count bill@(State.BillsDueBeforePayday.Count == 1 ? "" : "s") unpaid before then · in @(Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 0))d
+            @if (dueNowBills.Any())
+            {
+                <span style="color:var(--red);font-weight:600"> · @dueNowBills.Sum(o => o.Bill.AmountDollars).ToString("C") due now</span>
+            }
+        </div>
     </div>
 </div>
 
 <div style="padding:0 16px 10px;display:flex;gap:8px">
-    <div class="card-sm" style="flex:1;text-align:center">
-        <div class="stat-label">Due now</div>
-        <div style="font-size:17px;font-weight:700;color:var(--red)">@dueNowBills.Sum(o => o.Bill.AmountDollars).ToString("C")</div>
-    </div>
     <div class="card-sm" style="flex:1;text-align:center">
         <div class="stat-label">Next 7d</div>
         <div style="font-size:17px;font-weight:700;color:var(--text)">@next7Bills.Sum(o => o.Bill.AmountDollars).ToString("C")</div>
@@ -71,7 +69,7 @@
 </div>
 <div style="padding:0 16px 12px;display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn btn-secondary btn-sm" disabled="@(!dueNowBills.Any())" @onclick="MarkDuePaidAsync">Mark due paid</button>
-    <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">Add Bill</button>
+    <button class="btn btn-primary btn-sm" @onclick="() => Ui.OpenAddBill()">Add Bill</button>
 </div>
 
 @if (DueSoonBills.Any())
@@ -97,7 +95,6 @@ else
 {
     <div class="info-note">
         No bills are due in the next 14 days.
-        <button class="btn btn-sm btn-secondary" @onclick="() => editingBill = new Bill()">Add Bill</button>
     </div>
 }
 
@@ -110,7 +107,7 @@ else
     {
         <div class="empty-state">
             <span>No bills found.</span>
-            <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">Add Bill</button>
+            <button class="btn btn-primary btn-sm" @onclick="() => Ui.OpenAddBill()">Add Bill</button>
         </div>
     }
     else
@@ -132,7 +129,7 @@ else
             }
             <div style="padding:10px 16px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border)">
                 <span style="font-size:13px;color:var(--text3)">@listBills.Count bill@(listBills.Count == 1 ? "" : "s") · @listTotal.ToString("C")/wk</span>
-                <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">+ Add</button>
+                <button class="btn btn-primary btn-sm" @onclick="() => Ui.OpenAddBill()">+ Add</button>
             </div>
         </div>
     }
@@ -145,10 +142,7 @@ else
     {
         <div class="empty-state">
             <span>No bills here.</span>
-            <div style="display:flex;gap:8px">
-                <button class="btn btn-primary btn-sm" @onclick="() => editingBill = new Bill()">Add Bill</button>
-                <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("settings")'>Sync Settings</button>
-            </div>
+            <button class="btn btn-secondary btn-sm" @onclick='() => Nav.NavigateTo("settings")'>Sync Settings</button>
         </div>
     }
     else
@@ -205,7 +199,7 @@ else
 
 @if (editingBill is not null)
 {
-    <AddEditBillModal Bill="@(editingBill.Id == 0 ? null : editingBill)"
+    <AddEditBillModal Bill="@editingBill"
         OnClose="() => editingBill = null"
         OnSaved="OnBillSaved" />
 }
