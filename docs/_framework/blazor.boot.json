@@ -1,7 +1,7 @@
 {
   "mainAssemblyName": "Finora.Web",
   "resources": {
-    "hash": "sha256-tN+Be9U+QLaicCu1q6Ksg536ebctK+AhW3XjV142Weo=",
+    "hash": "sha256-tssA9hPq4QhPCG+wfnU43zmX3URTlolnTZGxY8F1X2s=",
     "jsModuleNative": {
       "dotnet.native.8.0.27.im9y30eqtq.js": "sha256-sn/g61GjVPhViOYQDkq1OMlk0eyS9r2Hi0qgU2o0HIU="
     },
@@ -9,7 +9,7 @@
       "dotnet.runtime.8.0.27.zwidy3h8f1.js": "sha256-8TPKoZjPkxn9U2bhn70tBfGFmfwnOXj2CAKmQl5+oJ4="
     },
     "wasmNative": {
-      "dotnet.native.wasm": "sha256-7D8gTSSkvJS3o/A75EM28/08/yQTQOpO2QBau/VdqHY="
+      "dotnet.native.wasm": "sha256-NkshPJDdD3pyLNk8xISpu+d919kQmPuAWT53EbVvE8I="
     },
     "icu": {
       "icudt_CJK.dat": "sha256-SZLtQnRc0JkwqHab0VUVP7T3uBPSeYzxzDnpxPpUnHk=",
@@ -17,7 +17,7 @@
       "icudt_no_CJK.dat": "sha256-L7sV7NEYP37/Qr2FPCePo5cJqRgTXRwGHuwF5Q+0Nfs="
     },
     "assembly": {
-      "Finora.Web.wasm": "sha256-b1+QYr+TEB33MQMabIXXCjckbTitTx3/6xmnmxoiCVg=",
+      "Finora.Web.wasm": "sha256-qYtRHhU+PpkpXKVEC3pbrnu9wYZaUBrNJzZsLEthl5s=",
       "Microsoft.AspNetCore.Components.wasm": "sha256-5qWtHPnnZH9LxQmwuYJzfpWtn4Bm4ojhqxtG7n0+k4Y=",
       "Microsoft.AspNetCore.Components.Web.wasm": "sha256-borv4TWWMmB1urwwv3LkK9WVx61Y1MGz6J/vJix5Bm8=",
       "Microsoft.AspNetCore.Components.WebAssembly.wasm": "sha256-dNxo29aPtc4pOCNKiTVrqWRq25ONtaVHwGSk8iHxb68=",
@@ -41,7 +41,7 @@
       "System.ComponentModel.wasm": "sha256-6/Qz5ZDun96sRWEOMEl3MGfRyXTSyLtpzrxnMqtaKJY=",
       "System.Console.wasm": "sha256-2z81bFScAI4+kfSGhNlo5/pOJQcmRgtUzQpvqDtbWmI=",
       "System.Diagnostics.DiagnosticSource.wasm": "sha256-kNESuMFBRCEx9WiOtN/lFdoALu+GqqeFJfEuh5SyIJM=",
-      "System.Linq.wasm": "sha256-YJBW+Bjz9ACfRdOqq+iR54v/5D8XQWZllG7AVKowS7I=",
+      "System.Linq.wasm": "sha256-gh33ntvumkGTz6OLyDh9qDmu190KYKWXVieozowPPas=",
       "System.Memory.wasm": "sha256-NhYvuKejPc5rNIN6/JeVVQJSReCfqSKvJvNypr2PpBw=",
       "System.Net.Http.Json.wasm": "sha256-RAO8uo53UgJFa8GSVBpuyrAWH68SXBdfZ0RAlfM7oNE=",
       "System.Net.Http.wasm": "sha256-vtlVF9BJsTgEWb4Fc/k4XKdoyQbLvGYK91x2+6yzOJ8=",

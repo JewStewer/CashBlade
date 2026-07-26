@@ -24,6 +24,21 @@
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --kb-inset: 0px;
+
+    /* Spacing/radius scale matching values already in wide use throughout the
+       app — new markup should use these instead of hardcoding px, but existing
+       hardcoded usages are left alone (a mass rewrite is its own separate pass). */
+    --space-1: 8px;
+    --space-2: 10px;
+    --space-3: 12px;
+    --space-4: 14px;
+    --space-5: 16px;
+
+    --radius-sm: 8px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 14px;
+    --radius-pill: 999px;
 }
 
 html {

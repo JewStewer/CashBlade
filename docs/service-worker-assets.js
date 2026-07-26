@@ -5,7 +5,7 @@
       "url": "_framework\/blazor.webassembly.js"
     },
     {
-      "hash": "sha256-UvbhQTtb2sj2ciWdS5AZQYpda4ldYB0K3t3aeU1frqA=",
+      "hash": "sha256-3GIMtbBvbaHLZg83l2aBPDwF+l62CxXAJet2QU1THbo=",
       "url": "_framework\/dotnet.js"
     },
     {
@@ -13,7 +13,7 @@
       "url": "_framework\/dotnet.native.8.0.27.im9y30eqtq.js"
     },
     {
-      "hash": "sha256-7D8gTSSkvJS3o\/A75EM28\/08\/yQTQOpO2QBau\/VdqHY=",
+      "hash": "sha256-NkshPJDdD3pyLNk8xISpu+d919kQmPuAWT53EbVvE8I=",
       "url": "_framework\/dotnet.native.wasm"
     },
     {
@@ -33,11 +33,11 @@
       "url": "_framework\/icudt_no_CJK.dat"
     },
     {
-      "hash": "sha256-9iSmopTtKvy0C5XoUvH\/T4hjdg9pAft948OpIQDHFU8=",
+      "hash": "sha256-yi317aZZcN7FmzFglWPDECvmKJ6YArlner3FrNDqAQU=",
       "url": "_framework\/blazor.boot.json"
     },
     {
-      "hash": "sha256-b1+QYr+TEB33MQMabIXXCjckbTitTx3\/6xmnmxoiCVg=",
+      "hash": "sha256-qYtRHhU+PpkpXKVEC3pbrnu9wYZaUBrNJzZsLEthl5s=",
       "url": "_framework\/Finora.Web.wasm"
     },
     {
@@ -133,7 +133,7 @@
       "url": "_framework\/System.Diagnostics.DiagnosticSource.wasm"
     },
     {
-      "hash": "sha256-YJBW+Bjz9ACfRdOqq+iR54v\/5D8XQWZllG7AVKowS7I=",
+      "hash": "sha256-gh33ntvumkGTz6OLyDh9qDmu190KYKWXVieozowPPas=",
       "url": "_framework\/System.Linq.wasm"
     },
     {
@@ -201,7 +201,7 @@
       "url": "_redirects"
     },
     {
-      "hash": "sha256-aiBzU3vzY78SLEPzEtFn3dzhZVO9LyzrsMbWoToCW3g=",
+      "hash": "sha256-S8bNwAf4ZWi7kA2N70L5e89cGbSgX4\/OHrCJaJqoJVM=",
       "url": "css\/app.css"
     },
     {
@@ -213,7 +213,7 @@
       "url": "icons\/icon-512.png"
     },
     {
-      "hash": "sha256-2wrNPoc0EzsdDvtAMWbzen4MF\/R7jK2ggM5xZ\/Hjdow=",
+      "hash": "sha256-4+cd1afU6lYqG7zSKOiWzAGO7st+XYsdX+pIDSiT\/9c=",
       "url": "index.html"
     },
     {
@@ -225,9 +225,9 @@
       "url": "js\/push.js"
     },
     {
-      "hash": "sha256-dek9G8UlUJIQWlX1vvIpMBvQasmpZQdGDIXoj4QprLA=",
+      "hash": "sha256-I4RX8ZcOR9C5ORMHUmMARnpxK6834E4X+n+lTxx4CP4=",
       "url": "manifest.webmanifest"
     }
   ],
-  "version": "mVYN3i7I"
+  "version": "cgxW2HYQ"
 };
