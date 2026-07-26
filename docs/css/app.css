@@ -348,7 +348,7 @@ button, a, input, select, textarea, [role="button"] {
     width: 26px;
     height: 26px;
     border-radius: 8px;
-    background: rgba(20,184,166,0.16);
+    background: color-mix(in srgb, var(--teal-light) 16%, transparent);
     color: var(--teal-light);
     display: inline-flex;
     align-items: center;
@@ -435,7 +435,7 @@ button, a, input, select, textarea, [role="button"] {
 .sync-pill {
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: rgba(20,184,166,0.13);
+    background: color-mix(in srgb, var(--teal-light) 13%, transparent);
     color: var(--teal-light);
     padding: 6px 10px;
     font-size: 11px;
@@ -828,7 +828,7 @@ button.dashboard-module:active {
 .badge-green { background: rgba(52,211,153,0.15); color: var(--green); }
 .badge-red { background: rgba(248,113,113,0.15); color: var(--red); }
 .badge-amber { background: rgba(245,158,11,0.15); color: var(--amber); }
-.badge-teal { background: rgba(13,148,136,0.2); color: var(--teal-light); }
+.badge-teal { background: color-mix(in srgb, var(--teal) 20%, transparent); color: var(--teal-light); }
 .badge-gray { background: var(--surface2); color: var(--text3); }
 
 .badge-sync {
@@ -995,7 +995,7 @@ button.dashboard-module:active {
 }
 
 .budget-calendar-day.is-trip-day {
-    background: rgba(20,184,166,0.1);
+    background: color-mix(in srgb, var(--teal-light) 10%, transparent);
 }
 
 .holiday-calendar-list {
@@ -1015,7 +1015,7 @@ button.dashboard-module:active {
 .holiday-calendar-day:last-child { border-bottom: none; }
 
 .holiday-calendar-day.is-today {
-    background: rgba(20,184,166,0.08);
+    background: color-mix(in srgb, var(--teal-light) 8%, transparent);
 }
 
 .holiday-calendar-date span {
