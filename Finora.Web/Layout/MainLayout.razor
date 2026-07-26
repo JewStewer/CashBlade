@@ -135,14 +135,15 @@
     private bool _showAddTxn;
     private bool _showAddBill;
 
-    // Overrides the default teal CSS variables on the root shell so a user's
-    // accent choice cascades to every descendant that already reads
-    // var(--teal)/var(--teal-light) — buttons, badges, progress bars, active
-    // pills — without touching per-page --card-accent overrides (those stay
-    // their own distinct hue on Budget/Bills/Accounts/Tools).
-    private string AccentStyle => AppState.AccentPresets.TryGetValue(State.AccentColor, out var c)
-        ? $"--teal:{c.Main};--teal-light:{c.Light};"
-        : "";
+    // Overrides the default teal/border CSS variables on the root shell so a
+    // user's colour-wheel choices cascade to every descendant that already
+    // reads var(--teal)/var(--teal-light)/var(--border) — buttons, badges,
+    // progress bars, active pills, hairlines — without touching per-page
+    // --card-accent overrides (those stay their own distinct hue on
+    // Budget/Bills/Accounts/Tools). The "light" shade is derived from the
+    // single accent colour picked, not chosen separately.
+    private string AccentStyle =>
+        $"--teal:{State.AccentColor};--teal-light:{AppState.Lighten(State.AccentColor, 0.12)};--border:{State.BorderColor};";
 
     private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
     private bool IsTransactionsRoute => CurrentPath.Equals("transactions", StringComparison.OrdinalIgnoreCase);

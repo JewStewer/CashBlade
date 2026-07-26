@@ -97,32 +97,84 @@ public class AppState(IndexedDbService db, SyncService sync)
     public int DaysUntilPayday => Math.Max((NextPayDate.Date - DateTime.Today).Days, 0);
     public int PayIntervalDays { get; private set; } = 7;
     public string SummaryPeriod { get; private set; } = "Weekly";
-    public string AccentColor { get; private set; } = "teal";
+    // Free-pick hex colours (from a native colour-wheel <input type="color">
+    // in Settings), overriding the app's --teal/--teal-light/--border CSS
+    // variables at runtime — recolors buttons, badges, progress bars and
+    // hairlines app-wide without touching per-page --card-accent overrides
+    // (Budget/Bills/Accounts/Tools keep their own distinct hue regardless).
+    public const string DefaultAccentColor = "#0D9488";
+    public const string DefaultBorderColor = "#334155";
+    public string AccentColor { get; private set; } = DefaultAccentColor;
+    public string BorderColor { get; private set; } = DefaultBorderColor;
     public bool NoSpendMode { get; private set; }
 
-    // Preset accent colours (main, light) — keys match the CSS custom property
-    // pairs (--teal/--teal-light) that MainLayout overrides at runtime so a
-    // choice here recolors buttons, badges, progress bars etc. app-wide without
-    // touching per-page --card-accent overrides (Budget/Bills/Accounts/Tools
-    // keep their own distinct hue regardless of this setting).
-    public static readonly Dictionary<string, (string Main, string Light)> AccentPresets = new()
-    {
-        ["teal"]   = ("#0D9488", "#14B8A6"),
-        ["blue"]   = ("#2563EB", "#3B82F6"),
-        ["purple"] = ("#7C3AED", "#A78BFA"),
-        ["amber"]  = ("#D97706", "#FBBF24"),
-        ["green"]  = ("#16A34A", "#34D399"),
-        ["cyan"]   = ("#0891B2", "#22D3EE"),
-        ["coral"]  = ("#E11D48", "#FB7185"),
-        ["indigo"] = ("#4F46E5", "#818CF8"),
-    };
+    private static readonly System.Text.RegularExpressions.Regex HexColorRegex =
+        new(@"^#[0-9A-Fa-f]{6}$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    public async Task SetAccentColorAsync(string key)
+    public async Task SetAccentColorAsync(string hex)
     {
-        if (!AccentPresets.ContainsKey(key)) return;
-        AccentColor = key;
-        await SaveSettingAsync("AccentColor", key);
+        if (!HexColorRegex.IsMatch(hex)) return;
+        AccentColor = hex;
+        await SaveSettingAsync("AccentColor", hex);
     }
+
+    public async Task SetBorderColorAsync(string hex)
+    {
+        if (!HexColorRegex.IsMatch(hex)) return;
+        BorderColor = hex;
+        await SaveSettingAsync("BorderColor", hex);
+    }
+
+    // Lightens a hex colour by shifting HSL lightness toward white — used to
+    // derive --teal-light from the single accent colour the user picks,
+    // instead of asking them to choose two related shades.
+    public static string Lighten(string hex, double amount)
+    {
+        if (!HexColorRegex.IsMatch(hex)) return hex;
+        var r = Convert.ToInt32(hex.Substring(1, 2), 16) / 255.0;
+        var g = Convert.ToInt32(hex.Substring(3, 2), 16) / 255.0;
+        var b = Convert.ToInt32(hex.Substring(5, 2), 16) / 255.0;
+
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        var l = (max + min) / 2;
+        double h = 0, s = 0;
+        if (max != min)
+        {
+            var d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max == r) h = (g - b) / d + (g < b ? 6 : 0);
+            else if (max == g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h /= 6;
+        }
+
+        l = Math.Clamp(l + amount, 0, 1);
+
+        double ToRgb(double p, double q, double t)
+        {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+            if (t < 1.0 / 2) return q;
+            if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+            return p;
+        }
+
+        double rr, gg, bb;
+        if (s == 0) { rr = gg = bb = l; }
+        else
+        {
+            var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            var p = 2 * l - q;
+            rr = ToRgb(p, q, h + 1.0 / 3);
+            gg = ToRgb(p, q, h);
+            bb = ToRgb(p, q, h - 1.0 / 3);
+        }
+
+        return $"#{(int)Math.Round(rr * 255):X2}{(int)Math.Round(gg * 255):X2}{(int)Math.Round(bb * 255):X2}";
+    }
+
     public DateTime? NoSpendModeSince { get; private set; }
 
     // ── Affordability savings goal (shared setting keys with WPF) ─────────────
@@ -1260,7 +1312,8 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         PayIntervalDays = int.TryParse(GetSetting("PayIntervalDays"), out var pid) && pid > 0 ? pid : 7;
         SummaryPeriod = GetSetting("SummaryPeriod") ?? "Weekly";
-        AccentColor = GetSetting("AccentColor") is string accent && AccentPresets.ContainsKey(accent) ? accent : "teal";
+        AccentColor = GetSetting("AccentColor") is string accent && HexColorRegex.IsMatch(accent) ? accent : DefaultAccentColor;
+        BorderColor = GetSetting("BorderColor") is string border && HexColorRegex.IsMatch(border) ? border : DefaultBorderColor;
         NoSpendMode = string.Equals(GetSetting("NoSpendMode"), "true", StringComparison.OrdinalIgnoreCase);
         NoSpendModeSince = DateTime.TryParse(GetSetting("NoSpendModeSince"), out var noSpendSince) ? noSpendSince : null;
 

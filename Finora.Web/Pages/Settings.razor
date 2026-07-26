@@ -234,24 +234,34 @@ else if (_tab == "Preferences")
         </div>
     </div>
 
-    <!-- Accent colour -->
+    <!-- Colours -->
     <div class="card">
-        <div style="font-size:14px;font-weight:600;margin-bottom:4px">Accent Colour</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Changes buttons, badges and highlights across the app.</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-            @foreach (var (key, hex) in AppState.AccentPresets)
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">Colours</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Pick your own accent and border colour. Per-page card highlights (Budget, Bills, Accounts, Tools) keep their own hue.</div>
+
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            <input type="color" value="@State.AccentColor" @onchange="OnAccentColorInput"
+                   style="width:44px;height:44px;padding:0;border:1px solid var(--border);border-radius:10px;background:none;cursor:pointer" />
+            <div style="flex:1">
+                <div style="font-size:13px;color:var(--text2)">Accent</div>
+                <div style="font-size:11px;color:var(--text3)">@State.AccentColor.ToUpperInvariant()</div>
+            </div>
+            @if (!string.Equals(State.AccentColor, AppState.DefaultAccentColor, StringComparison.OrdinalIgnoreCase))
             {
-                var isActive = State.AccentColor == key;
-                <button style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 4px;border-radius:10px;cursor:pointer;background:@(isActive ? "var(--surface2)" : "transparent");border:1px solid @(isActive ? hex.Light : "var(--border)")"
-                        @onclick="() => SetAccentColorAsync(key)">
-                    <span style="width:22px;height:22px;border-radius:50%;background:@hex.Light;display:flex;align-items:center;justify-content:center">
-                        @if (isActive)
-                        {
-                            <Icon Name="check" Size="12" />
-                        }
-                    </span>
-                    <span style="font-size:11px;color:var(--text2);text-transform:capitalize">@key</span>
-                </button>
+                <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline" @onclick='() => SetAccentColorAsync(AppState.DefaultAccentColor)'>Reset</button>
+            }
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px">
+            <input type="color" value="@State.BorderColor" @onchange="OnBorderColorInput"
+                   style="width:44px;height:44px;padding:0;border:1px solid var(--border);border-radius:10px;background:none;cursor:pointer" />
+            <div style="flex:1">
+                <div style="font-size:13px;color:var(--text2)">Border</div>
+                <div style="font-size:11px;color:var(--text3)">@State.BorderColor.ToUpperInvariant()</div>
+            </div>
+            @if (!string.Equals(State.BorderColor, AppState.DefaultBorderColor, StringComparison.OrdinalIgnoreCase))
+            {
+                <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline" @onclick='() => SetBorderColorAsync(AppState.DefaultBorderColor)'>Reset</button>
             }
         </div>
     </div>
@@ -818,7 +828,18 @@ else if (_tab == "Data")
         await State.SaveSettingAsync("SummaryPeriod", period);
     }
 
-    private async Task SetAccentColorAsync(string key) => await State.SetAccentColorAsync(key);
+    private async Task SetAccentColorAsync(string hex) => await State.SetAccentColorAsync(hex);
+    private async Task SetBorderColorAsync(string hex) => await State.SetBorderColorAsync(hex);
+
+    private async Task OnAccentColorInput(ChangeEventArgs e)
+    {
+        if (e.Value?.ToString() is string hex) await State.SetAccentColorAsync(hex);
+    }
+
+    private async Task OnBorderColorInput(ChangeEventArgs e)
+    {
+        if (e.Value?.ToString() is string hex) await State.SetBorderColorAsync(hex);
+    }
 
     private async Task AddCategory()
     {
