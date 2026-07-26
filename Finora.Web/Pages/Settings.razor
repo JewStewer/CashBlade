@@ -6,7 +6,7 @@
 @inject NavigationManager Nav
 @implements IDisposable
 
-<PageTitle>Settings — Evergrove</PageTitle>
+<PageTitle>Settings - Evergrove</PageTitle>
 
 <BackHeader To="tools" Label="Tools" />
 
@@ -21,7 +21,7 @@
             </div>
             @if (_updateDone)
             {
-                <span class="badge badge-green" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Reloading…</span>
+                <span class="badge badge-green" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Reloading...</span>
             }
         </div>
         <div style="font-size:13px;color:var(--text3);margin-bottom:10px">
@@ -131,13 +131,13 @@
             </div>
             <div>
                 <label class="form-label">Anon Key</label>
-                <input class="form-input" @bind="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" type="password" />
+                <input class="form-input" @bind="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." type="password" />
             </div>
         </div>
 
         <div style="display:flex;gap:8px;margin-top:10px">
             <button class="btn btn-secondary btn-sm" @onclick="TestSupabase" disabled="@testingSupabase">
-                @(testingSupabase ? "Testing…" : "Test")
+                @(testingSupabase ? "Testing..." : "Test")
             </button>
             <button class="btn btn-primary btn-sm" style="flex:1" @onclick="SaveSupabase">Save</button>
         </div>
@@ -154,7 +154,7 @@
         <div class="inset-card" style="margin-top:12px;font-size:12px;color:var(--text3);line-height:1.6">
             <strong style="color:var(--text2)">One-time setup:</strong><br/>
             1. Create a free account at <strong>supabase.com</strong><br/>
-            2. New project → Settings → API → copy URL and anon key<br/>
+            2. New project -> Settings -> API -> copy URL and anon key<br/>
             3. In SQL Editor, run:<br/>
             <code style="display:block;background:var(--surface2);padding:6px;border-radius:4px;margin-top:4px;font-size:11px;word-break:break-all">
                 CREATE TABLE finance_sync (id TEXT PRIMARY KEY, payload JSONB NOT NULL, synced_at TIMESTAMPTZ DEFAULT NOW()); ALTER TABLE finance_sync DISABLE ROW LEVEL SECURITY;
@@ -289,14 +289,14 @@ else if (_tab == "Notifications")
         }
         else if (_pushPermission == "denied")
         {
-            <div style="font-size:13px;color:var(--red)">Notifications blocked. Go to Settings → Notifications → Evergrove and allow them, then return here.</div>
+            <div style="font-size:13px;color:var(--red)">Notifications blocked. Go to Settings -> Notifications -> Evergrove and allow them, then return here.</div>
         }
         else
         {
             @if (!_pushSubscribed)
             {
                 <button class="btn btn-primary btn-full" @onclick="SubscribePush" disabled="@_pushBusy">
-                    @(_pushBusy ? "Enabling…" : "Enable Notifications")
+                    @(_pushBusy ? "Enabling..." : "Enable Notifications")
                 </button>
             }
             else
@@ -313,7 +313,7 @@ else if (_tab == "Notifications")
                         <div style="font-size:12px;font-weight:600;margin-bottom:6px">One-time setup</div>
                         <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
                             To receive reminders when the app is closed, add this as a GitHub secret named <strong>PUSH_SUBSCRIPTION</strong>:<br/>
-                            <span style="font-size:11px;color:var(--text3)">github.com → your repo → Settings → Secrets and variables → Actions</span>
+                            <span style="font-size:11px;color:var(--text3)">github.com -> your repo -> Settings -> Secrets and variables -> Actions</span>
                         </div>
                         <textarea class="form-input" readonly style="font-size:10px;font-family:monospace;height:72px;resize:none" value="@_pushSubJson"></textarea>
                         <button class="btn btn-secondary btn-sm btn-full" style="margin-top:8px" @onclick="CopySubscriptionJson">
@@ -371,7 +371,7 @@ else if (_tab == "Data")
                     <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
                         <div style="min-width:0">
                             <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@category.Name</div>
-                            <div style="font-size:11px;color:var(--text3)">@category.Type · @usage transaction@(usage == 1 ? "" : "s")</div>
+                            <div style="font-size:11px;color:var(--text3)">@category.Type - @usage transaction@(usage == 1 ? "" : "s")</div>
                         </div>
                         <button class="btn btn-secondary btn-sm" disabled="@(!replacements.Any())" @onclick="() => DeleteCategory(category.Id)">
                             Delete
@@ -423,7 +423,7 @@ else if (_tab == "Data")
 
     <div class="card">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px">About</div>
-        <div style="font-size:13px;color:var(--text3)">Evergrove Mobile — offline-first, syncs via Supabase</div>
+        <div style="font-size:13px;color:var(--text3)">Evergrove Mobile - offline-first, syncs via Supabase</div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">@AppInfo.DisplayVersion</div>
     </div>
 </div>
@@ -645,7 +645,7 @@ else if (_tab == "Data")
         if (string.IsNullOrWhiteSpace(supabaseUrl) || string.IsNullOrWhiteSpace(supabaseKey)) return;
         testingSupabase = true; supabaseStatus = string.Empty; StateHasChanged();
         var ok = await Sync.TestSupabaseAsync(supabaseUrl, supabaseKey);
-        supabaseStatus = ok ? "Supabase connection works" : "Could not connect — check URL and key, and that the table exists";
+        supabaseStatus = ok ? "Supabase connection works" : "Could not connect - check URL and key, and that the table exists";
         supabaseStatusColor = ok ? "var(--green)" : "var(--red)";
         testingSupabase = false; StateHasChanged();
     }
@@ -664,7 +664,7 @@ else if (_tab == "Data")
         await UpSync.SaveAccessTokenAsync(token);
         if (!string.IsNullOrEmpty(token) && !token.StartsWith("up:yeah:", StringComparison.Ordinal))
         {
-            upBankStatus = "Saved, but that doesn't look like an Up Bank token — it should start with \"up:yeah:\". Double-check what you pasted.";
+            upBankStatus = "Saved, but that doesn't look like an Up Bank token - it should start with \"up:yeah:\". Double-check what you pasted.";
             upBankStatusColor = "var(--amber)";
         }
         else
@@ -754,7 +754,7 @@ else if (_tab == "Data")
             _pushPermission = await JS.InvokeAsync<string>("pushNotifications.requestPermission");
             if (_pushPermission != "granted")
             {
-                _pushStatus = "Permission denied. Go to Settings → Notifications → Evergrove to allow them.";
+                _pushStatus = "Permission denied. Go to Settings -> Notifications -> Evergrove to allow them.";
                 _pushStatusColor = "var(--red)";
                 return;
             }

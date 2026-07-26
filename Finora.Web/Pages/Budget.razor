@@ -3,7 +3,7 @@
 @inject NavigationManager Nav
 @inject UiState Ui
 
-<PageTitle>Budget — Evergrove</PageTitle>
+<PageTitle>Budget - Evergrove</PageTitle>
 
 <div class="pill-tabs budget-tabs">
     @foreach (var t in new[]{"Overview","Spending","History","Forecast","Daily","Holiday"})
@@ -79,7 +79,7 @@
                 </div>
                 @if (allDone)
                 {
-                    <span style="font-size:13px;font-weight:600;color:var(--teal);white-space:nowrap">All done ✓</span>
+                    <span style="font-size:13px;font-weight:600;color:var(--teal);white-space:nowrap">All done</span>
                 }
                 else
                 {
@@ -109,7 +109,7 @@
                         <span style="flex:1;font-size:14px">@item.AccountName</span>
                         @if (fullyDone)
                         {
-                            <span style="font-size:14px;color:var(--teal);font-weight:600">✓</span>
+                            <span style="font-size:12px;color:var(--teal);font-weight:600">Done</span>
                         }
                         else if (!item.IsDone)
                         {
@@ -129,11 +129,11 @@
                             }
                             @if (item.TransferredThisPeriod > 0)
                             {
-                                <span style="font-size:10px;color:var(--teal)">· @item.TransferredThisPeriod.ToString("C") sent ✓</span>
+                                <span style="font-size:10px;color:var(--teal)">- @item.TransferredThisPeriod.ToString("C") sent</span>
                             }
                             @if (item.FutureBillsWeekly > 0)
                             {
-                                <span style="font-size:10px;color:var(--amber)">· @item.FutureBillsWeekly.ToString("C")/wk until due</span>
+                                <span style="font-size:10px;color:var(--amber)">- @item.FutureBillsWeekly.ToString("C")/wk until due</span>
                             }
                         </div>
                     }
@@ -239,7 +239,7 @@
             </div>
         }
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">
-            @(_editingBudget ? "Set your own weekly targets from your phone — overrides the PC's budget until changed again." : "How you've told PC to split your income each week")
+            @(_editingBudget ? "Set your own weekly targets from your phone - overrides the PC budget until changed again." : "How you've told PC to split your income each week")
         </div>
         @if (_editingBudget)
         {
@@ -319,20 +319,20 @@
                                 <div style="display:flex;align-items:center;gap:5px">
                                     @if (transferDone == true)
                                     {
-                                        <span style="font-size:12px;color:var(--teal);font-weight:600" title="Transfer done">✓</span>
+                                        <span style="font-size:12px;color:var(--teal);font-weight:600" title="Transfer done">Done</span>
                                     }
                                     else if (transferDone == false)
                                     {
-                                        <span style="font-size:11px;color:var(--amber);font-weight:600" title="Transfer needed">↑@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
+                                        <span style="font-size:11px;color:var(--amber);font-weight:600" title="Transfer needed">Move@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
                                     }
                                     @if (excludedSubWeekly > 0 && !isExcluded)
                                     {
-                                        <span style="font-size:11px;color:var(--green)">−@excludedSubWeekly.ToString("C")</span>
+                                        <span style="font-size:11px;color:var(--green)">-@excludedSubWeekly.ToString("C")</span>
                                     }
                                     <span style="font-size:14px;font-weight:600;text-decoration:@(isExcluded ? "line-through" : "none")">@amount.ToString("C")</span>
                                     @if (hasSubItems)
                                     {
-                                        <span style="font-size:10px;color:var(--text3);margin-left:2px">@(isExpanded ? "▲" : "▼")</span>
+                                        <span style="font-size:10px;color:var(--text3);margin-left:2px">@(isExpanded ? "Hide" : "Show")</span>
                                     }
                                 </div>
                             </div>
@@ -348,7 +348,7 @@
                                 {
                                     var allBillsPaid = paidBillCount == subBills.Count;
                                     <span style="font-size:10px;color:@(allBillsPaid ? "var(--teal)" : paidBillCount > 0 ? "var(--amber)" : "var(--text3)")">
-                                        · @paidBillCount/@subBills.Count paid
+                                        - @paidBillCount/@subBills.Count paid
                                     </span>
                                 }
                             </div>
@@ -373,7 +373,7 @@
                                     </div>
                                     <div style="flex:1;min-width:0;opacity:@(isBillExcluded ? "0.45" : "1")">
                                         <div style="font-size:13px;text-decoration:@(isBillExcluded ? "line-through" : "none");overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
-                                        <div style="font-size:10px;color:var(--text3)">@FreqAbbr(bill.Frequency) · @bill.AmountDollars.ToString("C")</div>
+                                        <div style="font-size:10px;color:var(--text3)">@FreqAbbr(bill.Frequency) - @bill.AmountDollars.ToString("C")</div>
                                     </div>
                                     <span style="font-size:12px;font-weight:600;flex-shrink:0;min-width:52px;text-align:right;opacity:@(isBillExcluded ? "0.45" : "1");text-decoration:@(isBillExcluded ? "line-through" : "none")">@weekly.ToString("C")/wk</span>
                                 </div>
@@ -395,7 +395,7 @@
             @if (_excludedBudgetLabels.Count > 0 || _excludedBillIds.Count > 0)
             {
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px;border-top:1px solid var(--border);margin-top:2px">
-                    <span style="font-size:12px;color:var(--text3)">@(_excludedBudgetLabels.Count + _excludedBillIds.Count) excluded · tap to restore</span>
+                    <span style="font-size:12px;color:var(--text3)">@(_excludedBudgetLabels.Count + _excludedBillIds.Count) excluded - tap to restore</span>
                     <button @onclick="@(() => { _excludedBudgetLabels.Clear(); _excludedBillIds.Clear(); })" style="background:none;border:none;color:var(--teal);font-size:12px;cursor:pointer;padding:0;text-decoration:underline">Reset all</button>
                 </div>
             }
@@ -480,7 +480,7 @@
                 </div>
                 <div style="text-align:right;flex-shrink:0">
                     <div style="font-size:15px;font-weight:700;color:var(--red)">@grandTotal.ToString("C")<span style="font-size:10px;font-weight:400;color:var(--text3)">/wk</span></div>
-                    <div style="font-size:10px;color:var(--text3);margin-top:2px">@(_showWeeklyBreakdown ? "▲ hide" : "▼ show")</div>
+                    <div style="font-size:10px;color:var(--text3);margin-top:2px">@(_showWeeklyBreakdown ? "hide" : "show")</div>
                 </div>
             </div>
 
@@ -651,7 +651,7 @@
                 <div style="height:100%;width:@_spendRatioPct%;background:@paceColor;border-radius:2px;transition:width 0.4s ease"></div>
             </div>
             <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.35">@paceSummary</div>
-            <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only · @PeriodRange.From.ToString("d MMM")–@todayInPeriod.ToString("d MMM") · bills, transfers and exclusions ignored</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:5px;opacity:0.8">Discretionary only - @PeriodRange.From.ToString("d MMM")-@todayInPeriod.ToString("d MMM") - bills, transfers and exclusions ignored</div>
 
             <!-- Time-vs-budget bar: shows how far into the period you are vs how much budget you've used -->
             @{
@@ -672,7 +672,7 @@
                 </div>
                 <div style="font-size:10px;color:var(--text3);margin-top:3px">
                     @if (isOverBudget) { <span style="color:var(--red)">Over budget</span> }
-                    else if (aheadOfPace) { <span style="color:var(--teal)">Ahead — spending less than time elapsed</span> }
+                    else if (aheadOfPace) { <span style="color:var(--teal)">Ahead - spending less than time elapsed</span> }
                     else if (behindPace) { <span style="color:var(--amber)">Spending faster than time elapsed</span> }
                     else { <span>Spending in step with time</span> }
                 </div>
@@ -684,7 +684,7 @@
                     <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text3)">Today</span>
                     <span style="font-size:13px;font-weight:600;color:@(todaySpend>dailyRoom?"var(--red)":"var(--text)")">
                         @todaySpend.ToString("C") spent
-                        @if (dailyRoom > 0) { <span style="font-weight:400;color:var(--text3)"> · @todayRemaining.ToString("C") left</span> }
+                        @if (dailyRoom > 0) { <span style="font-weight:400;color:var(--text3)"> - @todayRemaining.ToString("C") left</span> }
                     </span>
                 </div>
                 <div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden">
@@ -710,7 +710,7 @@
                     <div style="font-size:14px;font-weight:700;color:@paceColor">@projectedSpend.ToString("C")</div>
                     @if (elapsedDays >= 4 && Math.Abs(recentDailyRate - currentDailyAverage) > 1m)
                     {
-                        <div style="font-size:9px;color:var(--text3);margin-top:1px">@(recentDailyRate > currentDailyAverage ? "↑ accel" : "↓ slowing")</div>
+                        <div style="font-size:9px;color:var(--text3);margin-top:1px">@(recentDailyRate > currentDailyAverage ? "accelerating" : "slowing")</div>
                     }
                 </div>
             </div>
@@ -726,7 +726,7 @@
                     @foreach (var occ in upcomingBills.Take(4))
                     {
                         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-top:3px">
-                            <span>@occ.Bill.Name <span style="color:var(--text3)">· @occ.DueDate.ToString("d MMM")</span></span>
+                            <span>@occ.Bill.Name <span style="color:var(--text3)">- @occ.DueDate.ToString("d MMM")</span></span>
                             <span style="font-weight:600">@occ.Bill.AmountDollars.ToString("C")</span>
                         </div>
                     }
@@ -810,7 +810,7 @@
                         <div style="font-size:11px;color:var(--text3);margin-bottom:5px">
                             @debt.InterestRate.Value.ToString("P1") APR
                             @if (debt.MinimumPaymentDollars > 0)
-                            { <span> · Min @debt.MinimumPaymentDollars.ToString("C")/@debt.PaymentPeriod.ToLower()</span> }
+                            { <span> - Min @debt.MinimumPaymentDollars.ToString("C")/@debt.PaymentPeriod.ToLower()</span> }
                         </div>
                     }
                     @if (debt.OriginalBalanceDollars > 0)
@@ -820,11 +820,11 @@
                         </div>
                         @if (!isFullyPaid)
                         {
-                            <div style="font-size:11px;color:var(--text3);margin-top:3px">@paidOff.ToString("P0") paid off · started @debt.OriginalBalanceDollars.ToString("C")</div>
+                            <div style="font-size:11px;color:var(--text3);margin-top:3px">@paidOff.ToString("P0") paid off - started @debt.OriginalBalanceDollars.ToString("C")</div>
                         }
                         else
                         {
-                            <div style="font-size:11px;color:#16A34A;margin-top:3px;font-weight:600">Fully paid off · started @debt.OriginalBalanceDollars.ToString("C")</div>
+                            <div style="font-size:11px;color:#16A34A;margin-top:3px;font-weight:600">Fully paid off - started @debt.OriginalBalanceDollars.ToString("C")</div>
                         }
                     }
                 </div>
@@ -840,7 +840,7 @@
         </div>
         @if (!State.SavingsGoals.Any())
         {
-            <div style="font-size:13px;color:var(--text3);text-align:center;padding:10px 0">No savings goals yet — tap "+ Add" to create one.</div>
+            <div style="font-size:13px;color:var(--text3);text-align:center;padding:10px 0">No savings goals yet - tap "+ Add" to create one.</div>
         }
         else
         {
@@ -914,7 +914,7 @@
             <span style="font-size:18px;color:var(--text3);font-weight:300">$</span>
             <input class="form-input" type="number" min="0" step="1"
                    @bind="_affordAmount" @bind:event="oninput" @onchange="OnAffordAmountChanged"
-                   placeholder="Enter amount…" style="flex:1;font-size:18px;font-weight:600" />
+                   placeholder="Enter amount..." style="flex:1;font-size:18px;font-weight:600" />
         </div>
 
         @if (_affordMode == "Savings")
@@ -942,7 +942,7 @@
             @if (State.AffordabilityGoalAccount is not null && State.GetAccountBalance(State.AffordabilityGoalAccount.Id) > 0)
             {
                 <div style="font-size:11px;color:var(--text3);margin-top:6px">
-                    The amount above is the total you want in @State.AffordabilityGoalAccount.Name — it already has @State.GetAccountBalance(State.AffordabilityGoalAccount.Id).ToString("C"), so only the rest counts toward what's still needed.
+                    The amount above is the total you want in @State.AffordabilityGoalAccount.Name - it already has @State.GetAccountBalance(State.AffordabilityGoalAccount.Id).ToString("C"), so only the rest counts toward what's still needed.
                 </div>
             }
 
@@ -961,10 +961,10 @@
                 var leftOver = cycleSpare - cycleNeeded;
                 var ratio = cycleSpare > 0 ? cycleNeeded / cycleSpare : 999m;
                 var (verdictIcon, verdict, verdictColor) =
-                    amountStillNeeded <= 0 ? ("check", "Already there — no more saving needed", "var(--green)") :
-                    ratio < 0.5m ? ("check", "Comfortable — easily on track", "var(--green)") :
-                    ratio <= 1m  ? ("alert-triangle", "Tight — uses most of your spare budget", "var(--amber)") :
-                                   ("x", "Short — not enough spare to hit this goal", "var(--red)");
+                    amountStillNeeded <= 0 ? ("check", "Already there - no more saving needed", "var(--green)") :
+                    ratio < 0.5m ? ("check", "Comfortable - easily on track", "var(--green)") :
+                    ratio <= 1m  ? ("alert-triangle", "Tight - uses most of your spare budget", "var(--amber)") :
+                                   ("x", "Short - not enough spare to hit this goal", "var(--red)");
                 var cycleLabel = CycleLabel;
                 var recommendedCycles = RecommendedGoalCycles(amountStillNeeded, cycleSpare);
 
@@ -974,7 +974,7 @@
                     <div style="margin-top:10px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
                         <div>
                             <div style="font-size:12px;color:var(--green);font-weight:600">Recommended: @recommendedCycles.Value pay@(recommendedCycles.Value == 1 ? "" : "s")</div>
-                            <div style="font-size:11px;color:var(--text3)">Fastest pace that's still comfortable · by @recDate.ToString("dd MMM yy")</div>
+                            <div style="font-size:11px;color:var(--text3)">Fastest pace that's still comfortable - by @recDate.ToString("dd MMM yy")</div>
                         </div>
                         <button class="btn btn-sm btn-secondary" @onclick="() => SelectPaceAsync(recommendedCycles.Value)">Use this</button>
                     </div>
@@ -1052,7 +1052,7 @@
                         </button>
                         @if (alreadyTracking)
                         {
-                            <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">@account.Name already has a tracked goal — this will replace it.</div>
+                            <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">@account.Name already has a tracked goal - this will replace it.</div>
                         }
                     }
                     <button class="btn btn-outline btn-sm btn-full" style="margin-top:8px" @onclick="() => StartAddGoalAsBill(cycleNeeded)">
@@ -1085,9 +1085,9 @@
                 var remainingSpare = weeklySpare - weeklyImpact;
                 var ratio = weeklySpare > 0 ? weeklyImpact / weeklySpare : 999m;
                 var (verdictIcon, verdict, verdictColor) =
-                    ratio < 0.5m ? ("check", "Comfortable — easily on track", "var(--green)") :
-                    ratio <= 1m  ? ("alert-triangle", "Tight — uses most of your spare budget", "var(--amber)") :
-                                   ("x", "Short — not enough spare for these repayments", "var(--red)");
+                    ratio < 0.5m ? ("check", "Comfortable - easily on track", "var(--green)") :
+                    ratio <= 1m  ? ("alert-triangle", "Tight - uses most of your spare budget", "var(--amber)") :
+                                   ("x", "Short - not enough spare for these repayments", "var(--red)");
 
                 <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
                     <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
@@ -1104,7 +1104,7 @@
                         <span style="font-weight:700;color:@(remainingSpare>=0?"var(--green)":"var(--red)")">@remainingSpare.ToString("C")/wk</span>
                     </div>
                     <div style="font-size:11px;color:var(--text3);margin-top:6px">
-                        First payment today, then @(count-1) more every @freq wk@(freq == 1 ? "" : "s") · paid off in @totalWeeks wk@(totalWeeks == 1 ? "" : "s")
+                        First payment today, then @(count-1) more every @freq wk@(freq == 1 ? "" : "s") - paid off in @totalWeeks wk@(totalWeeks == 1 ? "" : "s")
                     </div>
                     <button class="btn btn-primary btn-sm btn-full" style="margin-top:10px" @onclick="() => StartAddInstallmentBill(perInstallment, freq)">
                         + Add to Budget as a Bill
@@ -1119,8 +1119,8 @@
             var pct = safe > 0 ? _affordAmount / safe : (_affordAmount > 0 ? 1.5m : 0m);
             var (verdictIcon, verdict, verdictColor) =
                 remaining >= 0 && pct < 0.4m ? ("check", "Comfortably affordable", "var(--green)") :
-                remaining >= 0 && pct < 0.8m ? ("alert-triangle", "Affordable — watch your budget", "var(--amber)") :
-                remaining >= 0             ? ("alert-triangle", "Very tight — barely affordable", "var(--amber)") :
+                remaining >= 0 && pct < 0.8m ? ("alert-triangle", "Affordable - watch your budget", "var(--amber)") :
+                remaining >= 0             ? ("alert-triangle", "Very tight - barely affordable", "var(--amber)") :
                                              ("x", "Over budget", "var(--red)");
             <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
                 <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
@@ -1165,7 +1165,7 @@ else if (_tab == "Spending")
     {
         <div class="card">
             <div class="section-title" style="margin-bottom:2px">Spending Breakdown</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">All categories this pay cycle · @PayCycleDateRange · bar = % of largest category</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">All categories this pay cycle - @PayCycleDateRange - bar = % of largest category</div>
 
             @if (billCats.Any())
             {
@@ -1327,8 +1327,8 @@ else if (_tab == "Spending")
                             }
                         </div>
                         <div style="font-size:11px;color:var(--text3)">
-                            @sub.Frequency · @sub.AmountRangeDisplay
-                            <span style="color:@dueColor"> · @sub.NextDueDisplay</span>
+                            @sub.Frequency - @sub.AmountRangeDisplay
+                            <span style="color:@dueColor"> - @sub.NextDueDisplay</span>
                         </div>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
@@ -1356,7 +1356,7 @@ else if (_tab == "History")
         <div class="card">
             <div class="section-title" style="margin-bottom:2px">Everyday Spending This @PeriodNoun</div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px;opacity:0.9">@PayCycleDateRange</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only · budget = unallocated spending (@PeriodBudget.ToString("C"))</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">Non-bill transactions only - budget = unallocated spending (@PeriodBudget.ToString("C"))</div>
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
                 <span style="font-size:22px;font-weight:700;color:@(PeriodSpend>PeriodBudget?"var(--red)":"var(--text)")">
                     @PeriodSpend.ToString("C")
@@ -1393,7 +1393,7 @@ else if (_tab == "History")
                 {
                     <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:8px">
                         <span style="color:var(--amber);font-weight:600;display:inline-flex;align-items:center;gap:4px"><Icon Name="zap" Size="12" /> High-spend @PeriodNounLower</span>
-                        <span style="color:var(--text3)"> — @spikeAmount.ToString("C") above your usual @avg.ToString("C0") avg. Likely one-off expenses.</span>
+                        <span style="color:var(--text3)"> - @spikeAmount.ToString("C") above your usual @avg.ToString("C0") avg. Likely one-off expenses.</span>
                     </div>
                 }
 
@@ -1412,7 +1412,7 @@ else if (_tab == "History")
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                         <div style="flex:1;min-width:0">
                             <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@t.Description</div>
-                            <div style="font-size:11px;color:var(--text3)">@t.CategoryName · @t.Date.ToString("d MMM")</div>
+                            <div style="font-size:11px;color:var(--text3)">@t.CategoryName - @t.Date.ToString("d MMM")</div>
                         </div>
                         <span style="font-size:15px;font-weight:700;color:var(--red);flex-shrink:0">@Math.Abs(t.AmountDollars).ToString("C")</span>
                     </div>
@@ -1430,7 +1430,7 @@ else if (_tab == "History")
     {
         <div class="card" style="margin-top:12px">
             <div class="section-title" style="margin-bottom:2px">@PeriodNoun History</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">Last 6 @PeriodNounLower periods · income vs spending vs net</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:14px;opacity:0.7">Last 6 @PeriodNounLower periods - income vs spending vs net</div>
             @foreach (var c in cycleTrend)
             {
                 var spendW = cycleTrendMax > 0 ? (double)(c.Spending / cycleTrendMax) * 100.0 : 0;
@@ -1569,7 +1569,7 @@ else if (_tab == "Forecast")
         </div>
         <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--text3)">Lowest projected point</span>
-            <span style="font-size:14px;font-weight:700;color:@(lowest.Balance<0?"var(--red)":"var(--text)")">@lowest.Balance.ToString("C") · @lowest.Date.ToString("dd MMM")</span>
+            <span style="font-size:14px;font-weight:700;color:@(lowest.Balance<0?"var(--red)":"var(--text)")">@lowest.Balance.ToString("C") - @lowest.Date.ToString("dd MMM")</span>
         </div>
     </div>
 
@@ -1649,8 +1649,8 @@ else if (_tab == "Forecast")
                         <div class="row-title">@day.Note</div>
                         <div class="row-sub">
                             Balance after: @day.Balance.ToString("C")
-                            @if (day.Bills > 0) { <span> · Bills @day.Bills.ToString("C")</span> }
-                            @if (day.Pay > 0) { <span> · Pay @day.Pay.ToString("C")</span> }
+                            @if (day.Bills > 0) { <span> - Bills @day.Bills.ToString("C")</span> }
+                            @if (day.Pay > 0) { <span> - Pay @day.Pay.ToString("C")</span> }
                         </div>
                     </div>
                 </div>
@@ -1686,7 +1686,7 @@ else if (_tab == "Holiday")
                             style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:@(isActive ? cBg : "transparent");border:@(isActive ? $"1px solid {cColor}40" : "1px solid transparent");border-radius:10px;cursor:pointer;text-align:left">
                         <span style="width:10px;height:10px;border-radius:50%;background:@cColor;flex-shrink:0"></span>
                         <span style="flex:1;font-size:14px;color:var(--text)">@cat</span>
-                        @if (isActive) { <span style="font-size:12px;color:@cColor;font-weight:700">✓</span> }
+                        @if (isActive) { <span style="font-size:12px;color:@cColor;font-weight:700">On</span> }
                     </button>
                 }
                 @if (!_showNewCatInput)
@@ -1694,7 +1694,7 @@ else if (_tab == "Holiday")
                     <button @onclick="() => _showNewCatInput = true"
                             style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:transparent;border:1px dashed var(--border);border-radius:10px;cursor:pointer;text-align:left;margin-top:4px">
                         <span style="width:10px;height:10px;border-radius:50%;background:var(--border);flex-shrink:0"></span>
-                        <span style="flex:1;font-size:14px;color:var(--text3)">New category…</span>
+                        <span style="flex:1;font-size:14px;color:var(--text3)">New category...</span>
                     </button>
                 }
                 else
@@ -1913,7 +1913,7 @@ else if (_tab == "Holiday")
                 <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;margin-top:2px;text-decoration:underline"
                         @onclick="() => ToggleGoalWhatIf(goal.Id)" @onclick:stopPropagation="true">
                     @(goal.WeeklyContributionDollars > 0
-                        ? $"{goal.WeeklyContributionDollars:C}/wk · ~{whatIfWeeks} weeks to goal"
+                        ? $"{goal.WeeklyContributionDollars:C}/wk - about {whatIfWeeks} weeks to goal"
                         : "What if I saved toward this?")
                 </button>
             }

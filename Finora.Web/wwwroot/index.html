@@ -21,7 +21,7 @@
                 <circle class="loading-ring loading-ring-2" cx="20" cy="20" r="8" stroke="#10B981" stroke-opacity="0.65" stroke-width="1.4"/>
                 <circle class="loading-ring loading-ring-1" cx="20" cy="20" r="4.24" fill="#10B981"/>
             </svg>
-            <span style="font-size:14px">Loading Evergrove…</span>
+            <span style="font-size:14px">Loading Evergrove...</span>
         </div>
     </div>
     <div id="blazor-error-ui">
@@ -234,7 +234,7 @@
                 indicator.style.transition = '';
                 indicator.style.setProperty('--ptr-h', Math.min(pull * 0.35, 36) + 'px');
                 indicator.style.opacity = String(Math.min((pull / THRESHOLD) * 1.5, 1));
-                indicator.textContent = pull >= THRESHOLD ? '↑ Release to sync' : '↓ Pull to sync';
+                indicator.textContent = pull >= THRESHOLD ? 'Release to sync' : 'Pull to sync';
             }, { passive: true });
             document.addEventListener('touchend', async e => {
                 if (!isPulling) return;
@@ -242,7 +242,7 @@
                 const go = dy >= THRESHOLD; isPulling = false;
                 if (indicator) {
                     const ind = indicator; indicator = null;
-                    if (go) { ind.textContent = 'Syncing…'; ind.style.opacity = '1'; dismissIndicator(ind, 900); }
+                    if (go) { ind.textContent = 'Syncing...'; ind.style.opacity = '1'; dismissIndicator(ind, 900); }
                     else { dismissIndicator(ind, 0); }
                 }
                 if (go) try { await dotnetRef.invokeMethodAsync('TriggerPullRefreshAsync'); } catch {}

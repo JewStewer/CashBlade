@@ -242,7 +242,7 @@ else
             var urgent = State.BillsDueBeforePayday.FirstOrDefault(b => b.EffectiveDueDate.Date <= DateTime.Today.AddDays(1));
             if (urgent is not null) return $"{urgent.Name} is due {DueLabel(urgent.EffectiveDueDate)}. Check it off or move money before it lands.";
             if (Forecast.AfterBills < 0) return $"You are forecast to be {Math.Abs(Forecast.AfterBills):C} short before payday.";
-            if (State.NoSpendMode) return "Bills and essentials only — discretionary spending is paused.";
+            if (State.NoSpendMode) return "Bills and essentials only - discretionary spending is paused.";
             if (State.SafeToSpendAmount <= 0) return "Your safe-to-spend buffer is gone for this pay cycle.";
             var days = Math.Max(DaysToPayday, 1);
             return $"{(State.SafeToSpendAmount / days):C} per day keeps you steady until payday.";
