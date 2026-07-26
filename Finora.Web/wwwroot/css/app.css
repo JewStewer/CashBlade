@@ -1611,7 +1611,7 @@ select.form-input { appearance: none; -webkit-appearance: none; }
 .timeline-chip.is-danger { --tone: var(--red); border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
 .timeline-chip.is-paid { --tone: var(--text3); opacity: 0.65; }
 
-.ios-section-note {
+.info-note {
     margin: 0 16px 12px;
     padding: 11px 12px;
     background: var(--surface);

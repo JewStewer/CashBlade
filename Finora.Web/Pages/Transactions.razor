@@ -69,7 +69,7 @@
 </div>
 @if (State.NoSpendMode)
 {
-    <div class="ios-section-note">
+    <div class="info-note">
         No-spend mode is on. Safe-to-spend is held at $0 until you turn it off.
         <button class="btn btn-sm btn-secondary" @onclick="DisableNoSpendAsync">Turn off</button>
     </div>
@@ -235,13 +235,13 @@
                                             <button class="btn btn-sm btn-primary" @onclick:stopPropagation="true"
                                                     @onclick="() => DoMarkLent(localT.Id)">Confirm</button>
                                             <button class="btn btn-sm btn-secondary" @onclick:stopPropagation="true"
-                                                    @onclick="() => _lentPickId = 0"><Icon Name="x" Size="13" /></button>
+                                                    @onclick="CancelLentPick"><Icon Name="x" Size="13" /></button>
                                         </div>
                                     }
                                     else
                                     {
                                         <button class="btn btn-sm btn-secondary" @onclick:stopPropagation="true"
-                                                @onclick="() => { _lentPickId = localT.Id; _lentNote = string.Empty; }" style="display:inline-flex;align-items:center;gap:5px">
+                                                @onclick="() => StartLentPick(localT.Id)" style="display:inline-flex;align-items:center;gap:5px">
                                             <Icon Name="users" Size="13" /> Lent out
                                         </button>
                                     }
@@ -373,34 +373,60 @@
     private async Task DoMarkLent(int txnId)
     {
         await State.MarkLentAsync(txnId, _lentNote.Trim());
-        _lentPickId = 0;
-        _lentNote = string.Empty;
+        await CancelLentPick();
     }
 
     private async Task DoUnmarkLent(int txnId) => await State.UnmarkLentAsync(txnId);
 
+    private async Task StartLentPick(int txnId)
+    {
+        _lentPickId = txnId;
+        _lentNote = string.Empty;
+        await RepairScrollAfterKeyboardAsync();
+    }
+
+    private async Task CancelLentPick()
+    {
+        _lentPickId = 0;
+        await RepairScrollAfterKeyboardAsync();
+    }
+
     private async Task DoMarkRepaid(int txnId)
     {
         await State.MarkRepaidAsync(txnId);
-        CancelRepayPick();
+        await CancelRepayPick();
     }
 
-    private void StartRepayPick(int txnId, decimal outstanding)
+    private async Task StartRepayPick(int txnId, decimal outstanding)
     {
         _repayPickId = txnId;
         _repayAmount = Math.Round(outstanding, 2);
+        await RepairScrollAfterKeyboardAsync();
     }
 
-    private void CancelRepayPick()
+    private async Task CancelRepayPick()
     {
         _repayPickId = 0;
         _repayAmount = 0;
+        await RepairScrollAfterKeyboardAsync();
     }
 
     private async Task DoRecordRepayment(int txnId, decimal amount)
     {
         await State.RecordLentRepaymentAsync(txnId, amount);
-        CancelRepayPick();
+        await CancelRepayPick();
+    }
+
+    // Opening/closing these inline pickers blurs whatever input is focused
+    // (or focuses a new one), dismissing the iOS keyboard. WKWebView frequently
+    // fails to re-attach .page-content as a scrollable layer when that happens
+    // — the same quirk financeBlade.nudgeRepaint works around for HolidayTab's
+    // inline edit forms. Without this, touch-scroll silently stops responding
+    // until some other reflow happens.
+    private async Task RepairScrollAfterKeyboardAsync()
+    {
+        try { await JS.InvokeVoidAsync("financeBlade.nudgeRepaint"); }
+        catch (JSDisconnectedException) { }
     }
 
     private async Task ExportFilteredAsync()
