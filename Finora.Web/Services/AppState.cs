@@ -557,9 +557,6 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             await ApplyPersistedTransactionOverridesAsync();
             await ApplyPersistedTransactionDeletesAsync();
-            await ApplyPersistedBillDeletesAsync();
-            await ApplyPersistedSavingsGoalDeletesAsync();
-            await ApplyPersistedTripDeletesAsync();
             await ApplyPersistedTripOverridesAsync();
             await ApplyPersistedBillOverridesAsync();
             await ApplyPersistedBillEditOverridesAsync();
@@ -568,16 +565,21 @@ public class AppState(IndexedDbService db, SyncService sync)
             await ApplyPersistedSavingsGoalOverridesAsync();
             await ApplyPersistedSettingOverridesAsync();
         }
-        // Unlike the overrides/deletes above, this one is NOT skipped during
-        // suppressed mid-session reloads: it's a pure, idempotent check against
-        // the durable IndexedDB tombstone (safe to re-run any time — it only
-        // acts if the tombstoned debt is actually still present), and it's the
-        // only defense once the in-memory ConfirmedPushGrace window (6 min)
-        // elapses without the PC having reconciled the deletion yet. Skipping
-        // it here left a deleted debt undefended for the rest of the session
-        // until a full app restart — it would silently reappear on the next
-        // stale pull.
+        // Unlike the overrides/deletes above, these are NOT skipped during
+        // suppressed mid-session reloads: they're pure, idempotent checks
+        // against a durable IndexedDB tombstone (safe to re-run any time —
+        // each only acts if the tombstoned record is actually still present),
+        // and they're the only defense once the in-memory ConfirmedPushGrace
+        // window (6 min) elapses without the PC having reconciled the deletion
+        // yet. Skipping them here left a deleted record undefended for the
+        // rest of the session until a full app restart — it would silently
+        // reappear on the next stale pull (confirmed for both: a deleted debt
+        // reappearing after tapping another debt, and a deleted bill
+        // reappearing after tapping another bill).
+        await ApplyPersistedBillDeletesAsync();
         await ApplyPersistedDebtDeletesAsync();
+        await ApplyPersistedSavingsGoalDeletesAsync();
+        await ApplyPersistedTripDeletesAsync();
         await ApplyManagedCategoryRulesAsync(persistTransactionOverrides: false);
         await ApplyTransactionCategoryRulesAsync(persistTransactionOverrides: false);
     }

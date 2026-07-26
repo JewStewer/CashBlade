@@ -907,21 +907,46 @@
                     </select>
                 </div>
             </div>
+            @if (State.AffordabilityGoalAccount is not null && State.GetAccountBalance(State.AffordabilityGoalAccount.Id) > 0)
+            {
+                <div style="font-size:11px;color:var(--text3);margin-top:6px">
+                    The amount above is the total you want in @State.AffordabilityGoalAccount.Name — it already has @State.GetAccountBalance(State.AffordabilityGoalAccount.Id).ToString("C"), so only the rest counts toward what's still needed.
+                </div>
+            }
 
             @if (_affordAmount > 0)
             {
                 var cycles = Math.Max(_goalWeeks, 1);
                 var selectedTargetDate = GoalTargetDate;
                 var cycleSpare = State.BudgetLeftover * (decimal)State.PayIntervalDays / 7m;
-                var cycleNeeded = Math.Round(_affordAmount / cycles, 2);
+                var account = State.AffordabilityGoalAccount;
+                var currentBalance = account is not null ? State.GetAccountBalance(account.Id) : 0m;
+                // The entered amount is the TOTAL you want sitting in the account, not
+                // extra on top of what's already there — if it already has $350 and you
+                // enter $700, only the remaining $350 needs to be saved.
+                var amountStillNeeded = account is not null ? Math.Max(_affordAmount - currentBalance, 0m) : _affordAmount;
+                var cycleNeeded = Math.Round(amountStillNeeded / cycles, 2);
                 var leftOver = cycleSpare - cycleNeeded;
                 var ratio = cycleSpare > 0 ? cycleNeeded / cycleSpare : 999m;
                 var (verdictIcon, verdict, verdictColor) =
+                    amountStillNeeded <= 0 ? ("check", "Already there — no more saving needed", "var(--green)") :
                     ratio < 0.5m ? ("check", "Comfortable — easily on track", "var(--green)") :
                     ratio <= 1m  ? ("alert-triangle", "Tight — uses most of your spare budget", "var(--amber)") :
                                    ("x", "Short — not enough spare to hit this goal", "var(--red)");
-                var account = State.AffordabilityGoalAccount;
                 var cycleLabel = CycleLabel;
+                var recommendedCycles = RecommendedGoalCycles(amountStillNeeded, cycleSpare);
+
+                @if (recommendedCycles.HasValue && recommendedCycles.Value != cycles)
+                {
+                    var recDate = State.NthPaydayFromNow(recommendedCycles.Value + 1);
+                    <div style="margin-top:10px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+                        <div>
+                            <div style="font-size:12px;color:var(--green);font-weight:600">Recommended: @recommendedCycles.Value pay@(recommendedCycles.Value == 1 ? "" : "s")</div>
+                            <div style="font-size:11px;color:var(--text3)">Fastest pace that's still comfortable · by @recDate.ToString("dd MMM yy")</div>
+                        </div>
+                        <button class="btn btn-sm btn-secondary" @onclick="() => SelectPaceAsync(recommendedCycles.Value)">Use this</button>
+                    </div>
+                }
 
                 @if (cycleSpare > 0)
                 {
@@ -936,13 +961,13 @@
                     {
                         <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
                             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-                                <span style="font-size:12px;color:var(--text3);font-weight:600">Savings pace for @_affordAmount.ToString("C")</span>
+                                <span style="font-size:12px;color:var(--text3);font-weight:600">Savings pace for @amountStillNeeded.ToString("C")</span>
                                 <button style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:0;text-decoration:underline" @onclick="() => _showPaceOptions = false">Hide</button>
                             </div>
                             @foreach (var (label, multiplier, color) in PaceOptions)
                             {
                                 var paceWeeks = Math.Max((int)Math.Ceiling(cycles * multiplier), 1);
-                                var cycleAmount = Math.Round(_affordAmount / paceWeeks, 2);
+                                var cycleAmount = Math.Round(amountStillNeeded / paceWeeks, 2);
                                 var paceLeftOver = cycleSpare - cycleAmount;
                                 var paceDate = State.NthPaydayFromNow(paceWeeks + 1);
                                 var isSelected = paceWeeks == cycles;
@@ -978,8 +1003,7 @@
                     </div>
                     @if (account is not null)
                     {
-                        var currentBalance = State.GetAccountBalance(account.Id);
-                        var projected = currentBalance + _affordAmount;
+                        var projected = currentBalance + amountStillNeeded;
                         var alreadyTracking = account.TargetCents is not null;
                         <div style="border-top:1px solid var(--border);margin-top:5px;padding-top:8px">
                             <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
@@ -2053,6 +2077,20 @@ else if (_tab == "Holiday")
     {
         _goalWeeks = Math.Max(weeks, 1);
         await SaveAffordabilitySettingsAsync();
+    }
+
+    // Shortest number of pay cycles that still keeps the per-cycle contribution
+    // comfortably under spare budget (same "Comfortable" threshold as the
+    // verdict tiers below: needing less than half of spare budget per cycle),
+    // capped at 2 years out so a near-zero spare budget doesn't suggest an
+    // absurd timeline. Null when there's no spare budget to save from at all,
+    // or the amount is already covered.
+    private static int? RecommendedGoalCycles(decimal amountStillNeeded, decimal cycleSpare)
+    {
+        if (amountStillNeeded <= 0 || cycleSpare <= 0) return null;
+        const int maxCycles = 104;
+        var minCycles = (int)Math.Ceiling(amountStillNeeded / (cycleSpare * 0.5m));
+        return Math.Clamp(minCycles, 1, maxCycles);
     }
 
     // Kept for any remaining callers; new code prefers State.PaydaysBefore.
