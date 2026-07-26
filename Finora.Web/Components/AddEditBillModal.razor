@@ -18,7 +18,7 @@
             </div>
             <div style="display:flex;gap:8px">
                 <div style="flex:1">
-                    <label class="form-label">Due Date</label>
+                    <label class="form-label">@(isInstallment ? "Final Payment Date" : "Due Date")</label>
                     <input class="form-input" type="date" @bind="dueDate" />
                 </div>
                 <div style="flex:1">

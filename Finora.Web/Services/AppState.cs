@@ -262,7 +262,14 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     // Called by MainLayout on every app-visible event so a sync interrupted by
     // iOS suspension doesn't permanently block the guard.
-    public void ForceResetSyncGuard() => _syncInProgress = false;
+    // Only resets the guard if the sync has been running longer than the internal
+    // 25-second watchdog — prevents a visibility event from racing a concurrent
+    // DebouncedSyncAsync call and tearing up its deletion defence.
+    public void ForceResetSyncGuard()
+    {
+        if ((DateTime.UtcNow - _syncStartedAt).TotalSeconds > 25)
+            _syncInProgress = false;
+    }
 
     public string LastSyncChangeSummary { get; private set; } = "No sync changes summarized yet.";
     public string? LastSyncPushStatus { get; private set; }
@@ -4093,6 +4100,24 @@ public class AppState(IndexedDbService db, SyncService sync)
     // bill-linked debts.
     public async Task<Bill> AddInstallmentBillAsync(Bill b, decimal totalAmountDollars)
     {
+        // The user-entered DueDate is the LAST (final) payment. Walk it back to
+        // the first payment so GetUpcomingBillOccurrences advances forward correctly.
+        if (b.AmountDollars > 0)
+        {
+            var numPayments = (int)Math.Ceiling(totalAmountDollars / b.AmountDollars);
+            if (numPayments > 1)
+            {
+                b.DueDate = b.Frequency switch
+                {
+                    BillFrequency.Weekly      => b.DueDate.AddDays(-7  * (numPayments - 1)),
+                    BillFrequency.Fortnightly => b.DueDate.AddDays(-14 * (numPayments - 1)),
+                    BillFrequency.Monthly     => b.DueDate.AddMonths(-(numPayments - 1)),
+                    BillFrequency.Quarterly   => b.DueDate.AddMonths(-3 * (numPayments - 1)),
+                    BillFrequency.Yearly      => b.DueDate.AddYears(-(numPayments - 1)),
+                    _                         => b.DueDate.AddDays(-7  * (numPayments - 1))
+                };
+            }
+        }
         await AddBillAsync(b);
 
         var debt = await AddDebtAsync(new Debt
