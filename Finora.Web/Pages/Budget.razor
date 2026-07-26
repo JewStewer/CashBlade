@@ -55,18 +55,7 @@
         </div>
     </section>
 
-    <div class="budget-subtabs">
-        <button class="@(_overviewSubTab=="Summary"?"is-active":"")" @onclick='() => _overviewSubTab = "Summary"'>
-            <Icon Name="activity" Size="14" />
-            <span>Now</span>
-        </button>
-        <button class="@(_overviewSubTab=="Plan"?"is-active":"")" @onclick='() => _overviewSubTab = "Plan"'>
-            <Icon Name="sliders-horizontal" Size="14" />
-            <span>Plan</span>
-        </button>
-    </div>
-
-    @if (_overviewSubTab == "Summary")
+    @if (true)
     {
     <!-- Payday transfer plan -->
     @if (transferPlan.Any())
@@ -74,8 +63,8 @@
         <div class="card" style="margin-top:12px;border-color:@(allDone ? "rgba(16,185,129,0.4)" : "rgba(245,158,11,0.4)")">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
                 <div>
-                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Payday Transfer Plan</div>
-                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account before @State.NextPayDate.ToString("dd MMM") so each account can cover its own bills</div>
+                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Weekly Budget Transfers</div>
+                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account as part of this week's budget before @State.NextPayDate.ToString("dd MMM")</div>
                 </div>
                 @if (allDone)
                 {
@@ -186,7 +175,7 @@
     }
     }
 
-    @if (_overviewSubTab == "Plan")
+    @if (true)
     {
     <!-- Budget overview card -->
     <div class="card" style="margin-top:12px">
@@ -582,7 +571,7 @@
     }
     }
 
-    @if (_overviewSubTab == "Summary" && State.WeeklyIncome > 0)
+    @if (State.WeeklyIncome > 0)
     {
         var todayInPeriod = DateTime.Today.Date < PeriodRange.From.Date
             ? PeriodRange.From.Date
@@ -778,7 +767,7 @@
         </div>
     }
 
-    @if (_overviewSubTab == "Plan")
+    @if (true)
     {
     <!-- Debts -->
     @if (State.Debts.Any())
@@ -1843,7 +1832,6 @@ else if (_tab == "Holiday")
 
 @code {
     private string _tab = "Overview";
-    private string _overviewSubTab = "Summary";
     private bool _showWeeklyBreakdown;
     private SavingsGoal? _goalDraft;
     private string? _expandedGoalGroupName;
