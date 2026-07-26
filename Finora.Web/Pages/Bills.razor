@@ -314,7 +314,7 @@ else
                 .ToList();
     }
 
-    private decimal BillWeekly(Bill b) => State.GetBillFundingWeekly(b);
+    private decimal BillWeekly(Bill b) => State.GetBillRecurringWeekly(b);
 
     private static string FreqAbbr(BillFrequency freq) => freq switch
     {

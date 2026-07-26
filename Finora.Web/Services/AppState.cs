@@ -1656,19 +1656,25 @@ public class AppState(IndexedDbService db, SyncService sync)
     }
 
     public decimal ActualBillsPerWeek =>
-        Math.Round(Bills.Sum(GetBillFundingWeekly), 2);
+        Math.Round(Bills.Sum(GetBillRecurringWeekly), 2);
+
+    public decimal GetBillRecurringWeekly(Bill bill)
+    {
+        if (bill.AmountDollars <= 0) return 0m;
+        return Math.Round(GetWeeklyEquivalent(bill.AmountDollars, bill.Frequency), 2);
+    }
 
     public decimal GetBillFundingWeekly(Bill bill)
     {
         if (bill.AmountDollars <= 0) return 0m;
 
-        var frequencyWeekly = GetWeeklyEquivalent(bill.AmountDollars, bill.Frequency);
+        var recurringWeekly = GetBillRecurringWeekly(bill);
         var dueDate = (bill.EffectiveDueDate == default ? bill.DueDate : bill.EffectiveDueDate).Date;
         var payCyclesUntilDue = PaydaysBefore(dueDate);
         var weeksUntilLastPaydayBeforeDue = Math.Max(payCyclesUntilDue * Math.Max(PayIntervalDays, 1) / 7m, 1m);
         var catchUpWeekly = bill.AmountDollars / weeksUntilLastPaydayBeforeDue;
 
-        return Math.Round(Math.Max(frequencyWeekly, catchUpWeekly), 2);
+        return Math.Round(Math.Max(recurringWeekly, catchUpWeekly), 2);
     }
 
     /// <summary>Budget category for an account group ("Bills", "Essentials", "Unplanned").
@@ -1733,7 +1739,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         foreach (var b in Bills)
         {
-            var wk = GetBillFundingWeekly(b);
+            var wk = GetBillRecurringWeekly(b);
             var bCat = GetBillBudgetCategory(b);
             switch (bCat)
             {
@@ -2432,7 +2438,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         var income = WeeklyIncome > 0 ? WeeklyIncome : GetAverageWeeklyIncome(from, to);
 
-        var bills = Bills.Sum(GetBillFundingWeekly);
+        var bills = Bills.Sum(GetBillRecurringWeekly);
 
         var discretionary = Transactions
             .Where(t => t.Date.Date >= from && t.Date.Date <= to && t.AmountCents < 0

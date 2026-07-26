@@ -1956,7 +1956,7 @@ else if (_tab == "Holiday")
         _showBudgetAddPicker = false;
     }
 
-    private decimal BillWeekly(Bill b) => State.GetBillFundingWeekly(b);
+    private decimal BillWeekly(Bill b) => State.GetBillRecurringWeekly(b);
 
     private static string FreqAbbr(BillFrequency freq) => freq switch
     {
@@ -2552,7 +2552,7 @@ else if (_tab == "Holiday")
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .Sum(b => b.AmountDollars);
                 // futureBillsWeekly: bills due after this pay period but within 91 days.
-                // Uses BillWeekly so a weekly $83 bill shows $83/wk, not a pro-rated fraction.
+                // Uses due-date funding so transfers begin before the bill's last payday.
                 var futureBillsWeekly = State.Bills
                     .Where(b => !State.IsBillPaid(b) &&
                                 b.EffectiveDueDate.Date > payEnd &&
@@ -2560,7 +2560,7 @@ else if (_tab == "Holiday")
                                 (b.AccountId == a.Id ||
                                  (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                                   string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
-                    .Sum(b => BillWeekly(b));
+                    .Sum(State.GetBillFundingWeekly);
                 var futureBillsThisPeriod = Math.Round(futureBillsWeekly * PayCycleWeeks, 2);
                 var baseShortfall = transferred - afterBills;
                 var requiredThisPeriod = Math.Max(baseShortfall, 0m) + futureBillsThisPeriod;
