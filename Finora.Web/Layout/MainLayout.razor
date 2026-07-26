@@ -7,7 +7,7 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<div class="app-shell">
+<div class="app-shell" style="@AccentStyle">
     <header class="app-header">
         <div class="logo">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -134,6 +134,15 @@
     private bool _safeSyncInProgress;
     private bool _showAddTxn;
     private bool _showAddBill;
+
+    // Overrides the default teal CSS variables on the root shell so a user's
+    // accent choice cascades to every descendant that already reads
+    // var(--teal)/var(--teal-light) — buttons, badges, progress bars, active
+    // pills — without touching per-page --card-accent overrides (those stay
+    // their own distinct hue on Budget/Bills/Accounts/Tools).
+    private string AccentStyle => AppState.AccentPresets.TryGetValue(State.AccentColor, out var c)
+        ? $"--teal:{c.Main};--teal-light:{c.Light};"
+        : "";
 
     private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
     private bool IsTransactionsRoute => CurrentPath.Equals("transactions", StringComparison.OrdinalIgnoreCase);

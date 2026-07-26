@@ -97,7 +97,32 @@ public class AppState(IndexedDbService db, SyncService sync)
     public int DaysUntilPayday => Math.Max((NextPayDate.Date - DateTime.Today).Days, 0);
     public int PayIntervalDays { get; private set; } = 7;
     public string SummaryPeriod { get; private set; } = "Weekly";
+    public string AccentColor { get; private set; } = "teal";
     public bool NoSpendMode { get; private set; }
+
+    // Preset accent colours (main, light) — keys match the CSS custom property
+    // pairs (--teal/--teal-light) that MainLayout overrides at runtime so a
+    // choice here recolors buttons, badges, progress bars etc. app-wide without
+    // touching per-page --card-accent overrides (Budget/Bills/Accounts/Tools
+    // keep their own distinct hue regardless of this setting).
+    public static readonly Dictionary<string, (string Main, string Light)> AccentPresets = new()
+    {
+        ["teal"]   = ("#0D9488", "#14B8A6"),
+        ["blue"]   = ("#2563EB", "#3B82F6"),
+        ["purple"] = ("#7C3AED", "#A78BFA"),
+        ["amber"]  = ("#D97706", "#FBBF24"),
+        ["green"]  = ("#16A34A", "#34D399"),
+        ["cyan"]   = ("#0891B2", "#22D3EE"),
+        ["coral"]  = ("#E11D48", "#FB7185"),
+        ["indigo"] = ("#4F46E5", "#818CF8"),
+    };
+
+    public async Task SetAccentColorAsync(string key)
+    {
+        if (!AccentPresets.ContainsKey(key)) return;
+        AccentColor = key;
+        await SaveSettingAsync("AccentColor", key);
+    }
     public DateTime? NoSpendModeSince { get; private set; }
 
     // ── Affordability savings goal (shared setting keys with WPF) ─────────────
@@ -1235,6 +1260,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         PayIntervalDays = int.TryParse(GetSetting("PayIntervalDays"), out var pid) && pid > 0 ? pid : 7;
         SummaryPeriod = GetSetting("SummaryPeriod") ?? "Weekly";
+        AccentColor = GetSetting("AccentColor") is string accent && AccentPresets.ContainsKey(accent) ? accent : "teal";
         NoSpendMode = string.Equals(GetSetting("NoSpendMode"), "true", StringComparison.OrdinalIgnoreCase);
         NoSpendModeSince = DateTime.TryParse(GetSetting("NoSpendModeSince"), out var noSpendSince) ? noSpendSince : null;
 

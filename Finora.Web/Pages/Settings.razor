@@ -233,6 +233,28 @@ else if (_tab == "Preferences")
             }
         </div>
     </div>
+
+    <!-- Accent colour -->
+    <div class="card">
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px">Accent Colour</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Changes buttons, badges and highlights across the app.</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+            @foreach (var (key, hex) in AppState.AccentPresets)
+            {
+                var isActive = State.AccentColor == key;
+                <button style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 4px;border-radius:10px;cursor:pointer;background:@(isActive ? "var(--surface2)" : "transparent");border:1px solid @(isActive ? hex.Light : "var(--border)")"
+                        @onclick="() => SetAccentColorAsync(key)">
+                    <span style="width:22px;height:22px;border-radius:50%;background:@hex.Light;display:flex;align-items:center;justify-content:center">
+                        @if (isActive)
+                        {
+                            <Icon Name="check" Size="12" />
+                        }
+                    </span>
+                    <span style="font-size:11px;color:var(--text2);text-transform:capitalize">@key</span>
+                </button>
+            }
+        </div>
+    </div>
 }
 else if (_tab == "Notifications")
 {
@@ -795,6 +817,8 @@ else if (_tab == "Data")
     {
         await State.SaveSettingAsync("SummaryPeriod", period);
     }
+
+    private async Task SetAccentColorAsync(string key) => await State.SetAccentColorAsync(key);
 
     private async Task AddCategory()
     {
