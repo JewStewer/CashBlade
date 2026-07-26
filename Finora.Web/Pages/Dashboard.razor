@@ -13,31 +13,6 @@
 else
 {
     <div class="dashboard-shell">
-        <section class="ultimate-balance">
-            <div class="ultimate-balance-head">
-                <span>Evergrove Core</span>
-                <button class="sync-pill" @onclick="QuickSyncAsync" disabled="@_quickSyncing">
-                    @(_quickSyncing ? "Syncing" : "Sync Now")
-                </button>
-            </div>
-            <div class="balance-label">Total Active Balance</div>
-            <div class="balance-total @(State.TotalBalance < 0 ? "negative" : "")">@State.TotalBalance.ToString("C")</div>
-            <div class="balance-grid">
-                <div>
-                    <span>Net Worth</span>
-                    <strong class="@(State.NetWorth < 0 ? "negative" : "")">@State.NetWorth.ToString("C")</strong>
-                </div>
-                <div>
-                    <span>Savings</span>
-                    <strong class="positive">@State.SavingsTotal.ToString("C")</strong>
-                </div>
-                <div>
-                    <span>Debt</span>
-                    <strong class="negative">@State.DebtTotal.ToString("C")</strong>
-                </div>
-            </div>
-        </section>
-
         <section class="hero-summary @MobileStatusTone">
             <div class="hero-copy">
                 <div class="hero-kicker">Today's Brief</div>
@@ -45,6 +20,20 @@ else
                 <div class="hero-message">@MobileStatusMessage</div>
             </div>
             <button class="btn btn-sm btn-secondary" @onclick="() => Nav.NavigateTo(MobileStatusRoute)">@MobileStatusAction</button>
+        </section>
+
+        <section class="home-money-card">
+            <div>
+                <span>Total Balance</span>
+                <strong class="@(State.TotalBalance < 0 ? "negative" : "")">@State.TotalBalance.ToString("C")</strong>
+            </div>
+            <div>
+                <span>Safe To Spend</span>
+                <strong class="@(State.SafeToSpendAmount > 0 ? "positive" : "negative")">@State.SafeToSpendAmount.ToString("C")</strong>
+            </div>
+            <button class="sync-pill" @onclick="QuickSyncAsync" disabled="@_quickSyncing">
+                @(_quickSyncing ? "Syncing" : "Sync")
+            </button>
         </section>
 
         <section class="budget-pulse">
@@ -70,14 +59,7 @@ else
                     <strong class="@(PayCycleNet < 0 ? "negative" : "positive")">@PayCycleNet.ToString("C")</strong>
                 </div>
             </div>
-        </section>
-
-        <section class="dashboard-module payday-module">
-            <div class="module-head">
-                <span>Next Payday</span>
-                <strong>@(State.DaysUntilPayday == 0 ? "Today" : $"{State.DaysUntilPayday}d")</strong>
-            </div>
-            <p>@State.NextPayDate.ToString("dd MMM yyyy") &middot; @State.TotalBillsDue.ToString("C") in bills due before then.</p>
+            <p style="margin-top:8px">@State.NextPayDate.ToString("dd MMM yyyy") &middot; @State.TotalBillsDue.ToString("C") in bills due before then.</p>
             @if (State.TotalBillShortfall > 0)
             {
                 <p class="negative">Transfer @State.TotalBillShortfall.ToString("C") now to cover bills before payday.</p>
@@ -116,7 +98,7 @@ else
             <button class="quick-action tone-budget" @onclick='() => Nav.NavigateTo("budget")'>
                 <span><Icon Name="dollar-sign" Size="14" /></span>
                 <strong>Budget</strong>
-                <small>Safe-to-spend</small>
+                <small>Plan &amp; track</small>
             </button>
             <button class="quick-action tone-bill" @onclick="() => Ui.OpenAddBill()">
                 <span><Icon Name="clipboard" Size="14" /></span>
@@ -128,63 +110,7 @@ else
                 <strong>Tools</strong>
                 <small>Smart mode</small>
             </button>
-            <button class="@NoSpendQuickActionClass" @onclick="ToggleNoSpendModeAsync">
-                <span><Icon Name="@(State.NoSpendMode ? "lock" : "shield")" Size="14" /></span>
-                <strong>No Spend</strong>
-                <small>@(State.NoSpendMode ? "Tap to unlock" : "Lock it down")</small>
-            </button>
         </div>
-
-        <div class="module-grid">
-            <button class="dashboard-module no-spend-module @(State.NoSpendMode ? "is-on" : "")" @onclick="ToggleNoSpendModeAsync">
-                <span>No-Spend Mode</span>
-                <strong style="color:@(State.NoSpendMode ? "var(--red)" : "var(--green)")">@(State.NoSpendMode ? "Active" : NoSpendSuggestion)</strong>
-                <small>@NoSpendMessage</small>
-            </button>
-            <button class="dashboard-module safe-spend-module" @onclick='() => Nav.NavigateTo("budget")'>
-                <span>Safe To Spend</span>
-                <strong style="color:@(State.SafeToSpendAmount > 0 ? "var(--green)" : "var(--red)")">@State.SafeToSpendAmount.ToString("C")</strong>
-                <small>@SafeSpendMessage</small>
-            </button>
-            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("tools")'>
-                <span>Savings Streak</span>
-                <strong>@State.Streak.CurrentStreakWeeks week@(State.Streak.CurrentStreakWeeks == 1 ? "" : "s")</strong>
-                <small>Best: @State.Streak.BestStreakWeeks week@(State.Streak.BestStreakWeeks == 1 ? "" : "s")</small>
-            </button>
-            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("tools")'>
-                <span>Level @State.Xp.Level</span>
-                <strong>@State.Xp.XpIntoLevel/100 XP</strong>
-                <small>@State.Xp.TotalXp total XP</small>
-            </button>
-            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("transactions")'>
-                <span>Best Week Ever</span>
-                <strong style="color:var(--green)">@BestWeekEver.Amount.ToString("C")</strong>
-                <small>Week of @BestWeekEver.WeekStart.ToString("dd MMM")</small>
-            </button>
-            <button class="dashboard-module" @onclick='() => Nav.NavigateTo("transactions")'>
-                <span>Vs Last Week</span>
-                <strong style="color:@(State.SpendDeltaVsLastWeek <= 0 ? "var(--green)" : "var(--red)")">@(State.SpendDeltaVsLastWeek <= 0 ? "-" : "+")@Math.Abs(State.SpendDeltaVsLastWeek).ToString("C")</strong>
-                <small>@(State.SpendDeltaVsLastWeek <= 0 ? "Spending less" : "Spending more")</small>
-            </button>
-        </div>
-
-        @if (State.OutstandingLentDollars > 0)
-        {
-            <section class="dashboard-module reimburse-module">
-                <div class="module-head">
-                    <span>Money Owed Back</span>
-                    <strong>@State.OutstandingLentDollars.ToString("C")</strong>
-                </div>
-                <p>Excluded from budget spending. If paid back, safe-to-spend becomes @State.SafeToSpendIfReimbursed.ToString("C").</p>
-                @foreach (var item in OutstandingLentItems.Take(3))
-                {
-                    <button class="mini-row" @onclick='() => Nav.NavigateTo("transactions")'>
-                        <span>@item.Transaction.Description</span>
-                        <b>@State.GetLentOutstandingDollars(item.Transaction).ToString("C")</b>
-                    </button>
-                }
-            </section>
-        }
 
         @if (ActionPrompts.Any())
         {
@@ -203,54 +129,6 @@ else
             </div>
         }
 
-        @if (SmartSignals.Any())
-        {
-            <div class="section-header dashboard-section-head">
-                <span class="section-title">Smart Signals</span>
-            </div>
-            <div class="action-stack action-stack-compact">
-                @foreach (var signal in SmartSignals)
-                {
-                    <button class="action-card @InsightTone(signal)" @onclick="() => OpenInsight(signal)">
-                        <span class="status-dot"></span>
-                        <span>
-                            <strong>@signal.Title</strong>
-                            <small>@signal.Message</small>
-                        </span>
-                        <b>Open</b>
-                    </button>
-                }
-            </div>
-        }
-
-        @if (State.BillsDueBeforePayday.Count > 0)
-        {
-            <div class="section-header dashboard-section-head">
-                <span class="section-title">Bills Due Soon</span>
-                <span style="font-size:13px;color:var(--red);font-weight:600">@State.TotalBillsDue.ToString("C")</span>
-            </div>
-            <div class="card-list dashboard-list">
-                @foreach (var bill in State.BillsDueBeforePayday.Take(5))
-                {
-                    <div class="list-row">
-                        <div class="row-icon" style="background:rgba(248,113,113,0.15);color:var(--red)"><Icon Name="alert-circle" /></div>
-                        <div class="row-main">
-                            <div class="row-title">@bill.Name</div>
-                            <div class="row-sub">@bill.AccountName - @bill.EffectiveDueDate.ToString("dd MMM")</div>
-                        </div>
-                        <span class="row-amount neg">@bill.AmountDollars.ToString("C")</span>
-                    </div>
-                }
-                @if (State.BillsDueBeforePayday.Count > 5)
-                {
-                    <div class="list-more">+@(State.BillsDueBeforePayday.Count - 5) more</div>
-                }
-                <div class="list-action">
-                    <button class="btn btn-sm btn-secondary btn-full" @onclick='() => Nav.NavigateTo("bills")'>Open Bills</button>
-                </div>
-            </div>
-        }
-
         <div class="section-header dashboard-section-head">
             <span class="section-title">Recent Activity</span>
             <button class="btn btn-sm btn-secondary" @onclick='() => Nav.NavigateTo("transactions")' style="padding:4px 10px;font-size:12px">See all</button>
@@ -265,7 +143,7 @@ else
             }
             else
             {
-                @foreach (var t in State.RecentTransactions.Take(8))
+                @foreach (var t in State.RecentTransactions.Take(5))
                 {
                     var visual = CategoryIcon.Get(t.CategoryName);
                     <div class="list-row">
@@ -306,7 +184,6 @@ else
     private decimal PayCycleNet => PayCycleIncome - PayCycleSpend;
     private decimal ThisWeek => State.GetWeekSpending(0);
     private decimal LastWeek => State.GetWeekSpending(1);
-    private string NoSpendQuickActionClass => $"quick-action no-spend-action{(State.NoSpendMode ? " is-on" : "")}";
 
     private string SafeSpendPercentCss
     {

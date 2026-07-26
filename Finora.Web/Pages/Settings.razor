@@ -207,9 +207,15 @@ else if (_tab == "Preferences")
 {
     <!-- Payday -->
     <div class="card">
-        <div style="font-size:14px;font-weight:600;margin-bottom:12px">Payday</div>
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
+            <div>
+                <div style="font-size:14px;font-weight:600">Payday</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px">Pick any payday in your cycle and the app will keep rolling it forward.</div>
+            </div>
+            <span class="badge badge-teal" style="white-space:nowrap">@State.NextPayDate.ToString("dd MMM")</span>
+        </div>
         <div>
-            <label class="form-label">Next Pay Date</label>
+            <label class="form-label">Payday date</label>
             <input class="form-input" type="date" @bind="nextPayDate" />
         </div>
         <div style="margin-top:10px">
@@ -219,6 +225,10 @@ else if (_tab == "Preferences")
                 <button class="pill @(payIntervalDays==14?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick="() => SetPayInterval(14)">Fortnightly</button>
                 <button class="pill @(payIntervalDays==28?"pill-active":"pill-inactive")" style="flex:1;text-align:center" @onclick="() => SetPayInterval(28)">4-Weekly</button>
             </div>
+        </div>
+        <div class="inset-card" style="margin-top:10px;font-size:12px;color:var(--text2);line-height:1.45">
+            Next payday will show as <strong style="color:var(--text)">@State.ProjectUpcomingPayday(nextPayDate).ToString("dddd, dd MMM yyyy")</strong>.
+            After that, it repeats every @payIntervalDays day@(payIntervalDays == 1 ? "" : "s").
         </div>
         <button class="btn btn-primary btn-sm" style="margin-top:10px" @onclick="SavePayDate">Save</button>
     </div>
@@ -815,12 +825,14 @@ else if (_tab == "Data")
     private async Task SavePayDate()
     {
         await State.SaveSettingAsync("NextPayDate", nextPayDate.ToString("O"));
+        nextPayDate = State.NextPayDate;
     }
 
     private async Task SetPayInterval(int days)
     {
         payIntervalDays = days;
         await State.SaveSettingAsync("PayIntervalDays", days.ToString());
+        nextPayDate = State.NextPayDate;
     }
 
     private async Task SetPeriod(string period)

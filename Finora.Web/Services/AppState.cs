@@ -1304,13 +1304,22 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private void ComputeSettings()
     {
+        PayIntervalDays = int.TryParse(GetSetting("PayIntervalDays"), out var pid) && pid > 0 ? pid : 7;
+
+        // The stored value is just the last date the user (or WPF) entered —
+        // it's never overwritten automatically, so once that date passes it
+        // would otherwise sit in the past until manually re-entered. Re-derive
+        // the actual upcoming payday from it here on every load/recompute
+        // instead: advance by the pay interval until it's today or later. This
+        // is idempotent (always recomputed fresh from the stored anchor, never
+        // written back), so it can't drift or double-advance across sessions.
         var npd = GetSetting("NextPayDate");
         if (npd is not null && DateTime.TryParse(npd, out var dt))
-            NextPayDate = dt.Date;
+            NextPayDate = ProjectUpcomingPayday(dt.Date);
         else
+        {
             NextPayDate = DateTime.Today;
-
-        PayIntervalDays = int.TryParse(GetSetting("PayIntervalDays"), out var pid) && pid > 0 ? pid : 7;
+        }
         SummaryPeriod = GetSetting("SummaryPeriod") ?? "Weekly";
         AccentColor = GetSetting("AccentColor") is string accent && HexColorRegex.IsMatch(accent) ? accent : DefaultAccentColor;
         BorderColor = GetSetting("BorderColor") is string border && HexColorRegex.IsMatch(border) ? border : DefaultBorderColor;
@@ -2246,28 +2255,33 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     public (DateTime from, DateTime to) GetCurrentPayCycle()
     {
-        var cycleDays = PayIntervalDays;
+        var cycleDays = Math.Max(PayIntervalDays, 1);
         var today = DateTime.Today;
-        var nextPayday = NextPayDate.Date;
-        while (nextPayday < today)
-            nextPayday = nextPayday.AddDays(cycleDays);
+        var nextPayday = ProjectUpcomingPayday(NextPayDate.Date);
 
         var from = nextPayday == today ? today : nextPayday.AddDays(-cycleDays);
         var to = nextPayday == today ? today.AddDays(cycleDays - 1) : nextPayday.AddDays(-1);
         return (from, to);
     }
 
+    public DateTime ProjectUpcomingPayday(DateTime anchor)
+    {
+        var cycleDays = Math.Max(PayIntervalDays, 1);
+        var payday = anchor.Date;
+        while (payday < DateTime.Today)
+            payday = payday.AddDays(cycleDays);
+        return payday;
+    }
+
     /// <summary>Counts paydays that fall strictly before <paramref name="target"/>, minimum 1.</summary>
     public int PaydaysBefore(DateTime target)
     {
-        var payday = NextPayDate.Date;
-        while (payday < DateTime.Today)
-            payday = payday.AddDays(PayIntervalDays);
+        var payday = ProjectUpcomingPayday(NextPayDate.Date);
         int count = 0;
         while (payday < target.Date)
         {
             count++;
-            payday = payday.AddDays(PayIntervalDays);
+            payday = payday.AddDays(Math.Max(PayIntervalDays, 1));
         }
         return Math.Max(count, 1);
     }
@@ -2275,10 +2289,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     /// <summary>Returns the date of the <paramref name="n"/>th upcoming payday (1-indexed; 1 = next payday).</summary>
     public DateTime NthPaydayFromNow(int n)
     {
-        var payday = NextPayDate.Date;
-        while (payday < DateTime.Today)
-            payday = payday.AddDays(PayIntervalDays);
-        return payday.AddDays(PayIntervalDays * (Math.Max(n, 1) - 1));
+        var payday = ProjectUpcomingPayday(NextPayDate.Date);
+        return payday.AddDays(Math.Max(PayIntervalDays, 1) * (Math.Max(n, 1) - 1));
     }
 
     // ── Week spending helpers ──────────────────────────────────────────────────

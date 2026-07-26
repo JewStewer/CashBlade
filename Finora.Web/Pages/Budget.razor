@@ -5,21 +5,17 @@
 
 <PageTitle>Budget — Evergrove</PageTitle>
 
-<div class="pill-tabs">
+<div class="pill-tabs budget-tabs">
     @foreach (var t in new[]{"Overview","Spending","History","Forecast","Daily","Holiday"})
     {
         <button class="pill @(_tab==t?"pill-active":"pill-inactive")" @onclick="() => SelectTopPill(t)">@t</button>
     }
 </div>
 
-<div style="padding:16px">
+<div class="budget-page">
 
 @if (_tab == "Overview")
 {
-    <div style="display:flex;gap:6px;margin-bottom:4px">
-        <button class="pill @(_overviewSubTab=="Summary"?"pill-active":"pill-inactive")" @onclick='() => _overviewSubTab = "Summary"'>Summary</button>
-        <button class="pill @(_overviewSubTab=="Plan"?"pill-active":"pill-inactive")" @onclick='() => _overviewSubTab = "Plan"'>Plan</button>
-    </div>
     <div>
     @{
         var transferPlan = GetFullTransferPlan();
@@ -33,7 +29,43 @@
             .OrderByDescending(x => x.Txn!.Date)
             .ToList();
         var trulyOverBudget = State.BudgetSafeToSpendAmount <= 0 && State.WeeklyIncome > 0;
+        var committedThisCycle = WhatIfAllocated * PayCycleWeeks;
+        var spendRoom = Math.Max(State.BudgetSafeToSpendAmount, 0m);
+        var dailyRoomTop = spendRoom / Math.Max((State.NextPayDate.Date - DateTime.Today).Days, 1);
     }
+    <section class="budget-hero-card @(trulyOverBudget ? "is-tight" : totalStillNeeded > 0 ? "is-warning" : "is-ok")">
+        <div class="budget-hero-main">
+            <span>Budget today</span>
+            <strong>@(trulyOverBudget ? "Hold spending" : spendRoom.ToString("C"))</strong>
+            <small>
+                @(trulyOverBudget
+                    ? "Your planned money is fully allocated for this cycle."
+                    : $"{dailyRoomTop:C}/day until {State.NextPayDate:dd MMM}.")
+            </small>
+        </div>
+        <div class="budget-hero-side">
+            <div>
+                <span>Move</span>
+                <strong>@totalStillNeeded.ToString("C")</strong>
+            </div>
+            <div>
+                <span>Committed</span>
+                <strong>@committedThisCycle.ToString("C")</strong>
+            </div>
+        </div>
+    </section>
+
+    <div class="budget-subtabs">
+        <button class="@(_overviewSubTab=="Summary"?"is-active":"")" @onclick='() => _overviewSubTab = "Summary"'>
+            <Icon Name="activity" Size="14" />
+            <span>Now</span>
+        </button>
+        <button class="@(_overviewSubTab=="Plan"?"is-active":"")" @onclick='() => _overviewSubTab = "Plan"'>
+            <Icon Name="sliders-horizontal" Size="14" />
+            <span>Plan</span>
+        </button>
+    </div>
+
     @if (_overviewSubTab == "Summary")
     {
     <!-- Payday transfer plan -->

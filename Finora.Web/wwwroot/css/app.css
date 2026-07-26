@@ -442,6 +442,42 @@ button, a, input, select, textarea, [role="button"] {
     font-weight: 800;
 }
 
+.home-money-card {
+    margin: 12px 16px 0;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--teal-light), var(--border) 76%);
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(45,212,191,0.10), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 160%);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.home-money-card span {
+    display: block;
+    color: var(--text3);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.home-money-card strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--text);
+    font-size: 17px;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+}
+
+.home-money-card .sync-pill {
+    min-height: 36px;
+}
+
 .balance-total {
     color: var(--teal-light);
     font-size: 32px;
@@ -551,7 +587,7 @@ button, a, input, select, textarea, [role="button"] {
 }
 
 .quick-actions-ultimate {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .quick-actions-ultimate .quick-action {
@@ -604,14 +640,16 @@ button.dashboard-module:active {
 }
 
 .dashboard-module small,
-.dashboard-module p {
+.dashboard-module p,
+.budget-pulse p {
     display: block;
     color: var(--text2);
     font-size: 12px;
     line-height: 1.35;
     margin: 7px 0 0;
-    min-height: 33px;
 }
+
+.dashboard-module p { min-height: 33px; }
 
 .no-spend-module {
     border-color: rgba(52,211,153,0.35);
@@ -684,6 +722,22 @@ button.dashboard-module:active {
 @media (max-width: 380px) {
     .quick-actions-ultimate {
         grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .home-money-card {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .home-money-card .sync-pill {
+        grid-column: 1 / -1;
+    }
+
+    .budget-hero-card {
+        grid-template-columns: 1fr;
+    }
+
+    .budget-hero-side {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .module-grid,
@@ -1134,6 +1188,118 @@ button.dashboard-module:active {
     border-radius: 2px;
     background: var(--teal);
     transition: width 0.3s ease;
+}
+
+.budget-page {
+    padding: 0 16px 16px;
+}
+
+.budget-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-width: none;
+}
+
+.budget-tabs .pill {
+    min-width: 82px;
+    text-align: center;
+}
+
+.budget-hero-card {
+    border: 1px solid color-mix(in srgb, var(--hero-tone), var(--border) 68%);
+    border-radius: 16px;
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--hero-tone) 15%, transparent), transparent 46%),
+        linear-gradient(180deg, var(--surface), var(--bg) 150%);
+    padding: 15px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(112px, 0.75fr);
+    gap: 12px;
+    align-items: stretch;
+    margin-bottom: 10px;
+}
+
+.budget-hero-card.is-ok { --hero-tone: var(--green); }
+.budget-hero-card.is-warning { --hero-tone: var(--amber); }
+.budget-hero-card.is-tight { --hero-tone: var(--red); }
+
+.budget-hero-main span,
+.budget-hero-side span {
+    display: block;
+    color: var(--text3);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.budget-hero-main strong {
+    display: block;
+    color: var(--hero-tone);
+    font-size: 30px;
+    line-height: 1.02;
+    font-weight: 850;
+    margin-top: 5px;
+    overflow-wrap: anywhere;
+}
+
+.budget-hero-main small {
+    display: block;
+    color: var(--text2);
+    font-size: 12px;
+    line-height: 1.35;
+    margin-top: 7px;
+}
+
+.budget-hero-side {
+    display: grid;
+    gap: 8px;
+}
+
+.budget-hero-side div {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 10px;
+    background: var(--bg);
+}
+
+.budget-hero-side strong {
+    display: block;
+    color: var(--text);
+    font-size: 15px;
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+}
+
+.budget-subtabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 2px;
+}
+
+.budget-subtabs button {
+    min-height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    color: var(--text2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 750;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.budget-subtabs button.is-active {
+    color: #fff;
+    border-color: var(--blue);
+    background: var(--blue);
 }
 
 /* ── Goal jar fill: a subtle animated sheen reads as "filling liquid" without a real jar shape ── */
