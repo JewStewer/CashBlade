@@ -1,4 +1,4 @@
-@page "/budget"
+﻿@page "/budget"
 @inject AppState State
 @inject NavigationManager Nav
 @inject UiState Ui
@@ -19,7 +19,7 @@
     <div>
     @{
         var transferPlan = GetFullTransferPlan();
-        var allDone = transferPlan.All(x => x.IsDone && x.FutureBillsWeekly == 0);
+        var allDone = transferPlan.Any() && transferPlan.All(x => x.IsDone && x.FutureBillsWeekly == 0);
         var payBalance = State.GetAccountBalance(State.PayAccountId);
         var totalStillNeeded = transferPlan.Where(x => !x.IsDone).Sum(x => x.Remaining);
         var afterTransfers = payBalance - totalStillNeeded;
@@ -45,7 +45,7 @@
         </div>
         <div class="budget-hero-side">
             <div>
-                <span>Move</span>
+                <span>To fund</span>
                 <strong>@totalStillNeeded.ToString("C")</strong>
             </div>
             <div>
@@ -54,134 +54,22 @@
             </div>
         </div>
     </section>
-
-    @if (true)
-    {
-    <!-- Payday transfer plan -->
-    @if (transferPlan.Any())
-    {
-        <div class="card" style="margin-top:12px;border-color:@(allDone ? "rgba(16,185,129,0.4)" : "rgba(245,158,11,0.4)")">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-                <div>
-                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="repeat" Size="14" /> Weekly Budget Transfers</div>
-                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Move this from your pay account as part of this week's budget before @State.NextPayDate.ToString("dd MMM")</div>
-                </div>
-                @if (allDone)
-                {
-                    <span style="font-size:13px;font-weight:600;color:var(--teal);white-space:nowrap">All done</span>
-                }
-                else
-                {
-                    <span style="font-size:14px;font-weight:700;color:var(--amber);white-space:nowrap">@totalStillNeeded.ToString("C") to go</span>
-                }
-            </div>
-            <!-- Spending account summary pinned below the header so it's always visible -->
-            <div style="display:flex;gap:12px;margin-bottom:10px;padding:6px 8px;background:var(--surface2);border-radius:8px;flex-wrap:wrap">
-                <div style="display:flex;flex-direction:column">
-                    <span style="font-size:10px;color:var(--text3)">Spending account</span>
-                    <span style="font-size:13px;font-weight:700">@payBalance.ToString("C")</span>
-                </div>
-                @if (!allDone)
-                {
-                    <div style="display:flex;flex-direction:column">
-                        <span style="font-size:10px;color:var(--text3)">After transfers</span>
-                        <span style="font-size:13px;font-weight:700;color:@(afterTransfers >= 0 ? "var(--teal)" : "var(--red)")">@afterTransfers.ToString("C")</span>
-                    </div>
-                }
-            </div>
-            @foreach (var item in transferPlan)
-            {
-                var fullyDone = item.IsDone && item.FutureBillsWeekly == 0;
-                <div style="margin-bottom:10px;opacity:@(fullyDone ? "0.5" : "1")">
-                    <div style="display:flex;align-items:center;gap:10px">
-                        <div class="dot" style="background:@item.AccountColorHex;flex-shrink:0"></div>
-                        <span style="flex:1;font-size:14px">@item.AccountName</span>
-                        @if (fullyDone)
-                        {
-                            <span style="font-size:12px;color:var(--teal);font-weight:600">Done</span>
-                        }
-                        else if (!item.IsDone)
-                        {
-                            <span style="font-size:14px;font-weight:700;color:var(--amber)">@item.Remaining.ToString("C")</span>
-                        }
-                        else
-                        {
-                            <span style="font-size:13px;font-weight:700;color:var(--amber)">@item.FutureBillsWeekly.ToString("C")/wk</span>
-                        }
-                    </div>
-                    @if (item.BillsTotal > 0 || item.TransferredThisPeriod > 0 || item.FutureBillsWeekly > 0)
-                    {
-                        <div style="margin-left:22px;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
-                            @if (item.BillsTotal > 0)
-                            {
-                                <span style="font-size:10px;color:var(--text3)">@item.BillsTotal.ToString("C") in bills</span>
-                            }
-                            @if (item.TransferredThisPeriod > 0)
-                            {
-                                <span style="font-size:10px;color:var(--teal)">- @item.TransferredThisPeriod.ToString("C") sent</span>
-                            }
-                            @if (item.FutureBillsWeekly > 0)
-                            {
-                                <span style="font-size:10px;color:var(--amber)">- @item.FutureBillsWeekly.ToString("C")/wk until due</span>
-                            }
-                        </div>
-                    }
-                </div>
-            }
-        </div>
-    }
-
-    <!-- Pending reimbursements -->
-    @if (unrepaid.Any())
-    {
-        var totalOwed = unrepaid.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
-        // Grouped by who it's owed from — the same free-text "Who?" note entered
-        // when a transaction is marked lent out (see Transactions.razor) — so
-        // money owed by different people shows as separate running totals
-        // instead of one undifferentiated list.
-        var groups = unrepaid
-            .GroupBy(x => string.IsNullOrWhiteSpace(x.Lent.Note) ? "Other" : x.Lent.Note.Trim(), StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(g => g.Sum(x => State.GetLentOutstandingDollars(x.Txn!)));
-        <div class="card" style="margin-top:12px;border-color:rgba(99,102,241,0.4)">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <div>
-                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="users" Size="14" /> Pending Reimbursements</div>
-                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Excluded from your spending until marked repaid</div>
-                </div>
-                <span style="font-size:14px;font-weight:700;color:#818CF8">@totalOwed.ToString("C")</span>
-            </div>
-            @foreach (var group in groups)
-            {
-                var groupTotal = group.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                    <span style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase">@group.Key</span>
-                    <span style="font-size:12px;font-weight:600;color:#818CF8">@groupTotal.ToString("C")</span>
-                </div>
-                @foreach (var (lent, txn) in group)
-                {
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-                        <div style="flex:1;min-width:0">
-                            <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@txn!.Description</div>
-                            <div style="font-size:11px;color:var(--text3)">@txn.Date.ToString("d MMM")</div>
-                        </div>
-                        <span style="font-size:14px;font-weight:600;color:#818CF8;flex-shrink:0">@State.GetLentOutstandingDollars(txn).ToString("C") owed</span>
-                        <button @onclick="() => State.MarkRepaidAsync(lent.Id)" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);color:var(--green);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
-                            Got paid back <Icon Name="check" Size="12" />
-                        </button>
-                    </div>
-                }
-            }
-        </div>
-    }
-    }
-
-    @if (true)
-    {
     <!-- Budget overview card -->
     <div class="card" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-            <div class="section-title">Planned Weekly Budget</div>
+            <div>
+                <div class="section-title">Planned Weekly Budget</div>
+                <div style="font-size:11px;color:var(--text3);opacity:0.75;margin-top:2px">Includes the money you need to move out of your pay account.</div>
+            </div>
             <div style="display:flex;gap:6px;align-items:center">
+                @if (allDone)
+                {
+                    <span class="badge badge-green" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Funded</span>
+                }
+                else if (totalStillNeeded > 0)
+                {
+                    <span class="badge badge-amber" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="repeat" Size="11" /> @totalStillNeeded.ToString("C") left</span>
+                }
                 @if (!_editingBudget)
                 {
                     <button class="btn btn-sm btn-secondary" @onclick="() => { _showBudgetAddPicker = !_showBudgetAddPicker; _showBudgetEnvelopeForm = false; }">+ Add</button>
@@ -230,6 +118,19 @@
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">
             @(_editingBudget ? "Set your own weekly targets from your phone - overrides the PC budget until changed again." : "How you've told PC to split your income each week")
         </div>
+        @if (!_editingBudget && transferPlan.Any())
+        {
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px">
+                <div style="background:var(--surface2);border-radius:8px;padding:8px">
+                    <div class="stat-label">Pay account</div>
+                    <div style="font-size:14px;font-weight:700">@payBalance.ToString("C")</div>
+                </div>
+                <div style="background:var(--surface2);border-radius:8px;padding:8px">
+                    <div class="stat-label">After moves</div>
+                    <div style="font-size:14px;font-weight:700;color:@(afterTransfers >= 0 ? "var(--green)" : "var(--red)")">@afterTransfers.ToString("C")</div>
+                </div>
+            </div>
+        }
         @if (_editingBudget)
         {
             <div style="display:flex;flex-direction:column;gap:10px">
@@ -308,11 +209,11 @@
                                 <div style="display:flex;align-items:center;gap:5px">
                                     @if (transferDone == true)
                                     {
-                                        <span style="font-size:12px;color:var(--teal);font-weight:600" title="Transfer done">Done</span>
+                                        <span style="font-size:11px;color:var(--green);font-weight:700;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Enough has been transferred">Funded</span>
                                     }
                                     else if (transferDone == false)
                                     {
-                                        <span style="font-size:11px;color:var(--amber);font-weight:600" title="Transfer needed">Move@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
+                                        <span style="font-size:11px;color:var(--amber);font-weight:700;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Transfer needed">Move@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
                                     }
                                     @if (excludedSubWeekly > 0 && !isExcluded)
                                     {
@@ -486,7 +387,7 @@
                         {
                             var grpCat = State.GetBillAccountBudgetCategory(account);
                             var (grpColor, grpBg) = CatColors(grpCat);
-                            <!-- Account header — pill sets the default for all unoverridden bills in this group -->
+                            <!-- Account header â€” pill sets the default for all unoverridden bills in this group -->
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;padding:5px 8px;background:var(--surface2);border-radius:7px">
                                 <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
                                     <span style="font-size:12px;font-weight:700;color:var(--text2)">@account</span>
@@ -591,13 +492,13 @@
         var recentFrom = todayInPeriod.AddDays(-(recentDays - 1));
         var recentSpend = State.GetDiscretionarySpendingForPeriod(recentFrom, todayInPeriod);
         var recentDailyRate = recentDays > 0 ? recentSpend / recentDays : currentDailyAverage;
-        // Blend: 60% recent rate + 40% period average once we have ≥4 days of data
+        // Blend: 60% recent rate + 40% period average once we have â‰¥4 days of data
         var projectionRate = elapsedDays >= 4
             ? recentDailyRate * 0.6m + currentDailyAverage * 0.4m
             : currentDailyAverage;
-        // Today's spend — needed before projectedSpend so we can exclude it from the
+        // Today's spend â€” needed before projectedSpend so we can exclude it from the
         // projection base (today is already counted in daysRemaining, so projecting
-        // from "spend excluding today" × daysRemaining avoids a double-count).
+        // from "spend excluding today" Ã— daysRemaining avoids a double-count).
         var todaySpend = State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
         var projectedSpend = Math.Round((spendToDate - todaySpend) + projectionRate * daysRemaining, 2);
         var projectedDelta = projectedSpend - PeriodBudget;
@@ -763,6 +664,45 @@
                         </label>
                     }
                 </div>
+            }
+        </div>
+    }
+
+    <!-- Pending reimbursements -->
+    @if (unrepaid.Any())
+    {
+        var totalOwed = unrepaid.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
+        var groups = unrepaid
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Lent.Note) ? "Other" : x.Lent.Note.Trim(), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Sum(x => State.GetLentOutstandingDollars(x.Txn!)));
+        <div class="card" style="margin-top:12px;border-color:rgba(99,102,241,0.4)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div>
+                    <div class="section-title" style="display:flex;align-items:center;gap:6px"><Icon Name="users" Size="14" /> Pending Reimbursements</div>
+                    <div style="font-size:11px;color:var(--text3);opacity:0.7;margin-top:2px">Excluded from your spending until marked repaid</div>
+                </div>
+                <span style="font-size:14px;font-weight:700;color:#818CF8">@totalOwed.ToString("C")</span>
+            </div>
+            @foreach (var group in groups)
+            {
+                var groupTotal = group.Sum(x => State.GetLentOutstandingDollars(x.Txn!));
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <span style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase">@group.Key</span>
+                    <span style="font-size:12px;font-weight:600;color:#818CF8">@groupTotal.ToString("C")</span>
+                </div>
+                @foreach (var (lent, txn) in group)
+                {
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+                        <div style="flex:1;min-width:0">
+                            <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@txn!.Description</div>
+                            <div style="font-size:11px;color:var(--text3)">@txn.Date.ToString("d MMM")</div>
+                        </div>
+                        <span style="font-size:14px;font-weight:600;color:#818CF8;flex-shrink:0">@State.GetLentOutstandingDollars(txn).ToString("C") owed</span>
+                        <button @onclick="() => State.MarkRepaidAsync(lent.Id)" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.4);color:var(--green);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
+                            Got paid back <Icon Name="check" Size="12" />
+                        </button>
+                    </div>
+                }
             }
         </div>
     }
@@ -943,7 +883,7 @@
                 var account = State.AffordabilityGoalAccount;
                 var currentBalance = account is not null ? State.GetAccountBalance(account.Id) : 0m;
                 // The entered amount is the TOTAL you want sitting in the account, not
-                // extra on top of what's already there — if it already has $350 and you
+                // extra on top of what's already there â€” if it already has $350 and you
                 // enter $700, only the remaining $350 needs to be saved.
                 var amountStillNeeded = account is not null ? Math.Max(_affordAmount - currentBalance, 0m) : _affordAmount;
                 var cycleNeeded = Math.Round(amountStillNeeded / cycles, 2);
@@ -1082,7 +1022,7 @@
                     <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                         <span style="color:var(--text3)">Repayments</span>
-                        <span style="font-weight:600">@count × @perInstallment.ToString("C") / @freq wk@(freq == 1 ? "" : "s")</span>
+                        <span style="font-weight:600">@count Ã— @perInstallment.ToString("C") / @freq wk@(freq == 1 ? "" : "s")</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;font-size:13px">
                         <span style="color:var(--text3)">Adds to your spending</span>
@@ -1119,7 +1059,7 @@
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                     <span style="color:var(--text3)">This purchase</span>
-                    <span style="font-weight:600;color:var(--red)">−@_affordAmount.ToString("C")</span>
+                    <span style="font-weight:600;color:var(--red)">âˆ’@_affordAmount.ToString("C")</span>
                 </div>
                 <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:14px">
                     <span style="color:var(--text3)">Remaining after</span>
@@ -1692,7 +1632,7 @@ else if (_tab == "Holiday")
                         <input class="form-input" style="flex:1" placeholder="Category name" @bind="_newCategoryName" @bind:event="oninput"
                                @onkeydown='async e => { if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newCategoryName)) await CreateAndPickCategoryAsync(); }' />
                         <button class="btn btn-primary btn-sm" @onclick="CreateAndPickCategoryAsync" disabled="@string.IsNullOrWhiteSpace(_newCategoryName)">Create</button>
-                        <button class="btn btn-secondary btn-sm" @onclick='() => { _showNewCatInput = false; _newCategoryName = ""; }'>✕</button>
+                        <button class="btn btn-secondary btn-sm" @onclick='() => { _showNewCatInput = false; _newCategoryName = ""; }'>âœ•</button>
                     </div>
                 }
             </div>
@@ -1958,7 +1898,7 @@ else if (_tab == "Holiday")
     private DateTime GoalTargetDate => State.NthPaydayFromNow(Math.Max(_goalWeeks, 1) + 1);
     private string CycleLabel => State.PayIntervalDays switch { 14 => "fn", 28 => "4wk", _ => "wk" };
 
-    // Multipliers applied to the user's chosen "Over how many weeks?" value —
+    // Multipliers applied to the user's chosen "Over how many weeks?" value â€”
     // Aggressive halves it, Balanced matches it, Passive doubles it, so all
     // three cards recalculate live as weeks/amount change.
     private static readonly (string Label, decimal Multiplier, string Color)[] PaceOptions =
@@ -2583,7 +2523,7 @@ else if (_tab == "Holiday")
         decimal FutureBillsWeekly);
 
     // Builds the payday transfer plan including accounts that are already fully
-    // funded this period — so ticks can show even after AfterBills flips positive.
+    // funded this period â€” so ticks can show even after AfterBills flips positive.
     //
     // baseShortfall = transferred_this_period - AfterBills
     //               = billsDue - balanceBeforeThisPeriod'sTransfers
@@ -2604,7 +2544,7 @@ else if (_tab == "Holiday")
             .Select(a =>
             {
                 var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
-                // GetAccountForecast is the authoritative source for afterBills — it uses
+                // GetAccountForecast is the authoritative source for afterBills â€” it uses
                 // the app's own date-windowing logic and won't include historical unpaid bills.
                 var afterBills = State.GetAccountForecast(a.Id).AfterBills;
                 // billsTotal is display-only: match by AccountId OR AccountName fallback
@@ -2744,11 +2684,11 @@ else if (_tab == "Holiday")
     }
 
 
-    // The actual lump sum that lands each payday — NOT State.WeeklyIncome, which
+    // The actual lump sum that lands each payday â€” NOT State.WeeklyIncome, which
     // is a weekly-normalized figure used for budgeting math elsewhere. Injecting
     // WeeklyIncome here (as this used to) understates the real deposit for
     // anyone not paid weekly (fortnightly/4-weekly), since it's roughly a
-    // quarter to a half of what actually arrives — that made the forecast
+    // quarter to a half of what actually arrives â€” that made the forecast
     // between real paydays look like it was dropping far more than it really
     // will, because the simulated "raises" were too small to offset real bills.
     private decimal ForecastPayAmount =>
@@ -2772,7 +2712,7 @@ else if (_tab == "Holiday")
     {
         if (ForecastPayAmount <= 0) return false;
 
-        // Must advance by the user's actual pay interval, not a hardcoded 7 —
+        // Must advance by the user's actual pay interval, not a hardcoded 7 â€”
         // otherwise a fortnightly/4-weekly earner gets a fake payday injected
         // every single week, which desyncs the projected balance from the real
         // one more and more the further out the forecast runs.
