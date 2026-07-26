@@ -314,15 +314,7 @@ else
                 .ToList();
     }
 
-    private static decimal BillWeekly(Bill b) => Math.Round(b.Frequency switch
-    {
-        BillFrequency.Weekly      => b.AmountDollars,
-        BillFrequency.Fortnightly => b.AmountDollars / 2m,
-        BillFrequency.Monthly     => b.AmountDollars / 4m,
-        BillFrequency.Quarterly   => b.AmountDollars / 12m,
-        BillFrequency.Yearly      => b.AmountDollars / 48m,
-        _                         => 0m
-    }, 2);
+    private decimal BillWeekly(Bill b) => State.GetBillFundingWeekly(b);
 
     private static string FreqAbbr(BillFrequency freq) => freq switch
     {

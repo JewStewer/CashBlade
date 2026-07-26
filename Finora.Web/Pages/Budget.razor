@@ -19,7 +19,7 @@
     <div>
     @{
         var transferPlan = GetFullTransferPlan();
-        var allDone = transferPlan.Any() && transferPlan.All(x => x.IsDone && x.FutureBillsWeekly == 0);
+        var allDone = transferPlan.Any() && transferPlan.All(x => x.IsDone);
         var payBalance = State.GetAccountBalance(State.PayAccountId);
         var totalStillNeeded = transferPlan.Where(x => !x.IsDone).Sum(x => x.Remaining);
         var afterTransfers = payBalance - totalStillNeeded;
@@ -1956,15 +1956,7 @@ else if (_tab == "Holiday")
         _showBudgetAddPicker = false;
     }
 
-    private static decimal BillWeekly(Bill b) => Math.Round(b.Frequency switch
-    {
-        BillFrequency.Weekly      => b.AmountDollars,
-        BillFrequency.Fortnightly => b.AmountDollars / 2m,
-        BillFrequency.Monthly     => b.AmountDollars / 4m,
-        BillFrequency.Quarterly   => b.AmountDollars / 12m,
-        BillFrequency.Yearly      => b.AmountDollars / 48m,
-        _                         => 0m
-    }, 2);
+    private decimal BillWeekly(Bill b) => State.GetBillFundingWeekly(b);
 
     private static string FreqAbbr(BillFrequency freq) => freq switch
     {
@@ -2482,8 +2474,9 @@ else if (_tab == "Holiday")
     }
 
     // Returns (Done, Needed) for the budget category's transfer status.
-    // Done=true: every account covering bills here has AfterBills >= 0.
-    // Done=false: at least one is short; Needed = total shortfall in dollars.
+    // Done=true: every account covering bills here has enough moved for current
+    // bills plus this pay cycle's future-bill funding.
+    // Done=false: at least one is short; Needed = total still to move.
     // Done=null: no bills map to a known account (nothing to check).
     // Resolves accounts by AccountId first, then AccountName fallback for bills
     // with AccountId=0 (e.g. Afterpay, Subscriptions shared-account bills).
@@ -2508,11 +2501,14 @@ else if (_tab == "Holiday")
         }
         if (!accountIds.Any()) return (null, 0);
 
-        var needed = accountIds
-            .Select(id => State.GetAccountForecast(id).AfterBills)
-            .Where(ab => ab < 0)
-            .Sum(ab => -ab);
+        var planByAccount = GetFullTransferPlan().ToDictionary(x => x.AccountId);
+        var matchedPlans = accountIds
+            .Where(planByAccount.ContainsKey)
+            .Select(id => planByAccount[id])
+            .ToList();
+        if (!matchedPlans.Any()) return (null, 0);
 
+        var needed = matchedPlans.Sum(p => p.Remaining);
         return (needed <= 0, needed);
     }
 
@@ -2520,15 +2516,15 @@ else if (_tab == "Holiday")
         int AccountId, string AccountName, string AccountColorHex,
         decimal BaseShortfall, decimal Remaining, bool IsDone,
         decimal TransferredThisPeriod, decimal BillsTotal,
-        decimal FutureBillsWeekly);
+        decimal FutureBillsWeekly, decimal FutureBillsThisPeriod);
 
     // Builds the payday transfer plan including accounts that are already fully
     // funded this period â€” so ticks can show even after AfterBills flips positive.
     //
     // baseShortfall = transferred_this_period - AfterBills
     //               = billsDue - balanceBeforeThisPeriod'sTransfers
-    // An account appears if baseShortfall > 0 (it needed money at period start).
-    // IsDone = AfterBills >= 0 (account can now cover its bills).
+    // Future bills add one pay cycle of funding before they become due, ending at
+    // the payday immediately before the due date.
     private List<TransferPlanEntry> GetFullTransferPlan()
     {
         var periodFrom = PeriodRange.From.Date;
@@ -2565,21 +2561,26 @@ else if (_tab == "Holiday")
                                  (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                                   string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .Sum(b => BillWeekly(b));
+                var futureBillsThisPeriod = Math.Round(futureBillsWeekly * PayCycleWeeks, 2);
+                var baseShortfall = transferred - afterBills;
+                var requiredThisPeriod = Math.Max(baseShortfall, 0m) + futureBillsThisPeriod;
+                var remaining = Math.Max(0m, requiredThisPeriod - transferred);
                 return new TransferPlanEntry(
                     AccountId: a.Id,
                     AccountName: a.Name,
                     AccountColorHex: a.ColorHex,
-                    BaseShortfall: transferred - afterBills,
-                    Remaining: Math.Max(0m, -afterBills),
-                    IsDone: afterBills >= 0m,
+                    BaseShortfall: baseShortfall,
+                    Remaining: remaining,
+                    IsDone: remaining <= 0m,
                     TransferredThisPeriod: transferred,
                     BillsTotal: billsTotal,
-                    FutureBillsWeekly: futureBillsWeekly
+                    FutureBillsWeekly: futureBillsWeekly,
+                    FutureBillsThisPeriod: futureBillsThisPeriod
                 );
             })
-            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0 || x.TransferredThisPeriod > 0 || x.FutureBillsWeekly > 0)
-            .OrderBy(x => x.IsDone && x.FutureBillsWeekly == 0 ? 1 : 0)
-            .ThenByDescending(x => x.IsDone && x.FutureBillsWeekly == 0 ? x.BillsTotal : x.IsDone ? x.FutureBillsWeekly : x.Remaining)
+            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0 || x.TransferredThisPeriod > 0 || x.FutureBillsThisPeriod > 0)
+            .OrderBy(x => x.IsDone && x.FutureBillsThisPeriod == 0 ? 1 : 0)
+            .ThenByDescending(x => x.IsDone && x.FutureBillsThisPeriod == 0 ? x.BillsTotal : x.IsDone ? x.FutureBillsThisPeriod : x.Remaining)
             .ToList();
     }
 
