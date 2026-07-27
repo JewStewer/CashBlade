@@ -59,14 +59,6 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
             <div class="section-title">Planned Weekly Budget</div>
             <div style="display:flex;gap:6px;align-items:center">
-                @if (allDone)
-                {
-                    <span class="badge badge-green" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="11" /> Funded</span>
-                }
-                else if (totalStillNeeded > 0)
-                {
-                    <span class="badge badge-amber" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="repeat" Size="11" /> @totalStillNeeded.ToString("C") to fund</span>
-                }
                 @if (!_editingBudget)
                 {
                     <button class="btn btn-sm btn-secondary" @onclick="() => { _showBudgetAddPicker = !_showBudgetAddPicker; _showBudgetEnvelopeForm = false; }">+ Add</button>

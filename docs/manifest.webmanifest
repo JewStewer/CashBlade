@@ -1,7 +1,7 @@
 {
   "name": "Evergrove",
   "short_name": "Evergrove",
-  "version": "v2026.07.27.02",
+  "version": "v2026.07.27.03",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
