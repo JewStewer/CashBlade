@@ -56,11 +56,8 @@
     </section>
     <!-- Budget overview card -->
     <div class="card" style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-            <div>
-                <div class="section-title">Planned Weekly Budget</div>
-                <div style="font-size:11px;color:var(--text3);opacity:0.75;margin-top:2px">Includes the money you need to move out of your pay account.</div>
-            </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div class="section-title">Planned Weekly Budget</div>
             <div style="display:flex;gap:6px;align-items:center">
                 @if (allDone)
                 {
@@ -68,15 +65,7 @@
                 }
                 else if (totalStillNeeded > 0)
                 {
-                    <span class="badge badge-amber" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="repeat" Size="11" /> @totalStillNeeded.ToString("C") left</span>
-                }
-                @if (!_editingBudget && State.WeeklyIncome > 0)
-                {
-                    var _leftBg    = State.BudgetLeftover >= 0 ? "rgba(245,158,11,0.18)" : "rgba(239,68,68,0.18)";
-                    var _leftColor = State.BudgetLeftover >= 0 ? "#92400E" : "#7F1D1D";
-                    <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:@_leftBg;color:@_leftColor">
-                        @State.BudgetLeftover.ToString("C") left
-                    </span>
+                    <span class="badge badge-amber" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="repeat" Size="11" /> @totalStillNeeded.ToString("C") to fund</span>
                 }
                 @if (!_editingBudget)
                 {
@@ -125,6 +114,11 @@
         }
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px;opacity:0.7">
             @(_editingBudget ? "Set your own weekly targets from your phone - overrides the PC budget until changed again." : "How you've told PC to split your income each week")
+            @if (!_editingBudget && State.WeeklyIncome > 0)
+            {
+                var _uColor = State.BudgetLeftover >= 0 ? "#92400E" : "#B91C1C";
+                <span style="font-weight:700;color:@_uColor;opacity:1"> · @State.BudgetLeftover.ToString("C") unallocated</span>
+            }
         </div>
         @if (!_editingBudget && transferPlan.Any())
         {
@@ -477,7 +471,6 @@
                 </div>
             }
         </div>
-    }
     }
 
     @if (State.WeeklyIncome > 0)
