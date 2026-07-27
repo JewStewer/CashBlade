@@ -70,6 +70,14 @@
                 {
                     <span class="badge badge-amber" style="display:inline-flex;align-items:center;gap:4px"><Icon Name="repeat" Size="11" /> @totalStillNeeded.ToString("C") left</span>
                 }
+                @if (!_editingBudget && State.WeeklyIncome > 0)
+                {
+                    var _leftBg    = State.BudgetLeftover >= 0 ? "rgba(245,158,11,0.18)" : "rgba(239,68,68,0.18)";
+                    var _leftColor = State.BudgetLeftover >= 0 ? "#92400E" : "#7F1D1D";
+                    <span style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:@_leftBg;color:@_leftColor">
+                        @State.BudgetLeftover.ToString("C") left
+                    </span>
+                }
                 @if (!_editingBudget)
                 {
                     <button class="btn btn-sm btn-secondary" @onclick="() => { _showBudgetAddPicker = !_showBudgetAddPicker; _showBudgetEnvelopeForm = false; }">+ Add</button>
