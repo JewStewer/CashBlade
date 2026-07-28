@@ -2510,10 +2510,8 @@ else if (_tab == "Holiday")
     }
 
     private sealed record TransferPlanEntry(
-        int AccountId, string AccountName, string AccountColorHex,
-        decimal BaseShortfall, decimal Remaining, bool IsDone,
-        decimal TransferredThisPeriod, decimal BillsTotal,
-        decimal FutureBillsWeekly, decimal FutureBillsThisPeriod);
+        int AccountId, decimal BaseShortfall, decimal Remaining, bool IsDone,
+        decimal TransferredThisPeriod, decimal BillsTotal, decimal FutureBillsThisPeriod);
 
     // Builds the payday transfer plan including accounts that are already fully
     // funded this period — so ticks can show even after remaining flips to zero.
@@ -2565,14 +2563,11 @@ else if (_tab == "Holiday")
                 var remaining = Math.Max(0m, baseShortfall);
                 return new TransferPlanEntry(
                     AccountId: a.Id,
-                    AccountName: a.Name,
-                    AccountColorHex: a.ColorHex,
                     BaseShortfall: baseShortfall,
                     Remaining: remaining,
                     IsDone: remaining <= 0m,
                     TransferredThisPeriod: transferred,
                     BillsTotal: billsTotal,
-                    FutureBillsWeekly: futureBillsWeekly,
                     FutureBillsThisPeriod: futureBillsThisPeriod
                 );
             })
