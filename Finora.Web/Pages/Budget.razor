@@ -2537,30 +2537,32 @@ else if (_tab == "Holiday")
             {
                 var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
                 var currentBalance = State.GetAccountBalance(a.Id);
-                // Bills with AccountId==0 are linked by AccountName; match both ways so
-                // accounts aren't treated as over-funded when bills use the name link.
+                // Bills with AccountId==0 are linked by AccountName; match both ways.
                 var billsTotal = State.Bills
                     .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd &&
                         (b.AccountId == a.Id ||
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .Sum(b => b.AmountDollars);
-                // futureBillsWeekly: bills due after this pay period but within 91 days.
-                var futureBillsWeekly = State.Bills
+                // Future bills: need both the total amount (for Funded/remaining check) and
+                // the weekly catch-up rate (for the per-period badge cap).
+                var futureBillsList = State.Bills
                     .Where(b => !State.IsBillPaid(b) &&
                                 b.EffectiveDueDate.Date > payEnd &&
                                 b.EffectiveDueDate.Date <= futureHorizon &&
                                 (b.AccountId == a.Id ||
                                  (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                                   string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
-                    .Sum(State.GetBillFundingWeekly);
+                    .ToList();
+                var futureBillsTotal = futureBillsList.Sum(b => b.AmountDollars);
+                var futureBillsWeekly = futureBillsList.Sum(b => State.GetBillFundingWeekly(b));
                 var futureBillsThisPeriod = Math.Round(futureBillsWeekly * PayCycleWeeks, 2);
-                // remaining = how much MORE the account needs to cover bills + one cycle of
-                // future-bill pre-funding, given what's already in it. Crediting the full
-                // current balance (not just transfers) prevents a high pre-existing balance
-                // from showing a spurious "Move $X" for future bills.
-                var baseShortfall = billsTotal - currentBalance;
-                var remaining = Math.Max(0m, billsTotal + futureBillsThisPeriod - currentBalance);
+                // "Funded" means the saver holds enough for ALL upcoming bill amounts, not
+                // just this pay period's weekly-rate contribution. Using bill amounts (not
+                // rates × cycles) stops a saver showing Funded after the first weekly top-up
+                // when the full bill hasn't accumulated yet.
+                var baseShortfall = billsTotal + futureBillsTotal - currentBalance;
+                var remaining = Math.Max(0m, baseShortfall);
                 return new TransferPlanEntry(
                     AccountId: a.Id,
                     AccountName: a.Name,
