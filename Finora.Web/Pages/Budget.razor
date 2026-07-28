@@ -2525,13 +2525,11 @@ else if (_tab == "Holiday")
 
     private sealed record TransferPlanEntry(int AccountId, decimal Required, decimal Remaining, bool IsDone);
 
-    // Builds the payday transfer plan: each account's Required is the sum of what
-    // should already be saved today toward every unpaid bill assigned to it, using
-    // GetBillRequiredToDate's progressive accrual (a bill due in 6 months and one
-    // due next week are both weighed by how far through their own cycle they are,
-    // so there's no horizon cutoff that lets a far-future bill hide entirely).
-    // Remaining compares that against the account's live balance, so both a missed
-    // transfer and money moved back out mid-week surface as still-needed.
+    // Builds the payday transfer plan. Required = full sum of unpaid bill amounts for
+    // the account — the saver needs to hold the complete bill amount before the bill
+    // hits, not just a prorated slice. Progress bar and Move badge then show the real
+    // shortfall: if the saver has $26 toward a $105 monthly bill it shows 25% funded
+    // and "Move $79", rather than "Funded" just because one week's worth has accrued.
     private List<TransferPlanEntry> GetFullTransferPlan()
     {
         return State.Accounts
@@ -2545,7 +2543,7 @@ else if (_tab == "Holiday")
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .ToList();
-                var required = bills.Sum(b => State.GetBillRequiredToDate(b));
+                var required = bills.Sum(b => b.AmountDollars);
                 var currentBalance = State.GetAccountBalance(a.Id);
                 var remaining = Math.Max(0m, required - currentBalance);
                 return (Entry: new TransferPlanEntry(a.Id, required, remaining, remaining <= 0m), HasBills: bills.Count > 0);
