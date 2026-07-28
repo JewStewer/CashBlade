@@ -207,7 +207,7 @@
                                     }
                                     else if (transferDone == false)
                                     {
-                                        <span style="font-size:11px;color:var(--amber);font-weight:700;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Transfer needed">Move@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
+                                        <span style="font-size:11px;color:var(--amber);font-weight:700;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="How much more to move to be caught up">Move@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
                                     }
                                     @if (excludedSubWeekly > 0 && !isExcluded)
                                     {
@@ -2467,9 +2467,11 @@ else if (_tab == "Holiday")
     }
 
     // Returns (Done, Needed) for the budget category's transfer status.
-    // Done=true: every account covering bills here has enough moved for current
-    // bills plus this pay cycle's future-bill funding.
-    // Done=false: at least one is short; Needed = total still to move.
+    // Done=true: every account covering bills here already holds what should be
+    // saved by today across all its unpaid bills.
+    // Done=false: at least one is short; Needed = the real catch-up total still
+    // to move — not capped to a week's rate, so it reflects a missed transfer or
+    // money pulled back out mid-week just as much as an upcoming bill.
     // Done=null: no bills map to a known account (nothing to check).
     // Resolves accounts by AccountId first, then AccountName fallback for bills
     // with AccountId=0 (e.g. Afterpay, Subscriptions shared-account bills).
@@ -2502,78 +2504,39 @@ else if (_tab == "Holiday")
         if (!matchedPlans.Any()) return (null, 0);
 
         var remaining = matchedPlans.Sum(p => p.Remaining);
-        var isDone = remaining <= 0;
-        // Cap the displayed amount at one week's worth so the badge answers
-        // "am I current this week?" and decreases as transfers are made.
-        var weeklyRate = bills.Sum(b => State.GetBillFundingWeekly(b.Bill));
-        return (isDone, Math.Min(weeklyRate, remaining));
+        return (remaining <= 0, remaining);
     }
 
-    private sealed record TransferPlanEntry(
-        int AccountId, decimal BaseShortfall, decimal Remaining, bool IsDone,
-        decimal TransferredThisPeriod, decimal BillsTotal, decimal FutureBillsThisPeriod);
+    private sealed record TransferPlanEntry(int AccountId, decimal Required, decimal Remaining, bool IsDone);
 
-    // Builds the payday transfer plan including accounts that are already fully
-    // funded this period — so ticks can show even after remaining flips to zero.
-    //
-    // remaining = max(0, billsTotal + futureBillsThisPeriod - currentBalance)
-    // Credits the full current balance so a high pre-existing balance never
-    // produces a spurious “Move $X” for future bills.
+    // Builds the payday transfer plan: each account's Required is the sum of what
+    // should already be saved today toward every unpaid bill assigned to it, using
+    // GetBillRequiredToDate's progressive accrual (a bill due in 6 months and one
+    // due next week are both weighed by how far through their own cycle they are,
+    // so there's no horizon cutoff that lets a far-future bill hide entirely).
+    // Remaining compares that against the account's live balance, so both a missed
+    // transfer and money moved back out mid-week surface as still-needed.
     private List<TransferPlanEntry> GetFullTransferPlan()
     {
-        var periodFrom = PeriodRange.From.Date;
-        var payEnd = State.NextPayDate.Date >= DateTime.Today ? State.NextPayDate.Date : DateTime.Today.AddDays(14);
-        var futureHorizon = DateTime.Today.AddDays(91);
-        var transferredByAccount = State.Transactions
-            .Where(t => t.AmountCents > 0 && State.IsInternalMovement(t) && t.Date.Date >= periodFrom)
-            .GroupBy(t => t.AccountId)
-            .ToDictionary(g => g.Key, g => g.Sum(t => t.AmountCents) / 100m);
-
         return State.Accounts
             .Where(a => a.Id != State.PayAccountId && a.Type != AccountType.Credit)
             .Select(a =>
             {
-                var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
-                var currentBalance = State.GetAccountBalance(a.Id);
                 // Bills with AccountId==0 are linked by AccountName; match both ways.
-                var billsTotal = State.Bills
-                    .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd &&
+                var bills = State.Bills
+                    .Where(b => !State.IsBillPaid(b) &&
                         (b.AccountId == a.Id ||
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
-                    .Sum(b => b.AmountDollars);
-                // Future bills: need both the total amount (for Funded/remaining check) and
-                // the weekly catch-up rate (for the per-period badge cap).
-                var futureBillsList = State.Bills
-                    .Where(b => !State.IsBillPaid(b) &&
-                                b.EffectiveDueDate.Date > payEnd &&
-                                b.EffectiveDueDate.Date <= futureHorizon &&
-                                (b.AccountId == a.Id ||
-                                 (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
-                                  string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .ToList();
-                var futureBillsTotal = futureBillsList.Sum(b => b.AmountDollars);
-                var futureBillsWeekly = futureBillsList.Sum(b => State.GetBillFundingWeekly(b));
-                var futureBillsThisPeriod = Math.Round(futureBillsWeekly * PayCycleWeeks, 2);
-                // "Funded" means the saver holds enough for ALL upcoming bill amounts, not
-                // just this pay period's weekly-rate contribution. Using bill amounts (not
-                // rates × cycles) stops a saver showing Funded after the first weekly top-up
-                // when the full bill hasn't accumulated yet.
-                var baseShortfall = billsTotal + futureBillsTotal - currentBalance;
-                var remaining = Math.Max(0m, baseShortfall);
-                return new TransferPlanEntry(
-                    AccountId: a.Id,
-                    BaseShortfall: baseShortfall,
-                    Remaining: remaining,
-                    IsDone: remaining <= 0m,
-                    TransferredThisPeriod: transferred,
-                    BillsTotal: billsTotal,
-                    FutureBillsThisPeriod: futureBillsThisPeriod
-                );
+                var required = bills.Sum(State.GetBillRequiredToDate);
+                var currentBalance = State.GetAccountBalance(a.Id);
+                var remaining = Math.Max(0m, required - currentBalance);
+                return (Entry: new TransferPlanEntry(a.Id, required, remaining, remaining <= 0m), HasBills: bills.Count > 0);
             })
-            .Where(x => x.BaseShortfall > 0 || x.BillsTotal > 0 || x.TransferredThisPeriod > 0 || x.FutureBillsThisPeriod > 0)
-            .OrderBy(x => x.IsDone && x.FutureBillsThisPeriod == 0 ? 1 : 0)
-            .ThenByDescending(x => x.IsDone && x.FutureBillsThisPeriod == 0 ? x.BillsTotal : x.IsDone ? x.FutureBillsThisPeriod : x.Remaining)
+            .Where(x => x.HasBills)
+            .Select(x => x.Entry)
+            .OrderByDescending(x => x.Remaining)
             .ToList();
     }
 

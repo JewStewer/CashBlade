@@ -1677,6 +1677,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         return Math.Round(Math.Max(recurringWeekly, catchUpWeekly), 2);
     }
 
+    // How much of this bill's amount should already be sitting in its account today,
+    // given where we are in its recurrence cycle — grows smoothly from 0 right after
+    // the previous due date to the full amount by the next one, instead of jumping to
+    // the full amount only once it's due (which hid far-future bills entirely) or
+    // crediting just one pay period's worth (which let balances look "funded" long
+    // before the actual bill amount had accumulated).
+    public decimal GetBillRequiredToDate(Bill bill)
+    {
+        if (bill.AmountDollars <= 0) return 0m;
+        var dueDate = (bill.EffectiveDueDate == default ? bill.DueDate : bill.EffectiveDueDate).Date;
+        var prevDue = ReverseDueDate(dueDate, bill.Frequency);
+        var cycleDays = Math.Max((dueDate - prevDue).Days, 1);
+        var daysAccrued = Math.Clamp((DateTime.Today - prevDue).Days, 0, cycleDays);
+        return Math.Round(bill.AmountDollars * daysAccrued / cycleDays, 2);
+    }
+
     /// <summary>Budget category for an account group ("Bills", "Essentials", "Unplanned").
     /// Used as the default for individual bills that don't have a per-item override.</summary>
     public string GetBillAccountBudgetCategory(string accountName) =>
