@@ -2516,12 +2516,11 @@ else if (_tab == "Holiday")
         decimal FutureBillsWeekly, decimal FutureBillsThisPeriod);
 
     // Builds the payday transfer plan including accounts that are already fully
-    // funded this period â€” so ticks can show even after AfterBills flips positive.
+    // funded this period — so ticks can show even after remaining flips to zero.
     //
-    // baseShortfall = transferred_this_period - AfterBills
-    //               = billsDue - balanceBeforeThisPeriod'sTransfers
-    // Future bills add one pay cycle of funding before they become due, ending at
-    // the payday immediately before the due date.
+    // remaining = max(0, billsTotal + futureBillsThisPeriod - currentBalance)
+    // Credits the full current balance so a high pre-existing balance never
+    // produces a spurious “Move $X” for future bills.
     private List<TransferPlanEntry> GetFullTransferPlan()
     {
         var periodFrom = PeriodRange.From.Date;
@@ -2537,21 +2536,16 @@ else if (_tab == "Holiday")
             .Select(a =>
             {
                 var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
-                // Compute afterBills using the same AccountId-OR-AccountName matching as
-                // billsTotal and futureBillsWeekly below. GetAccountForecast only matches
-                // by AccountId, so bills linked by AccountName (AccountId==0) were not
-                // deducted — making those accounts look more funded than they are.
-                var billsDueBeforePay = State.Bills
+                var currentBalance = State.GetAccountBalance(a.Id);
+                // Bills with AccountId==0 are linked by AccountName; match both ways so
+                // accounts aren't treated as over-funded when bills use the name link.
+                var billsTotal = State.Bills
                     .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd &&
                         (b.AccountId == a.Id ||
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .Sum(b => b.AmountDollars);
-                var afterBills = State.GetAccountBalance(a.Id) - billsDueBeforePay;
-                // billsTotal is the same set — reuse for display
-                var billsTotal = billsDueBeforePay;
                 // futureBillsWeekly: bills due after this pay period but within 91 days.
-                // Uses due-date funding so transfers begin before the bill's last payday.
                 var futureBillsWeekly = State.Bills
                     .Where(b => !State.IsBillPaid(b) &&
                                 b.EffectiveDueDate.Date > payEnd &&
@@ -2561,9 +2555,12 @@ else if (_tab == "Holiday")
                                   string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .Sum(State.GetBillFundingWeekly);
                 var futureBillsThisPeriod = Math.Round(futureBillsWeekly * PayCycleWeeks, 2);
-                var baseShortfall = transferred - afterBills;
-                var requiredThisPeriod = Math.Max(baseShortfall, 0m) + futureBillsThisPeriod;
-                var remaining = Math.Max(0m, requiredThisPeriod - transferred);
+                // remaining = how much MORE the account needs to cover bills + one cycle of
+                // future-bill pre-funding, given what's already in it. Crediting the full
+                // current balance (not just transfers) prevents a high pre-existing balance
+                // from showing a spurious "Move $X" for future bills.
+                var baseShortfall = billsTotal - currentBalance;
+                var remaining = Math.Max(0m, billsTotal + futureBillsThisPeriod - currentBalance);
                 return new TransferPlanEntry(
                     AccountId: a.Id,
                     AccountName: a.Name,
