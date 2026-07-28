@@ -191,7 +191,8 @@
                 var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
                 var effectiveAmount = isExcluded ? 0m : Math.Max(amount - excludedSubWeekly, 0m);
                 var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0;
-                var (transferDone, transferNeeded) = GetBudgetCategoryTransferInfo(label);
+                var (transferDone, transferNeeded, transferRequired) = GetBudgetCategoryTransferInfo(label);
+                var transferCovered = transferRequired - transferNeeded;
 
                 <div style="margin-bottom:10px">
                     <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;opacity:@(isExcluded ? "0.35" : "1")"
@@ -236,6 +237,18 @@
                                     </span>
                                 }
                             </div>
+                            @if (transferDone == false && transferRequired > 0)
+                            {
+                                var coveredPct = (double)Math.Clamp(transferCovered / transferRequired, 0, 1);
+                                <div style="margin-top:5px;opacity:@(isExcluded ? "0.4" : "1")">
+                                    <div class="progress-bar" style="height:4px">
+                                        <div class="progress-fill" style="width:@((int)(coveredPct*100))%;background:var(--amber)"></div>
+                                    </div>
+                                    <span style="font-size:10px;color:var(--text3);margin-top:2px;display:inline-block">
+                                        @transferCovered.ToString("C") of @transferRequired.ToString("C") transferred this cycle
+                                    </span>
+                                </div>
+                            }
                         </div>
                     </div>
 
@@ -2466,19 +2479,21 @@ else if (_tab == "Holiday")
         return "Bills";
     }
 
-    // Returns (Done, Needed) for the budget category's transfer status.
-    // Done=true: every account covering bills here already holds what should be
-    // saved by today across all its unpaid bills.
-    // Done=false: at least one is short; Needed = the real catch-up total still
-    // to move — not capped to a week's rate, so it reflects a missed transfer or
-    // money pulled back out mid-week just as much as an upcoming bill.
+    // Returns (Done, Needed, Required) for the budget category's transfer status.
+    // Required = what should already be saved today across every unpaid bill on
+    // the matched accounts; Needed = the real catch-up shortfall still to move
+    // (Required minus what's already there, floored at 0) — not capped to a
+    // week's rate, so it reflects a missed transfer or money pulled back out
+    // mid-week just as much as an upcoming bill. Required minus Needed is what's
+    // actually been transferred so far, for showing partial progress.
+    // Done=true: fully caught up. Done=false: at least one account is short.
     // Done=null: no bills map to a known account (nothing to check).
     // Resolves accounts by AccountId first, then AccountName fallback for bills
     // with AccountId=0 (e.g. Afterpay, Subscriptions shared-account bills).
-    private (bool? Done, decimal Needed) GetBudgetCategoryTransferInfo(string label)
+    private (bool? Done, decimal Needed, decimal Required) GetBudgetCategoryTransferInfo(string label)
     {
         var bills = BillsForBudgetCategory(label);
-        if (!bills.Any()) return (null, 0);
+        if (!bills.Any()) return (null, 0, 0);
 
         var accountIds = new HashSet<int>();
         foreach (var (bill, _) in bills)
@@ -2494,17 +2509,18 @@ else if (_tab == "Holiday")
                 if (acct != null) accountIds.Add(acct.Id);
             }
         }
-        if (!accountIds.Any()) return (null, 0);
+        if (!accountIds.Any()) return (null, 0, 0);
 
         var planByAccount = GetFullTransferPlan().ToDictionary(x => x.AccountId);
         var matchedPlans = accountIds
             .Where(planByAccount.ContainsKey)
             .Select(id => planByAccount[id])
             .ToList();
-        if (!matchedPlans.Any()) return (null, 0);
+        if (!matchedPlans.Any()) return (null, 0, 0);
 
         var remaining = matchedPlans.Sum(p => p.Remaining);
-        return (remaining <= 0, remaining);
+        var required = matchedPlans.Sum(p => p.Required);
+        return (remaining <= 0, remaining, required);
     }
 
     private sealed record TransferPlanEntry(int AccountId, decimal Required, decimal Remaining, bool IsDone);
