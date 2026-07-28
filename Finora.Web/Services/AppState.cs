@@ -1677,20 +1677,49 @@ public class AppState(IndexedDbService db, SyncService sync)
         return Math.Round(Math.Max(recurringWeekly, catchUpWeekly), 2);
     }
 
-    // How much of this bill's amount should already be sitting in its account today,
-    // given where we are in its recurrence cycle — grows smoothly from 0 right after
+    // How much of this bill's amount should already be sitting in its account today.
+    // For the current (not-yet-due) cycle, this grows smoothly from 0 right after
     // the previous due date to the full amount by the next one, instead of jumping to
     // the full amount only once it's due (which hid far-future bills entirely) or
     // crediting just one pay period's worth (which let balances look "funded" long
     // before the actual bill amount had accumulated).
-    public decimal GetBillRequiredToDate(Bill bill)
+    // Critically, this also walks back through any earlier UNPAID cycles (like
+    // GetOutstandingBillOccurrences) instead of anchoring only to EffectiveDueDate —
+    // that date silently jumps past any cycle the bill was never marked paid for, which
+    // made a genuinely-neglected bill look like a freshly-started cycle needing almost
+    // nothing yet. Each fully lapsed cycle counts as its full amount, still owed.
+    public decimal GetBillRequiredToDate(Bill bill, int lookbackDays = 60)
     {
         if (bill.AmountDollars <= 0) return 0m;
-        var dueDate = (bill.EffectiveDueDate == default ? bill.DueDate : bill.EffectiveDueDate).Date;
-        var prevDue = ReverseDueDate(dueDate, bill.Frequency);
-        var cycleDays = Math.Max((dueDate - prevDue).Days, 1);
-        var daysAccrued = Math.Clamp((DateTime.Today - prevDue).Days, 0, cycleDays);
-        return Math.Round(bill.AmountDollars * daysAccrued / cycleDays, 2);
+        var today = DateTime.Today;
+        var earliest = today.AddDays(-lookbackDays);
+        var dueDate = bill.DueDate.Date;
+        while (dueDate < earliest)
+            dueDate = AdvanceDueDate(dueDate, bill.Frequency);
+
+        var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+        decimal required = 0m;
+        while (dueDate <= current.Date)
+        {
+            if (!IsBillOccurrencePaid(bill, dueDate))
+            {
+                if (dueDate < today)
+                {
+                    // Fully lapsed — the due date has passed unpaid, so the whole
+                    // amount should already be there.
+                    required += bill.AmountDollars;
+                }
+                else
+                {
+                    var prevDue = ReverseDueDate(dueDate, bill.Frequency);
+                    var cycleDays = Math.Max((dueDate - prevDue).Days, 1);
+                    var daysAccrued = Math.Clamp((today - prevDue).Days, 0, cycleDays);
+                    required += bill.AmountDollars * daysAccrued / cycleDays;
+                }
+            }
+            dueDate = AdvanceDueDate(dueDate, bill.Frequency);
+        }
+        return Math.Round(required, 2);
     }
 
     /// <summary>Budget category for an account group ("Bills", "Essentials", "Unplanned").

@@ -2545,7 +2545,7 @@ else if (_tab == "Holiday")
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .ToList();
-                var required = bills.Sum(State.GetBillRequiredToDate);
+                var required = bills.Sum(b => State.GetBillRequiredToDate(b));
                 var currentBalance = State.GetAccountBalance(a.Id);
                 var remaining = Math.Max(0m, required - currentBalance);
                 return (Entry: new TransferPlanEntry(a.Id, required, remaining, remaining <= 0m), HasBills: bills.Count > 0);
