@@ -2501,8 +2501,11 @@ else if (_tab == "Holiday")
             .ToList();
         if (!matchedPlans.Any()) return (null, 0);
 
-        var needed = matchedPlans.Sum(p => p.Remaining);
-        return (needed <= 0, needed);
+        var isDone = matchedPlans.Sum(p => p.Remaining) <= 0;
+        // Show the weekly contribution rate, not the total gap to payday,
+        // so the badge answers "am I up to date this week?" not "how much total do I owe?"
+        var weeklyRate = bills.Sum(b => State.GetBillFundingWeekly(b.Bill));
+        return (isDone, weeklyRate);
     }
 
     private sealed record TransferPlanEntry(
