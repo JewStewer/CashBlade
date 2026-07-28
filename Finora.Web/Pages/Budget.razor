@@ -2537,17 +2537,19 @@ else if (_tab == "Holiday")
             .Select(a =>
             {
                 var transferred = transferredByAccount.TryGetValue(a.Id, out var m) ? m : 0m;
-                // GetAccountForecast is the authoritative source for afterBills â€” it uses
-                // the app's own date-windowing logic and won't include historical unpaid bills.
-                var afterBills = State.GetAccountForecast(a.Id).AfterBills;
-                // billsTotal is display-only: match by AccountId OR AccountName fallback
-                // (for bills entered with AccountId=0). This doesn't affect IsDone/Remaining.
-                var billsTotal = State.Bills
+                // Compute afterBills using the same AccountId-OR-AccountName matching as
+                // billsTotal and futureBillsWeekly below. GetAccountForecast only matches
+                // by AccountId, so bills linked by AccountName (AccountId==0) were not
+                // deducted — making those accounts look more funded than they are.
+                var billsDueBeforePay = State.Bills
                     .Where(b => !State.IsBillPaid(b) && b.EffectiveDueDate.Date <= payEnd &&
                         (b.AccountId == a.Id ||
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .Sum(b => b.AmountDollars);
+                var afterBills = State.GetAccountBalance(a.Id) - billsDueBeforePay;
+                // billsTotal is the same set — reuse for display
+                var billsTotal = billsDueBeforePay;
                 // futureBillsWeekly: bills due after this pay period but within 91 days.
                 // Uses due-date funding so transfers begin before the bill's last payday.
                 var futureBillsWeekly = State.Bills
