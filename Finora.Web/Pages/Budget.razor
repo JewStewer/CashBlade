@@ -190,78 +190,91 @@
                 var isExpanded = _expandedBudgetCategories.Contains(label);
                 var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
                 var effectiveAmount = isExcluded ? 0m : Math.Max(amount - excludedSubWeekly, 0m);
-                var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0;
+                var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0m;
                 var (transferDone, transferNeeded, transferFullRequired, transferBalance) = GetBudgetCategoryTransferInfo(label);
+                var hasSaver = transferDone != null;
+                var paidBillCount = hasSubItems ? subBills.Count(x => State.IsBillPaid(x.Bill)) : 0;
 
-                <div style="margin-bottom:10px">
+                <div style="margin-bottom:14px">
                     <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;opacity:@(isExcluded ? "0.35" : "1")"
                          @onclick="@(() => { if (hasSubItems) ToggleExpandCategory(label); else ToggleBudgetRow(label); })">
-                        <div class="dot" style="background:@color;margin-top:4px;flex-shrink:0"></div>
-                        <div style="flex:1">
-                            <div style="display:flex;justify-content:space-between;align-items:center">
-                                <span style="font-size:14px;text-decoration:@(isExcluded ? "line-through" : "none")">@label</span>
-                                <div style="display:flex;align-items:center;gap:5px">
+                        <div class="dot" style="background:@color;margin-top:5px;flex-shrink:0"></div>
+                        <div style="flex:1;min-width:0">
+
+                            @* Row 1: category name | funded/move badge | weekly amount *@
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                                <span style="font-size:14px;font-weight:600;text-decoration:@(isExcluded ? "line-through" : "none");overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">@label</span>
+                                <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
                                     @if (transferDone == true)
                                     {
-                                        <span style="font-size:11px;color:var(--green);font-weight:700;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Saver holds the full bill amount">Funded</span>
+                                        <span style="font-size:11px;color:var(--green);font-weight:700;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap">Funded</span>
                                     }
-                                    else if (transferDone == false && transferNeeded > 0)
+                                    else if (hasSaver && transferNeeded > 0)
                                     {
-                                        <span style="font-size:11px;color:var(--amber);font-weight:700;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Behind on regular contributions — transfer this to catch up">Move @transferNeeded.ToString("C")</span>
+                                        <span style="font-size:11px;color:var(--amber);font-weight:700;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap">Move @transferNeeded.ToString("C")</span>
                                     }
                                     @if (excludedSubWeekly > 0 && !isExcluded)
                                     {
                                         <span style="font-size:11px;color:var(--green)">-@excludedSubWeekly.ToString("C")</span>
                                     }
-                                    <span style="font-size:14px;font-weight:600;text-decoration:@(isExcluded ? "line-through" : "none")">@amount.ToString("C")</span>
+                                    <span style="text-decoration:@(isExcluded ? "line-through" : "none")">
+                                        <span style="font-size:14px;font-weight:700">@effectiveAmount.ToString("C")</span><span style="font-size:10px;color:var(--text3)">/wk</span>
+                                    </span>
                                     @if (hasSubItems)
                                     {
-                                        <span style="font-size:10px;color:var(--text3);margin-left:2px">@(isExpanded ? "Hide" : "Show")</span>
+                                        <span style="font-size:10px;color:var(--text3)">@(isExpanded ? "Hide" : "Show")</span>
                                     }
                                 </div>
                             </div>
-                            <div class="progress-bar" style="margin-top:4px;opacity:@(isExcluded ? "0.25" : "1")">
-                                <div class="progress-fill" style="width:@((int)(Math.Clamp(effectivePct,0,1)*100))%;background:@color"></div>
-                            </div>
-                            @{
-                                var paidBillCount = hasSubItems ? subBills.Count(x => State.IsBillPaid(x.Bill)) : 0;
-                            }
-                            <div style="display:flex;gap:6px;align-items:center;margin-top:2px;opacity:@(isExcluded ? "0.4" : "1")">
-                                <span style="font-size:11px;color:var(--text3)">@effectivePct.ToString("P0") of income</span>
-                                @if (hasSubItems && subBills.Count > 0)
-                                {
-                                    var allBillsPaid = paidBillCount == subBills.Count;
-                                    <span style="font-size:10px;color:@(allBillsPaid ? "var(--teal)" : paidBillCount > 0 ? "var(--amber)" : "var(--text3)")">
-                                        - @paidBillCount/@subBills.Count paid
-                                    </span>
-                                }
-                            </div>
-                            @if (transferDone == false && transferFullRequired > 0)
+
+                            @* Row 2+: saver progress if linked account, else income-allocation bar *@
+                            @if (hasSaver && transferFullRequired > 0)
                             {
-                                var savedPct = (double)Math.Clamp((double)transferBalance / (double)transferFullRequired, 0, 1);
-                                var barColor = transferNeeded > 0 ? "var(--amber)" : "var(--teal)";
-                                <div style="margin-top:5px;opacity:@(isExcluded ? "0.4" : "1")">
-                                    <div class="progress-bar" style="height:4px">
-                                        <div class="progress-fill" style="width:@((int)(savedPct*100))%;background:@barColor"></div>
-                                    </div>
-                                    <span style="font-size:10px;color:var(--text3);margin-top:2px;display:inline-block">
-                                        @Math.Max(0, transferBalance).ToString("C") of @transferFullRequired.ToString("C") saved
+                                var savedRatio = Math.Clamp(transferBalance / transferFullRequired, 0m, 1m);
+                                var barColor = transferDone == true ? "var(--green)" : transferNeeded > 0 ? "var(--amber)" : "var(--teal)";
+                                <div class="progress-bar" style="height:4px;margin-top:6px;opacity:@(isExcluded ? "0.25" : "1")">
+                                    <div class="progress-fill" style="width:@((int)(savedRatio * 100))%;background:@barColor"></div>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;opacity:@(isExcluded ? "0.4" : "1")">
+                                    <span style="font-size:10px;color:var(--text3)">
+                                        @Math.Max(0m, transferBalance).ToString("C") of @transferFullRequired.ToString("C") saved@(hasSubItems && subBills.Count > 0 ? $" · {paidBillCount}/{subBills.Count} paid" : "")
                                     </span>
+                                    @if (transferNeeded > 0 && !isExcluded)
+                                    {
+                                        <span style="font-size:10px;color:var(--amber);font-weight:600;white-space:nowrap;margin-left:8px">+@transferNeeded.ToString("C") to catch up</span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="progress-bar" style="margin-top:4px;opacity:@(isExcluded ? "0.25" : "1")">
+                                    <div class="progress-fill" style="width:@((int)(Math.Clamp(effectivePct, 0m, 1m) * 100))%;background:@color"></div>
+                                </div>
+                                <div style="display:flex;gap:6px;align-items:center;margin-top:2px;opacity:@(isExcluded ? "0.4" : "1")">
+                                    <span style="font-size:11px;color:var(--text3)">@effectivePct.ToString("P0") of income</span>
+                                    @if (hasSubItems && subBills.Count > 0)
+                                    {
+                                        var allBillsPaid = paidBillCount == subBills.Count;
+                                        <span style="font-size:10px;color:@(allBillsPaid ? "var(--teal)" : paidBillCount > 0 ? "var(--amber)" : "var(--text3)")">
+                                            · @paidBillCount/@subBills.Count paid
+                                        </span>
+                                    }
                                 </div>
                             }
                         </div>
                     </div>
 
+                    @* Expanded: individual bill rows *@
                     @if (hasSubItems && isExpanded && !isExcluded)
                     {
-                        <div style="margin-left:22px;margin-top:5px;border:1px solid var(--border);border-radius:8px;overflow:hidden"
+                        <div style="margin-left:22px;margin-top:6px;border:1px solid var(--border);border-radius:8px;overflow:hidden"
                              @onclick:stopPropagation="true">
                             @foreach (var (bill, weekly) in subBills)
                             {
                                 var isBillExcluded = _excludedBillIds.Contains(bill.Id);
-                                <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:@(isBillExcluded ? "var(--surface3)" : "var(--surface)");border-bottom:1px solid var(--border);cursor:pointer;user-select:none"
+                                var dueStr = (bill.EffectiveDueDate != default ? bill.EffectiveDueDate : bill.DueDate).ToString("d MMM");
+                                <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:@(isBillExcluded ? "var(--surface3)" : "var(--surface)");border-bottom:1px solid var(--border);cursor:pointer;user-select:none"
                                      @onclick="@(() => ToggleBill(bill.Id))" @onclick:stopPropagation="true">
-                                    <!-- Checkbox indicator -->
                                     <div style="width:18px;height:18px;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:@(isBillExcluded ? "var(--surface2)" : color);border:@(isBillExcluded ? "1.5px solid var(--border)" : "none");transition:background 0.15s">
                                         @if (!isBillExcluded)
                                         {
@@ -269,10 +282,10 @@
                                         }
                                     </div>
                                     <div style="flex:1;min-width:0;opacity:@(isBillExcluded ? "0.45" : "1")">
-                                        <div style="font-size:13px;text-decoration:@(isBillExcluded ? "line-through" : "none");overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
-                                        <div style="font-size:10px;color:var(--text3)">@FreqAbbr(bill.Frequency) - @bill.AmountDollars.ToString("C")</div>
+                                        <div style="font-size:13px;font-weight:500;text-decoration:@(isBillExcluded ? "line-through" : "none");overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@bill.Name</div>
+                                        <div style="font-size:10px;color:var(--text3)">@FreqAbbr(bill.Frequency) · @bill.AmountDollars.ToString("C") · due @dueStr</div>
                                     </div>
-                                    <span style="font-size:12px;font-weight:600;flex-shrink:0;min-width:52px;text-align:right;opacity:@(isBillExcluded ? "0.45" : "1");text-decoration:@(isBillExcluded ? "line-through" : "none")">@weekly.ToString("C")/wk</span>
+                                    <span style="font-size:12px;font-weight:700;flex-shrink:0;text-align:right;opacity:@(isBillExcluded ? "0.45" : "1");text-decoration:@(isBillExcluded ? "line-through" : "none");white-space:nowrap">@weekly.ToString("C")/wk</span>
                                 </div>
                             }
                             <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:var(--surface2)">
