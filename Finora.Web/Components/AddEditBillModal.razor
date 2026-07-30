@@ -18,7 +18,7 @@
             </div>
             <div style="display:flex;gap:8px">
                 <div style="flex:1">
-                    <label class="form-label">@(isInstallment ? "Final Payment Date" : "Due Date")</label>
+                    <label class="form-label">@(isInstallment ? "Final Payment Date" : "Next Due Date")</label>
                     <input class="form-input" type="date" @bind="dueDate" />
                 </div>
                 <div style="flex:1">
@@ -166,12 +166,29 @@
         if (IsNew && isInstallment && installmentTotal < amount) { error = "Total balance should be at least the bill amount."; return; }
 
         saving = true;
+
+        // For new bills, ensure the anchor date is the NEXT upcoming occurrence so
+        // there are no phantom unpaid past occurrences in the accrual calculation.
+        var anchorDate = dueDate;
+        if (IsNew)
+        {
+            while (anchorDate.Date < DateTime.Today)
+                anchorDate = frequency switch
+                {
+                    BillFrequency.Weekly      => anchorDate.AddDays(7),
+                    BillFrequency.Fortnightly => anchorDate.AddDays(14),
+                    BillFrequency.Quarterly   => anchorDate.AddMonths(3),
+                    BillFrequency.Yearly      => anchorDate.AddYears(1),
+                    _                         => anchorDate.AddMonths(1)
+                };
+        }
+
         var b = new Bill
         {
             Id = Bill?.Id ?? 0,
             Name = name.Trim(),
             AmountDollars = amount,
-            DueDate = dueDate,
+            DueDate = anchorDate,
             Frequency = frequency,
             AccountId = accountId,
             IsAutoPay = isAutoPay

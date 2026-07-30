@@ -191,8 +191,7 @@
                 var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
                 var effectiveAmount = isExcluded ? 0m : Math.Max(amount - excludedSubWeekly, 0m);
                 var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0;
-                var (transferDone, transferNeeded, transferRequired) = GetBudgetCategoryTransferInfo(label);
-                var transferCovered = transferRequired - transferNeeded;
+                var (transferDone, transferNeeded, transferFullRequired, transferBalance) = GetBudgetCategoryTransferInfo(label);
 
                 <div style="margin-bottom:10px">
                     <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;opacity:@(isExcluded ? "0.35" : "1")"
@@ -204,11 +203,11 @@
                                 <div style="display:flex;align-items:center;gap:5px">
                                     @if (transferDone == true)
                                     {
-                                        <span style="font-size:11px;color:var(--green);font-weight:700;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Enough has been transferred">Funded</span>
+                                        <span style="font-size:11px;color:var(--green);font-weight:700;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Saver holds the full bill amount">Funded</span>
                                     }
-                                    else if (transferDone == false)
+                                    else if (transferDone == false && transferNeeded > 0)
                                     {
-                                        <span style="font-size:11px;color:var(--amber);font-weight:700;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="How much more to move to be caught up">Move@(transferNeeded > 0 ? " " + transferNeeded.ToString("C") : "")</span>
+                                        <span style="font-size:11px;color:var(--amber);font-weight:700;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.28);border-radius:999px;padding:2px 7px;white-space:nowrap" title="Behind on regular contributions — transfer this to catch up">Move @transferNeeded.ToString("C")</span>
                                     }
                                     @if (excludedSubWeekly > 0 && !isExcluded)
                                     {
@@ -237,15 +236,16 @@
                                     </span>
                                 }
                             </div>
-                            @if (transferDone == false && transferRequired > 0)
+                            @if (transferDone == false && transferFullRequired > 0)
                             {
-                                var coveredPct = (double)Math.Clamp(transferCovered / transferRequired, 0, 1);
+                                var savedPct = (double)Math.Clamp((double)transferBalance / (double)transferFullRequired, 0, 1);
+                                var barColor = transferNeeded > 0 ? "var(--amber)" : "var(--teal)";
                                 <div style="margin-top:5px;opacity:@(isExcluded ? "0.4" : "1")">
                                     <div class="progress-bar" style="height:4px">
-                                        <div class="progress-fill" style="width:@((int)(coveredPct*100))%;background:var(--amber)"></div>
+                                        <div class="progress-fill" style="width:@((int)(savedPct*100))%;background:@barColor"></div>
                                     </div>
                                     <span style="font-size:10px;color:var(--text3);margin-top:2px;display:inline-block">
-                                        @transferCovered.ToString("C") of @transferRequired.ToString("C") transferred this cycle
+                                        @Math.Max(0, transferBalance).ToString("C") of @transferFullRequired.ToString("C") saved
                                     </span>
                                 </div>
                             }
@@ -2485,15 +2485,15 @@ else if (_tab == "Holiday")
     // (Required minus what's already there, floored at 0) — not capped to a
     // week's rate, so it reflects a missed transfer or money pulled back out
     // mid-week just as much as an upcoming bill. Required minus Needed is what's
-    // actually been transferred so far, for showing partial progress.
-    // Done=true: fully caught up. Done=false: at least one account is short.
+    // Done=true: saver holds the full bill amount (Funded).
+    // Done=false: saver is below the full bill amount; Needed>0 means also behind schedule.
     // Done=null: no bills map to a known account (nothing to check).
     // Resolves accounts by AccountId first, then AccountName fallback for bills
     // with AccountId=0 (e.g. Afterpay, Subscriptions shared-account bills).
-    private (bool? Done, decimal Needed, decimal Required) GetBudgetCategoryTransferInfo(string label)
+    private (bool? Done, decimal Needed, decimal FullRequired, decimal Balance) GetBudgetCategoryTransferInfo(string label)
     {
         var bills = BillsForBudgetCategory(label);
-        if (!bills.Any()) return (null, 0, 0);
+        if (!bills.Any()) return (null, 0, 0, 0);
 
         var accountIds = new HashSet<int>();
         foreach (var (bill, _) in bills)
@@ -2509,27 +2509,30 @@ else if (_tab == "Holiday")
                 if (acct != null) accountIds.Add(acct.Id);
             }
         }
-        if (!accountIds.Any()) return (null, 0, 0);
+        if (!accountIds.Any()) return (null, 0, 0, 0);
 
         var planByAccount = GetFullTransferPlan().ToDictionary(x => x.AccountId);
         var matchedPlans = accountIds
             .Where(planByAccount.ContainsKey)
             .Select(id => planByAccount[id])
             .ToList();
-        if (!matchedPlans.Any()) return (null, 0, 0);
+        if (!matchedPlans.Any()) return (null, 0, 0, 0);
 
-        var remaining = matchedPlans.Sum(p => p.Remaining);
-        var required = matchedPlans.Sum(p => p.Required);
-        return (remaining <= 0, remaining, required);
+        var needed      = matchedPlans.Sum(p => p.Remaining);
+        var fullRequired = matchedPlans.Sum(p => p.FullRequired);
+        var balance     = matchedPlans.Sum(p => p.Balance);
+        return (balance >= fullRequired ? true : (bool?)false, needed, fullRequired, balance);
     }
 
-    private sealed record TransferPlanEntry(int AccountId, decimal Required, decimal Remaining, bool IsDone);
+    // AccrualRequired = prorated amount that should be in the saver by today (drives Move badge).
+    // FullRequired    = total bill amount (drives progress bar denominator and Funded state).
+    // Balance         = live saver balance (drives progress bar numerator).
+    // Remaining       = max(0, AccrualRequired - Balance): how far behind the regular schedule.
+    // IsDone          = Balance >= FullRequired: the account holds the full bill amount.
+    private sealed record TransferPlanEntry(
+        int AccountId, decimal AccrualRequired, decimal FullRequired,
+        decimal Balance, decimal Remaining, bool IsDone);
 
-    // Builds the payday transfer plan. Required = full sum of unpaid bill amounts for
-    // the account — the saver needs to hold the complete bill amount before the bill
-    // hits, not just a prorated slice. Progress bar and Move badge then show the real
-    // shortfall: if the saver has $26 toward a $105 monthly bill it shows 25% funded
-    // and "Move $79", rather than "Funded" just because one week's worth has accrued.
     private List<TransferPlanEntry> GetFullTransferPlan()
     {
         return State.Accounts
@@ -2543,10 +2546,11 @@ else if (_tab == "Holiday")
                          (b.AccountId == 0 && !string.IsNullOrWhiteSpace(b.AccountName) &&
                           string.Equals(b.AccountName.Trim(), a.Name, StringComparison.OrdinalIgnoreCase))))
                     .ToList();
-                var required = bills.Sum(b => b.AmountDollars);
-                var currentBalance = State.GetAccountBalance(a.Id);
-                var remaining = Math.Max(0m, required - currentBalance);
-                return (Entry: new TransferPlanEntry(a.Id, required, remaining, remaining <= 0m), HasBills: bills.Count > 0);
+                var accrualRequired = bills.Sum(b => State.GetBillRequiredToDate(b));
+                var fullRequired    = bills.Sum(b => b.AmountDollars);
+                var balance         = State.GetAccountBalance(a.Id);
+                var remaining       = Math.Max(0m, accrualRequired - balance);
+                return (Entry: new TransferPlanEntry(a.Id, accrualRequired, fullRequired, balance, remaining, balance >= fullRequired), HasBills: bills.Count > 0);
             })
             .Where(x => x.HasBills)
             .Select(x => x.Entry)
