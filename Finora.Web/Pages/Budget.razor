@@ -2498,42 +2498,50 @@ else if (_tab == "Holiday")
     // (Required minus what's already there, floored at 0) — not capped to a
     // week's rate, so it reflects a missed transfer or money pulled back out
     // mid-week just as much as an upcoming bill. Required minus Needed is what's
-    // Done=true: saver holds the full bill amount (Funded).
+    // Done=true: saver holds enough for all unpaid bills in this category.
     // Done=false: saver is below the full bill amount; Needed>0 means also behind schedule.
-    // Done=null: no bills map to a known account (nothing to check).
-    // Resolves accounts by AccountId first, then AccountName fallback for bills
-    // with AccountId=0 (e.g. Afterpay, Subscriptions shared-account bills).
+    // Done=null: no bills in this category map to a known saver account.
+    // FullRequired is computed from the category's own unpaid bills — NOT the
+    // account-level total — so one saver that covers bills from multiple categories
+    // doesn't inflate the number shown for any single category.
     private (bool? Done, decimal Needed, decimal FullRequired, decimal Balance) GetBudgetCategoryTransferInfo(string label)
     {
         var bills = BillsForBudgetCategory(label);
         if (!bills.Any()) return (null, 0, 0, 0);
 
-        var accountIds = new HashSet<int>();
+        var planByAccount = GetFullTransferPlan().ToDictionary(x => x.AccountId);
+        var saverAccountIds = new HashSet<int>();
+        var categoryBillsInSavers = new List<Bill>();
+
         foreach (var (bill, _) in bills)
         {
-            if (bill.AccountId > 0)
-            {
-                accountIds.Add(bill.AccountId);
-            }
+            int resolvedId = 0;
+            if (bill.AccountId > 0 && planByAccount.ContainsKey(bill.AccountId))
+                resolvedId = bill.AccountId;
             else if (!string.IsNullOrWhiteSpace(bill.AccountName))
             {
                 var acct = State.Accounts.FirstOrDefault(a =>
                     string.Equals(a.Name, bill.AccountName.Trim(), StringComparison.OrdinalIgnoreCase));
-                if (acct != null) accountIds.Add(acct.Id);
+                if (acct != null && planByAccount.ContainsKey(acct.Id))
+                    resolvedId = acct.Id;
+            }
+            if (resolvedId != 0)
+            {
+                saverAccountIds.Add(resolvedId);
+                // Only track unpaid bills for amount calculations
+                if (!State.IsBillPaid(bill))
+                    categoryBillsInSavers.Add(bill);
             }
         }
-        if (!accountIds.Any()) return (null, 0, 0, 0);
 
-        var planByAccount = GetFullTransferPlan().ToDictionary(x => x.AccountId);
-        var matchedPlans = accountIds
-            .Where(planByAccount.ContainsKey)
-            .Select(id => planByAccount[id])
-            .ToList();
-        if (!matchedPlans.Any()) return (null, 0, 0, 0);
+        if (!saverAccountIds.Any()) return (null, 0, 0, 0);
 
-        var needed      = matchedPlans.Sum(p => p.Remaining);
-        var fullRequired = matchedPlans.Sum(p => p.FullRequired);
-        var balance     = matchedPlans.Sum(p => p.Balance);
+        // Compute accrual and totals from this category's bills only
+        var accrualRequired = categoryBillsInSavers.Sum(b => State.GetBillRequiredToDate(b));
+        var fullRequired    = categoryBillsInSavers.Sum(b => b.AmountDollars);
+        var balance         = saverAccountIds.Sum(id => planByAccount[id].Balance);
+        var needed          = Math.Max(0m, accrualRequired - balance);
+
         return (balance >= fullRequired ? true : (bool?)false, needed, fullRequired, balance);
     }
 

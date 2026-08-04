@@ -598,9 +598,30 @@ public class AppState(IndexedDbService db, SyncService sync)
     // deletion" and leaving the next pull undefended.
     public async Task RefreshUpBankDataAsync()
     {
+        // Snapshot which Up transaction IDs we already know about so we can
+        // detect what the Up bank sync just added.
+        var knownUpIds = Transactions
+            .Where(t => !string.IsNullOrEmpty(t.UpTransactionId))
+            .Select(t => t.UpTransactionId!)
+            .ToHashSet(StringComparer.Ordinal);
+
         Transactions = await db.GetTransactionsAsync();
         Accounts = await db.GetAccountsAsync();
         Categories = await db.GetCategoriesAsync();
+
+        // Defend newly-fetched Up transactions so a subsequent SyncAndReloadAsync
+        // (background 5-min timer, Dashboard Sync button) can't wipe them before
+        // the PC has reconciled phone_push and written them into the server snapshot.
+        // ReapplyPendingChangesAsync re-inserts them into Transactions and IndexedDB
+        // after each sync reload, keeping them visible until the server catches up.
+        foreach (var t in Transactions)
+        {
+            if (string.IsNullOrEmpty(t.UpTransactionId)) continue;
+            if (knownUpIds.Contains(t.UpTransactionId)) continue;
+            if (!_pendingNewTransactions.Any(p => string.Equals(p.UpTransactionId, t.UpTransactionId, StringComparison.Ordinal)))
+                _pendingNewTransactions.Add(t);
+        }
+
         Compute();
         OnChange?.Invoke();
     }
@@ -6065,6 +6086,20 @@ public class AppState(IndexedDbService db, SyncService sync)
                         LogTrip($"DEFEND-STALE lastConfirmedTrips=[{string.Join(" || ", _lastConfirmedPush.UpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                         await ReapplyPushChangesAsync(_lastConfirmedPush);
                     }
+                    // Drop Up-imported transactions from the defense list once the server
+                    // snapshot includes them — they no longer need to be re-inserted after
+                    // each sync reload, and keeping them would cause redundant pushes.
+                    if (_pendingNewTransactions.Any(t => !string.IsNullOrEmpty(t.UpTransactionId)))
+                    {
+                        var serverUpIds = Transactions
+                            .Where(t => !string.IsNullOrEmpty(t.UpTransactionId))
+                            .Select(t => t.UpTransactionId!)
+                            .ToHashSet(StringComparer.Ordinal);
+                        _pendingNewTransactions.RemoveAll(t =>
+                            !string.IsNullOrEmpty(t.UpTransactionId) &&
+                            serverUpIds.Contains(t.UpTransactionId));
+                    }
+
                     LogTrip($"REAPPLY-PENDING pendingTrips=[{string.Join(" || ", _pendingUpdatedTrips.Select(t => ItinSnapshot(t)))}]");
                     await ReapplyPendingChangesAsync();
                 }
