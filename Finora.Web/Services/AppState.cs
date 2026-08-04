@@ -1713,12 +1713,15 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         if (bill.AmountDollars <= 0) return 0m;
         var today = DateTime.Today;
-        var earliest = today.AddDays(-lookbackDays);
+        var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+        // Always reach back at least one full cycle before current so a lapsed
+        // occurrence whose due date falls outside the rolling lookback window
+        // (e.g. an annual bill due 5+ months ago) is never silently skipped.
+        var prevCycleStart = ReverseDueDate(current.Date, bill.Frequency);
+        var earliest = prevCycleStart < today.AddDays(-lookbackDays) ? prevCycleStart : today.AddDays(-lookbackDays);
         var dueDate = bill.DueDate.Date;
         while (dueDate < earliest)
             dueDate = AdvanceDueDate(dueDate, bill.Frequency);
-
-        var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
         decimal required = 0m;
         while (dueDate <= current.Date)
         {
