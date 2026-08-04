@@ -243,6 +243,14 @@
                                     {
                                         <span style="font-size:10px;color:var(--amber);font-weight:600;white-space:nowrap;margin-left:8px">+@transferNeeded.ToString("C") to catch up</span>
                                     }
+                                    else if (transferDone == false && !isExcluded)
+                                    {
+                                        var stillToGo = transferFullRequired - Math.Max(0m, transferBalance);
+                                        if (stillToGo > 0)
+                                        {
+                                            <span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">@stillToGo.ToString("C") to go</span>
+                                        }
+                                    }
                                 </div>
                             }
                             else
