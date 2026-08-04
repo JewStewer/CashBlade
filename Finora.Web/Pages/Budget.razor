@@ -191,7 +191,7 @@
                 var excludedSubWeekly = subBills.Where(x => _excludedBillIds.Contains(x.Bill.Id)).Sum(x => x.Weekly);
                 var effectiveAmount = isExcluded ? 0m : Math.Max(amount - excludedSubWeekly, 0m);
                 var effectivePct = State.WeeklyIncome > 0 ? effectiveAmount / State.WeeklyIncome : 0m;
-                var (transferDone, transferNeeded, transferFullRequired, transferBalance) = GetBudgetCategoryTransferInfo(label);
+                var (transferDone, transferNeeded, transferFullRequired, transferBalance, transferNextDue) = GetBudgetCategoryTransferInfo(label);
                 var hasSaver = transferDone != null;
                 var paidBillCount = hasSubItems ? subBills.Count(x => State.IsBillPaid(x.Bill)) : 0;
 
@@ -248,7 +248,12 @@
                                         var stillToGo = transferFullRequired - Math.Max(0m, transferBalance);
                                         if (stillToGo > 0)
                                         {
-                                            <span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">@stillToGo.ToString("C") to go</span>
+                                            var dueLabel = transferNextDue.HasValue
+                                                ? (transferNextDue.Value.Year == DateTime.Today.Year
+                                                    ? $" · due {transferNextDue.Value:d MMM}"
+                                                    : $" · due {transferNextDue.Value:MMM yyyy}")
+                                                : "";
+                                            <span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">@stillToGo.ToString("C") to go@dueLabel</span>
                                         }
                                     }
                                 </div>
@@ -2512,10 +2517,10 @@ else if (_tab == "Holiday")
     // FullRequired is computed from the category's own unpaid bills — NOT the
     // account-level total — so one saver that covers bills from multiple categories
     // doesn't inflate the number shown for any single category.
-    private (bool? Done, decimal Needed, decimal FullRequired, decimal Balance) GetBudgetCategoryTransferInfo(string label)
+    private (bool? Done, decimal Needed, decimal FullRequired, decimal Balance, DateTime? NextDue) GetBudgetCategoryTransferInfo(string label)
     {
         var bills = BillsForBudgetCategory(label);
-        if (!bills.Any()) return (null, 0, 0, 0);
+        if (!bills.Any()) return (null, 0, 0, 0, null);
 
         var planByAccount = GetFullTransferPlan().ToDictionary(x => x.AccountId);
         var saverAccountIds = new HashSet<int>();
@@ -2542,15 +2547,20 @@ else if (_tab == "Holiday")
             }
         }
 
-        if (!saverAccountIds.Any()) return (null, 0, 0, 0);
+        if (!saverAccountIds.Any()) return (null, 0, 0, 0, null);
 
         // Compute accrual and totals from this category's bills only
         var accrualRequired = categoryBillsInSavers.Sum(b => State.GetBillRequiredToDate(b));
         var fullRequired    = categoryBillsInSavers.Sum(b => b.AmountDollars);
         var balance         = saverAccountIds.Sum(id => planByAccount[id].Balance);
         var needed          = Math.Max(0m, accrualRequired - balance);
+        var nextDue         = categoryBillsInSavers
+            .Where(b => b.EffectiveDueDate != default)
+            .Select(b => (DateTime?)b.EffectiveDueDate)
+            .OrderBy(d => d)
+            .FirstOrDefault();
 
-        return (balance >= fullRequired ? true : (bool?)false, needed, fullRequired, balance);
+        return (balance >= fullRequired ? true : (bool?)false, needed, fullRequired, balance, nextDue);
     }
 
     // AccrualRequired = prorated amount that should be in the saver by today (drives Move badge).
