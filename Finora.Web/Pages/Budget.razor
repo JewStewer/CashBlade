@@ -256,12 +256,23 @@
                                         var stillToGo = transferFullRequired - Math.Max(0m, transferBalance);
                                         if (stillToGo > 0)
                                         {
+                                            // Weekly rate still needed to reach the full amount by the due date.
+                                            // Shown so the user can compare against their budgeted weekly amount
+                                            // and understand why "on track" is correct even with a large remainder.
+                                            var weeklyLabel = "";
+                                            if (transferNextDue.HasValue)
+                                            {
+                                                var daysLeft = Math.Max((transferNextDue.Value - DateTime.Today).Days, 7);
+                                                var wkNeeded = Math.Round(stillToGo / (daysLeft / 7m), 2);
+                                                if (wkNeeded > 0)
+                                                    weeklyLabel = $" · {wkNeeded:C}/wk";
+                                            }
                                             var dueLabel = transferNextDue.HasValue
                                                 ? (transferNextDue.Value.Year == DateTime.Today.Year
                                                     ? $" · due {transferNextDue.Value:d MMM}"
                                                     : $" · due {transferNextDue.Value:MMM yyyy}")
                                                 : "";
-                                            <span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">@stillToGo.ToString("C") to go@(dueLabel)</span>
+                                            <span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-left:8px">@stillToGo.ToString("C") to go@(weeklyLabel)@(dueLabel)</span>
                                         }
                                     }
                                 </div>
