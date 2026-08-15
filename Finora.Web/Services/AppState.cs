@@ -293,6 +293,7 @@ public class AppState(IndexedDbService db, SyncService sync)
     private PushPayload? _lastConfirmedPush;
     private DateTime _lastConfirmedPushAt;
     private static readonly TimeSpan ConfirmedPushGrace = TimeSpan.FromMinutes(6);
+    private static readonly TimeSpan DeleteTombstoneTtl = TimeSpan.FromHours(72);
     private int _unconfirmedSettingOverrideCount;
 
     // LoadAsync() wholesale-replaces each Trip object from IndexedDB, then
@@ -830,6 +831,13 @@ public class AppState(IndexedDbService db, SyncService sync)
                 continue;
             }
 
+            var existingStatus = BillStatuses.FirstOrDefault(s => s.BillId == bill.Id && s.DueDate.Date == effectiveDue.Date);
+            if (existingStatus?.IsPaid == ov.IsPaid)
+            {
+                await db.ClearBillOverrideAsync(ov.Id);
+                continue;
+            }
+
             bill.IsPaid = ov.IsPaid;
 
             var status = GetOrCreateCurrentStatus(bill);
@@ -890,7 +898,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var ov in deletes)
         {
             var transaction = FindLocalTransaction(ov.Deleted);
-            if (transaction is null) continue;
+            if (transaction is null)
+            {
+                if (IsDeleteTombstoneExpired(ov.CreatedAt))
+                    await db.ClearTransactionDeleteAsync(ov.Id);
+                continue;
+            }
 
             Transactions.Remove(transaction);
             await db.DeleteAsync("transactions", transaction.Id);
@@ -1130,7 +1143,12 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .Where(b => SameBillDelete(b, deleteIntent))
                 .Select(b => b.Id)
                 .ToHashSet();
-            if (removedIds.Count == 0) continue;
+            if (removedIds.Count == 0)
+            {
+                if (IsDeleteTombstoneExpired(deleted.CreatedAt))
+                    await db.ClearBillDeleteAsync(deleted.Id);
+                continue;
+            }
 
             Bills.RemoveAll(b => removedIds.Contains(b.Id));
             BillStatuses.RemoveAll(s => removedIds.Contains(s.BillId));
@@ -1171,6 +1189,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                 // the debt back. When the server truly has reconciled the delete,
                 // ApplyLocalIntentsAsync will have cleared the tombstone before
                 // this code even runs, so we'll never reach this branch for it.
+                if (IsDeleteTombstoneExpired(deleted.CreatedAt))
+                    await db.ClearDebtDeleteAsync(deleted.Id);
                 continue;
             }
 
@@ -1201,11 +1221,8 @@ public class AppState(IndexedDbService db, SyncService sync)
             LogGoal($"TOMBSTONE id={deleted.Id} name={deleted.Name} group={deleted.GroupName ?? "(none)"} target={deleted.TargetCents} current={deleted.CurrentCents} matched=[{string.Join(",", removedIds)}]");
             if (removedIds.Count == 0)
             {
-                // Nothing in this freshly-pulled snapshot matches anymore — the
-                // server has actually reconciled the delete now. Only stop
-                // defending it once that's confirmed, not just because a push
-                // succeeded (see the comment in SyncAndReloadAsync).
-                await db.ClearSavingsGoalDeleteAsync(deleted.Id);
+                if (IsDeleteTombstoneExpired(deleted.CreatedAt))
+                    await db.ClearSavingsGoalDeleteAsync(deleted.Id);
                 continue;
             }
 
@@ -1281,7 +1298,12 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .Where(t => SameTripDelete(t, deleted))
                 .Select(t => t.Id)
                 .ToHashSet();
-            if (removedIds.Count == 0) continue;
+            if (removedIds.Count == 0)
+            {
+                if (IsDeleteTombstoneExpired(deleted.CreatedAt))
+                    await db.ClearTripDeleteAsync(deleted.Id);
+                continue;
+            }
 
             Trips.RemoveAll(t => removedIds.Contains(t.Id));
             _pendingNewTrips.RemoveAll(t => removedIds.Contains(t.Id));
@@ -1308,6 +1330,9 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         return Transactions.FirstOrDefault(t => SameTransactionSignature(t, updated));
     }
+
+    private static bool IsDeleteTombstoneExpired(DateTime createdAt) =>
+        createdAt == default || DateTime.UtcNow - createdAt >= DeleteTombstoneTtl;
 
     private void Compute()
     {
@@ -5957,8 +5982,6 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var t in push.UpdatedTransactions)
                     {
                         _pendingUpdatedTransactions.Remove(t);
-                        if (!_pendingUpdatedTransactions.Any(p => p.Id == t.Id))
-                            await db.ClearTransactionOverrideAsync(t.Id);
                     }
                     foreach (var t in push.NewTransactions)
                         _pendingNewTransactions.Remove(t);
@@ -5967,26 +5990,19 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var d in push.DeletedTransactions)
                     {
                         _pendingDeletedTransactions.Remove(d);
-                        await db.ClearTransactionDeleteAsync(PendingTransactionDelete.GetStableId(d));
                     }
 
                     foreach (var s in push.UpdatedBillStatuses)
                     {
                         _pendingBillStatuses.Remove(s);
-                        if (!_pendingBillStatuses.Any(p => p.BillId == s.BillId))
-                            await db.ClearBillOverrideAsync(s.BillId);
                     }
                     foreach (var b in push.NewBills)
                     {
                         _pendingNewBills.Remove(b);
-                        if (!_pendingNewBills.Any(p => p.Id == b.Id))
-                            await db.ClearBillEditOverrideAsync(b.Id);
                     }
                     foreach (var b in push.UpdatedBills)
                     {
                         _pendingUpdatedBills.Remove(b);
-                        if (!_pendingUpdatedBills.Any(p => p.Id == b.Id))
-                            await db.ClearBillEditOverrideAsync(b.Id);
                     }
                     foreach (var id in push.DeletedBillIds)
                         _pendingDeletedBillIds.Remove(id);
@@ -6002,14 +6018,10 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var d in push.NewDebts)
                     {
                         _pendingNewDebts.Remove(d);
-                        if (!_pendingNewDebts.Any(p => p.Id == d.Id))
-                            await db.ClearDebtOverrideAsync(d.Id);
                     }
                     foreach (var d in push.UpdatedDebts)
                     {
                         _pendingUpdatedDebts.Remove(d);
-                        if (!_pendingUpdatedDebts.Any(p => p.Id == d.Id))
-                            await db.ClearDebtOverrideAsync(d.Id);
                     }
                     foreach (var id in push.DeletedDebtIds)
                         _pendingDeletedDebtIds.Remove(id);
@@ -6021,8 +6033,6 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var a in push.UpdatedAccounts)
                     {
                         _pendingUpdatedAccounts.Remove(a);
-                        if (!_pendingUpdatedAccounts.Any(p => p.Id == a.Id))
-                            await db.ClearAccountOverrideAsync(a.Id);
                     }
 
                     foreach (var s in push.UpdatedSettings)
@@ -6050,35 +6060,25 @@ public class AppState(IndexedDbService db, SyncService sync)
                     foreach (var g in push.NewSavingsGoals)
                     {
                         _pendingNewSavingsGoals.Remove(g);
-                        if (!_pendingNewSavingsGoals.Any(p => p.Id == g.Id))
-                            await db.ClearSavingsGoalOverrideAsync(g.Id);
                     }
                     foreach (var g in push.UpdatedSavingsGoals)
                     {
                         _pendingUpdatedSavingsGoals.Remove(g);
-                        if (!_pendingUpdatedSavingsGoals.Any(p => p.Id == g.Id))
-                            await db.ClearSavingsGoalOverrideAsync(g.Id);
                     }
                     foreach (var id in push.DeletedSavingsGoalIds)
                         _pendingDeletedSavingsGoalIds.Remove(id);
 
-                    foreach (var id in push.DeletedTripIds.Where(id => id > 0))
-                        await db.ClearTripDeleteAsync(id);
                     foreach (var t in push.NewTrips)
                     {
                         _pendingNewTrips.Remove(t);
                         var stillPending = _pendingNewTrips.Any(p => p.Id == t.Id);
-                        LogTrip($"CLEAR-CHECK-NEW trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
-                        if (!stillPending)
-                            await db.ClearTripOverrideAsync(t.Id);
+                        LogTrip($"CLEAR-CHECK-NEW trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} keepingOverrideUntilPull=true");
                     }
                     foreach (var t in push.UpdatedTrips)
                     {
                         _pendingUpdatedTrips.Remove(t);
                         var stillPending = _pendingUpdatedTrips.Any(p => p.Id == t.Id);
-                        LogTrip($"CLEAR-CHECK-UPDATED trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} clearingOverride={!stillPending}");
-                        if (!stillPending)
-                            await db.ClearTripOverrideAsync(t.Id);
+                        LogTrip($"CLEAR-CHECK-UPDATED trip={t.Id} sentWas=[{ItinSnapshot(t)}] stillPending={stillPending} keepingOverrideUntilPull=true");
                     }
                     foreach (var id in push.DeletedTripIds)
                         _pendingDeletedTripIds.Remove(id);

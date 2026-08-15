@@ -8,6 +8,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
 {
     private const string CategoryManagementRulesSettingKey = "CategoryManagementRules";
     private const string TransactionCategoryRulesSettingKey = "TransactionCategoryRules";
+    private static readonly TimeSpan DeleteTombstoneTtl = TimeSpan.FromHours(72);
 
     private static readonly JsonSerializerOptions _opts = new()
     {
@@ -200,7 +201,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
         {
             var updated = ov.Transaction;
             var transaction = FindPayloadTransaction(payload.Transactions, updated);
-            if (transaction is null) continue;
+            if (transaction is null)
+            {
+                if (IsLocalOverrideExpired(ov.CreatedAt))
+                    await db.ClearTransactionOverrideAsync(ov.Id);
+                continue;
+            }
+
+            if (SameTransactionFields(transaction, updated))
+            {
+                overriddenIds.Add(transaction.Id);
+                if (!string.IsNullOrWhiteSpace(transaction.UpTransactionId))
+                    overriddenUpIds.Add(transaction.UpTransactionId);
+                await db.ClearTransactionOverrideAsync(ov.Id);
+                continue;
+            }
 
             transaction.Date = new DateTime(updated.Date.Year, updated.Date.Month, updated.Date.Day);
             transaction.Description = updated.Description;
@@ -230,16 +245,15 @@ public class SyncService(HttpClient http, IndexedDbService db)
             }
             else
             {
-                // No longer present in the incoming snapshot, so the delete has
-                // propagated server-side. Drop the tombstone so its signature
-                // match can't keep suppressing unrelated future transactions.
-                await db.ClearTransactionDeleteAsync(pending.Id);
+                if (IsDeleteTombstoneExpired(pending.CreatedAt))
+                    await db.ClearTransactionDeleteAsync(pending.Id);
             }
         }
 
         var deletedBills = await db.GetPendingBillDeletesAsync();
-        foreach (var deleted in deletedBills.Select(d => d.ToBillDelete()))
+        foreach (var pending in deletedBills)
         {
+            var deleted = pending.ToBillDelete();
             var matchingIds = payload.Bills
                 .Where(b => SameBillDelete(b, deleted))
                 .Select(b => b.Id)
@@ -249,7 +263,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
             payload.BillOccurrenceStatuses.RemoveAll(s => matchingIds.Contains(s.BillId));
             if (!stillExistsInIncomingSnapshot)
             {
-                await db.ClearBillDeleteAsync(deleted.Id);
+                if (IsDeleteTombstoneExpired(pending.CreatedAt))
+                    await db.ClearBillDeleteAsync(deleted.Id);
             }
         }
 
@@ -269,19 +284,7 @@ public class SyncService(HttpClient http, IndexedDbService db)
             }
             if (!stillExistsInIncomingSnapshot)
             {
-                // Keep the tombstone alive for 72 hours so that a stale PC
-                // snapshot pushed to finance_sync after the phone's merged
-                // write can't restore the debt before the PC reconciles
-                // phone_push. The phone may have just written a version
-                // without the debt; if the PC overwrites it before this pull
-                // the tombstone catches it — but if the PC overwrites AFTER
-                // this pull (and the tombstone has been cleared), the next
-                // pull has no defense. Legacy tombstones (CreatedAt == default)
-                // are cleared immediately to preserve prior behaviour.
-                var tombstoneAge = deleted.CreatedAt == default
-                    ? TimeSpan.MaxValue
-                    : DateTime.UtcNow - deleted.CreatedAt;
-                if (tombstoneAge >= TimeSpan.FromHours(72))
+                if (IsDeleteTombstoneExpired(deleted.CreatedAt))
                     await db.ClearDebtDeleteAsync(deleted.Id);
             }
         }
@@ -297,7 +300,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
             payload.SavingsGoals.RemoveAll(g => matchingIds.Contains(g.Id));
             if (!stillExistsInIncomingSnapshot)
             {
-                await db.ClearSavingsGoalDeleteAsync(deleted.Id);
+                if (IsDeleteTombstoneExpired(deleted.CreatedAt))
+                    await db.ClearSavingsGoalDeleteAsync(deleted.Id);
             }
         }
 
@@ -312,7 +316,8 @@ public class SyncService(HttpClient http, IndexedDbService db)
             payload.Trips.RemoveAll(t => matchingIds.Contains(t.Id));
             if (!stillExistsInIncomingSnapshot)
             {
-                await db.ClearTripDeleteAsync(deleted.Id);
+                if (IsDeleteTombstoneExpired(deleted.CreatedAt))
+                    await db.ClearTripDeleteAsync(deleted.Id);
             }
         }
 
@@ -323,8 +328,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
             if (deletedBills.Any(d => SameBillDelete(updated, d.ToBillDelete()))) continue;
             var bill = payload.Bills.FirstOrDefault(b => b.Id == updated.Id)
                 ?? payload.Bills.FirstOrDefault(b => SameBillDelete(b, ToBillDelete(updated)));
-            if (bill is null) payload.Bills.Add(updated);
-            else CopyBillFields(updated, bill);
+            if (bill is null)
+            {
+                if (IsLocalOverrideExpired(ov.CreatedAt))
+                    await db.ClearBillEditOverrideAsync(ov.Id);
+                else
+                    payload.Bills.Add(updated);
+            }
+            else if (SameBillFields(bill, updated))
+            {
+                await db.ClearBillEditOverrideAsync(ov.Id);
+            }
+            else
+            {
+                CopyBillFields(updated, bill);
+            }
         }
 
         var debtOverrides = await db.GetPendingDebtOverridesAsync();
@@ -334,8 +352,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
             if (deletedDebts.Any(d => SameDebtDelete(updated, d))) continue;
             var debt = payload.Debts.FirstOrDefault(d => d.Id == updated.Id)
                 ?? payload.Debts.FirstOrDefault(d => SameDebtSnapshot(d, updated));
-            if (debt is null) payload.Debts.Add(updated);
-            else CopyDebtFields(updated, debt);
+            if (debt is null)
+            {
+                if (IsLocalOverrideExpired(ov.CreatedAt))
+                    await db.ClearDebtOverrideAsync(ov.Id);
+                else
+                    payload.Debts.Add(updated);
+            }
+            else if (SameDebtFields(debt, updated))
+            {
+                await db.ClearDebtOverrideAsync(ov.Id);
+            }
+            else
+            {
+                CopyDebtFields(updated, debt);
+            }
         }
 
         var savingsGoalOverrides = await db.GetPendingSavingsGoalOverridesAsync();
@@ -345,8 +376,21 @@ public class SyncService(HttpClient http, IndexedDbService db)
             if (deletedSavingsGoals.Any(d => SameSavingsGoalDelete(updated, d))) continue;
             var goal = payload.SavingsGoals.FirstOrDefault(g => g.Id == updated.Id)
                 ?? payload.SavingsGoals.FirstOrDefault(g => SameSavingsGoalSnapshot(g, updated));
-            if (goal is null) payload.SavingsGoals.Add(updated);
-            else CopySavingsGoalFields(updated, goal);
+            if (goal is null)
+            {
+                if (IsLocalOverrideExpired(ov.CreatedAt))
+                    await db.ClearSavingsGoalOverrideAsync(ov.Id);
+                else
+                    payload.SavingsGoals.Add(updated);
+            }
+            else if (SameSavingsGoalFields(goal, updated))
+            {
+                await db.ClearSavingsGoalOverrideAsync(ov.Id);
+            }
+            else
+            {
+                CopySavingsGoalFields(updated, goal);
+            }
         }
 
         var accountOverrides = await db.GetPendingAccountOverridesAsync();
@@ -354,7 +398,17 @@ public class SyncService(HttpClient http, IndexedDbService db)
         {
             var updated = ov.Account;
             var account = payload.Accounts.FirstOrDefault(a => a.Id == updated.Id);
-            if (account is null) continue;
+            if (account is null)
+            {
+                if (IsLocalOverrideExpired(ov.CreatedAt))
+                    await db.ClearAccountOverrideAsync(ov.Id);
+                continue;
+            }
+            if (SameAccountFields(account, updated))
+            {
+                await db.ClearAccountOverrideAsync(ov.Id);
+                continue;
+            }
             account.TargetCents = updated.TargetCents;
             account.TargetDate = updated.TargetDate;
             account.TargetStartDate = updated.TargetStartDate;
@@ -367,7 +421,18 @@ public class SyncService(HttpClient http, IndexedDbService db)
             var updated = ov.Trip;
             var trip = payload.Trips.FirstOrDefault(t => t.Id == updated.Id)
                 ?? payload.Trips.FirstOrDefault(t => SameTripAdoptionCandidate(t, updated));
-            if (trip is null) continue;
+            if (trip is null)
+            {
+                if (IsLocalOverrideExpired(ov.CreatedAt))
+                    await db.ClearTripOverrideAsync(ov.Id);
+                continue;
+            }
+
+            if (SameTripFields(trip, updated))
+            {
+                await db.ClearTripOverrideAsync(ov.Id);
+                continue;
+            }
 
             CopyTripFields(updated, trip);
         }
@@ -424,6 +489,71 @@ public class SyncService(HttpClient http, IndexedDbService db)
         public List<ManagedCategoryRule> AddedCategories { get; set; } = new();
         public List<DeletedCategoryRule> DeletedCategories { get; set; } = new();
     }
+
+    private static bool IsDeleteTombstoneExpired(DateTime createdAt) =>
+        createdAt == default || DateTime.UtcNow - createdAt >= DeleteTombstoneTtl;
+
+    private static bool IsLocalOverrideExpired(DateTime createdAt) =>
+        createdAt != default && DateTime.UtcNow - createdAt >= DeleteTombstoneTtl;
+
+    private static bool SameTransactionFields(Transaction left, Transaction right) =>
+        left.Date.Date == right.Date.Date &&
+        left.Description == right.Description &&
+        left.AmountCents == right.AmountCents &&
+        left.AccountId == right.AccountId &&
+        left.CategoryId == right.CategoryId &&
+        left.TransferId == right.TransferId &&
+        left.UpTransactionId == right.UpTransactionId &&
+        left.IsUnnecessary == right.IsUnnecessary &&
+        left.IsReimbursement == right.IsReimbursement;
+
+    private static bool SameBillFields(Bill left, Bill right) =>
+        left.Name == right.Name &&
+        left.AccountId == right.AccountId &&
+        left.AccountName == right.AccountName &&
+        left.AmountCents == right.AmountCents &&
+        left.DueDate.Date == right.DueDate.Date &&
+        left.Frequency == right.Frequency &&
+        left.IsAutoPay == right.IsAutoPay &&
+        left.IsPaid == right.IsPaid &&
+        left.DebtId == right.DebtId;
+
+    private static bool SameDebtFields(Debt left, Debt right) =>
+        left.Name == right.Name &&
+        left.BalanceCents == right.BalanceCents &&
+        left.MinimumPaymentCents == right.MinimumPaymentCents &&
+        left.PaymentPeriod == right.PaymentPeriod &&
+        left.InterestRate == right.InterestRate &&
+        left.OriginalBalanceCents == right.OriginalBalanceCents;
+
+    private static bool SameAccountFields(Account left, Account right) =>
+        left.TargetCents == right.TargetCents &&
+        left.TargetDate == right.TargetDate &&
+        left.TargetStartDate == right.TargetStartDate &&
+        left.TargetStartingBalanceCents == right.TargetStartingBalanceCents;
+
+    private static bool SameSavingsGoalFields(SavingsGoal left, SavingsGoal right) =>
+        left.Name == right.Name &&
+        left.TargetCents == right.TargetCents &&
+        left.CurrentCents == right.CurrentCents &&
+        left.WeeklyContributionCents == right.WeeklyContributionCents &&
+        left.TargetDate == right.TargetDate &&
+        left.TargetStartDate == right.TargetStartDate &&
+        left.TargetStartingBalanceCents == right.TargetStartingBalanceCents &&
+        left.GroupName == right.GroupName &&
+        left.Emoji == right.Emoji;
+
+    private static bool SameTripFields(Trip left, Trip right) =>
+        left.Name == right.Name &&
+        left.Destination == right.Destination &&
+        left.Notes == right.Notes &&
+        left.StartDate == right.StartDate &&
+        left.EndDate == right.EndDate &&
+        left.SavingsAccountId == right.SavingsAccountId &&
+        left.WeeklyContributionCents == right.WeeklyContributionCents &&
+        JsonSerializer.Serialize(left.Itinerary, _opts) == JsonSerializer.Serialize(right.Itinerary, _opts) &&
+        JsonSerializer.Serialize(left.Checklist, _opts) == JsonSerializer.Serialize(right.Checklist, _opts) &&
+        JsonSerializer.Serialize(left.BudgetItems, _opts) == JsonSerializer.Serialize(right.BudgetItems, _opts);
 
     private sealed class ManagedCategoryRule
     {

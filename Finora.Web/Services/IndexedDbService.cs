@@ -294,12 +294,12 @@ public class IndexedDbService(IJSRuntime js)
     public Task DeleteLentTransactionAsync(int id) =>
         DeleteAsync("lentTxns", id);
 
-    // ── Persistent bill overrides (survive clearAll, cleared only on push success) ──
+    // ── Persistent bill overrides (survive clearAll until a pull confirms them) ──
     public Task<List<PendingBillOverride>> GetPendingBillOverridesAsync() =>
         GetAllAsync<PendingBillOverride>("pendingBillOverrides");
 
     public Task SetBillOverrideAsync(int billId, bool isPaid, DateTime cycleDate) =>
-        PutAsync("pendingBillOverrides", new PendingBillOverride { Id = billId, IsPaid = isPaid, CycleDate = cycleDate });
+        PutAsync("pendingBillOverrides", new PendingBillOverride { Id = billId, IsPaid = isPaid, CycleDate = cycleDate, CreatedAt = DateTime.UtcNow });
 
     public Task ClearBillOverrideAsync(int billId) =>
         DeleteAsync("pendingBillOverrides", billId);
@@ -343,7 +343,7 @@ public class IndexedDbService(IJSRuntime js)
         GetAllAsync<PendingTransactionOverride>("transactionOverrides");
 
     public Task SetTransactionOverrideAsync(Transaction transaction) =>
-        PutAsync("transactionOverrides", new PendingTransactionOverride { Id = transaction.Id, Transaction = transaction });
+        PutAsync("transactionOverrides", new PendingTransactionOverride { Id = transaction.Id, Transaction = transaction, CreatedAt = DateTime.UtcNow });
 
     public Task ClearTransactionOverrideAsync(int transactionId) =>
         DeleteAsync("transactionOverrides", transactionId);
@@ -355,7 +355,7 @@ public class IndexedDbService(IJSRuntime js)
         GetAllAsync<PendingTransactionDelete>("transactionDeletes");
 
     public Task SetTransactionDeleteAsync(TransactionDelete deleted) =>
-        PutAsync("transactionDeletes", new PendingTransactionDelete { Id = PendingTransactionDelete.GetStableId(deleted), Deleted = deleted });
+        PutAsync("transactionDeletes", new PendingTransactionDelete { Id = PendingTransactionDelete.GetStableId(deleted), Deleted = deleted, CreatedAt = DateTime.UtcNow });
 
     public Task ClearTransactionDeleteAsync(string id) =>
         DeleteAsync("transactionDeletes", id);
@@ -542,7 +542,7 @@ public class IndexedDbService(IJSRuntime js)
     {
         try
         {
-            await PutAsync("tripOverrides", new PendingTripOverride { Id = trip.Id, Trip = trip });
+            await PutAsync("tripOverrides", new PendingTripOverride { Id = trip.Id, Trip = trip, CreatedAt = DateTime.UtcNow });
         }
         catch (JSException)
         {
@@ -588,7 +588,7 @@ public class IndexedDbService(IJSRuntime js)
     {
         try
         {
-            await PutAsync("billEditOverrides", new PendingBillEditOverride { Id = bill.Id, Bill = bill });
+            await PutAsync("billEditOverrides", new PendingBillEditOverride { Id = bill.Id, Bill = bill, CreatedAt = DateTime.UtcNow });
         }
         catch (JSException)
         {
@@ -634,7 +634,7 @@ public class IndexedDbService(IJSRuntime js)
     {
         try
         {
-            await PutAsync("debtOverrides", new PendingDebtOverride { Id = debt.Id, Debt = debt });
+            await PutAsync("debtOverrides", new PendingDebtOverride { Id = debt.Id, Debt = debt, CreatedAt = DateTime.UtcNow });
         }
         catch (JSException)
         {
@@ -680,7 +680,7 @@ public class IndexedDbService(IJSRuntime js)
     {
         try
         {
-            await PutAsync("accountOverrides", new PendingAccountOverride { Id = account.Id, Account = account });
+            await PutAsync("accountOverrides", new PendingAccountOverride { Id = account.Id, Account = account, CreatedAt = DateTime.UtcNow });
         }
         catch (JSException)
         {
@@ -726,7 +726,7 @@ public class IndexedDbService(IJSRuntime js)
     {
         try
         {
-            await PutAsync("savingsGoalOverrides", new PendingSavingsGoalOverride { Id = goal.Id, Goal = goal });
+            await PutAsync("savingsGoalOverrides", new PendingSavingsGoalOverride { Id = goal.Id, Goal = goal, CreatedAt = DateTime.UtcNow });
         }
         catch (JSException)
         {
@@ -777,6 +777,7 @@ public class PendingBillOverride
     public int Id { get; set; }   // = BillId (unique per bill)
     public bool IsPaid { get; set; }
     public DateTime CycleDate { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingBillDelete
@@ -788,6 +789,7 @@ public class PendingBillDelete
     public int AmountCents { get; set; }
     public DateTime DueDate { get; set; }
     public BillFrequency Frequency { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     public BillDelete ToBillDelete() => new()
     {
@@ -808,7 +810,8 @@ public class PendingBillDelete
         AccountName = deleted.AccountName,
         AmountCents = deleted.AmountCents,
         DueDate = deleted.DueDate,
-        Frequency = deleted.Frequency
+        Frequency = deleted.Frequency,
+        CreatedAt = DateTime.UtcNow
     };
 }
 
@@ -837,6 +840,7 @@ public class PendingSavingsGoalDelete
     public int TargetCents { get; set; }
     public int CurrentCents { get; set; }
     public string? GroupName { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     public static PendingSavingsGoalDelete FromSavingsGoal(SavingsGoal goal) => new()
     {
@@ -844,7 +848,8 @@ public class PendingSavingsGoalDelete
         Name = goal.Name,
         TargetCents = goal.TargetCents,
         CurrentCents = goal.CurrentCents,
-        GroupName = goal.GroupName
+        GroupName = goal.GroupName,
+        CreatedAt = DateTime.UtcNow
     };
 }
 
@@ -854,13 +859,15 @@ public class PendingTripDelete
     public string Name { get; set; } = string.Empty;
     public string? Destination { get; set; }
     public DateTime? StartDate { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     public static PendingTripDelete FromTrip(Trip trip) => new()
     {
         Id = trip.Id,
         Name = trip.Name,
         Destination = trip.Destination,
-        StartDate = trip.StartDate
+        StartDate = trip.StartDate,
+        CreatedAt = DateTime.UtcNow
     };
 }
 
@@ -868,36 +875,42 @@ public class PendingTransactionOverride
 {
     public int Id { get; set; } // = Transaction Id
     public Transaction Transaction { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingBillEditOverride
 {
     public int Id { get; set; } // = Bill Id
     public Bill Bill { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingDebtOverride
 {
     public int Id { get; set; } // = Debt Id
     public Debt Debt { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingAccountOverride
 {
     public int Id { get; set; } // = Account Id
     public Account Account { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingSavingsGoalOverride
 {
     public int Id { get; set; } // = SavingsGoal Id
     public SavingsGoal Goal { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingTripOverride
 {
     public int Id { get; set; } // = Trip Id
     public Trip Trip { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 }
 
 public class PendingSettingOverride
@@ -911,6 +924,7 @@ public class PendingTransactionDelete
 {
     public string Id { get; set; } = string.Empty;
     public TransactionDelete Deleted { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
 
     public static string GetStableId(TransactionDelete deleted) =>
         !string.IsNullOrWhiteSpace(deleted.UpTransactionId)
