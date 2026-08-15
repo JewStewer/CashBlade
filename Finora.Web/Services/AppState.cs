@@ -1004,7 +1004,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     existing.OriginalBalanceCents == debt.OriginalBalanceCents;
                 if (alreadyApplied)
                 {
-                    await db.ClearDebtOverrideAsync(existing.Id);
+                    _pendingUpdatedDebts.RemoveAll(d => d.Id == existing.Id);
+                    _pendingUpdatedDebts.Add(CloneDebt(existing));
                     continue;
                 }
             }
