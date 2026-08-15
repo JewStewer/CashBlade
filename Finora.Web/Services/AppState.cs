@@ -1611,11 +1611,17 @@ public class AppState(IndexedDbService db, SyncService sync)
         var earliest = DateTime.Today.AddDays(-lookbackDays);
         foreach (var bill in Bills)
         {
-            var due = bill.DueDate.Date;
+            var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+
+            // Installment-linked bills anchor to the current cycle rather than to
+            // their stored origin date. The origin date may predate app tracking
+            // (AddInstallmentBillAsync walks it back to the first payment), so any
+            // occurrences between origin and current cycle with no status record are
+            // phantom entries from before tracking began, not genuinely missed payments.
+            var due = bill.DebtId is not null ? current.Date : bill.DueDate.Date;
             while (due < earliest)
                 due = AdvanceDueDate(due, bill.Frequency);
 
-            var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
             while (due <= current.Date)
             {
                 if (!IsBillOccurrencePaid(bill, due))
@@ -4294,7 +4300,8 @@ public class AppState(IndexedDbService db, SyncService sync)
     public async Task<Bill> AddInstallmentBillAsync(Bill b, decimal totalAmountDollars)
     {
         // The user-entered DueDate is the LAST (final) payment. Walk it back to
-        // the first payment so GetUpcomingBillOccurrences advances forward correctly.
+        // the first payment, then advance to the current-cycle occurrence (≥ today)
+        // so prior payments that already auto-debited don't appear as outstanding.
         if (b.AmountDollars > 0)
         {
             var numPayments = (int)Math.Ceiling(totalAmountDollars / b.AmountDollars);
@@ -4310,6 +4317,8 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _                         => b.DueDate.AddDays(-7  * (numPayments - 1))
                 };
             }
+            while (b.DueDate.Date < DateTime.Today)
+                b.DueDate = AdvanceDueDate(b.DueDate, b.Frequency);
         }
         await AddBillAsync(b);
 
