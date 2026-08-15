@@ -4310,6 +4310,12 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _                         => b.DueDate.AddDays(-7  * (numPayments - 1))
                 };
             }
+            // If earlier payments already auto-debited before tracking started,
+            // the walk-back can land in the past. Advance to the current-cycle
+            // occurrence so GetOutstandingBillOccurrences doesn't surface phantom
+            // unpaid rows for those earlier auto-debits.
+            while (b.DueDate.Date < DateTime.Today)
+                b.DueDate = AdvanceDueDate(b.DueDate, b.Frequency);
         }
         await AddBillAsync(b);
 
