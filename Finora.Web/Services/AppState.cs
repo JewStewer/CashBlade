@@ -818,6 +818,18 @@ public class AppState(IndexedDbService db, SyncService sync)
         {
             var bill = Bills.FirstOrDefault(b => b.Id == ov.Id);
             if (bill is null) continue;
+
+            var effectiveDue = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
+
+            // If the stored override is for a different cycle (e.g., Aug 18 was
+            // paid but EffectiveDueDate has since rolled to Sep 1), discard the
+            // stale override so the new cycle isn't falsely marked paid.
+            if (ov.CycleDate != default && ov.CycleDate.Date != effectiveDue.Date)
+            {
+                await db.ClearBillOverrideAsync(ov.Id);
+                continue;
+            }
+
             bill.IsPaid = ov.IsPaid;
 
             var status = GetOrCreateCurrentStatus(bill);
@@ -1575,11 +1587,28 @@ public class AppState(IndexedDbService db, SyncService sync)
         var result = new List<BillOccurrencePreview>();
         foreach (var bill in Bills)
         {
+            // For installment bills, cap at the final payment date so occurrences
+            // don't keep generating past the last instalment.
+            DateTime? finalDate = null;
+            if (bill.DebtId is { } debtId)
+            {
+                var debt = Debts.FirstOrDefault(d => d.Id == debtId);
+                if (debt is not null && debt.OriginalBalanceCents > 0 && bill.AmountCents > 0)
+                {
+                    var numPayments = (int)Math.Ceiling((decimal)debt.OriginalBalanceCents / bill.AmountCents);
+                    var fd = bill.DueDate.Date;
+                    for (var i = 1; i < numPayments; i++)
+                        fd = AdvanceDueDate(fd, bill.Frequency);
+                    finalDate = fd;
+                }
+            }
+
             var due = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
             while (due < from.Date)
                 due = AdvanceDueDate(due, bill.Frequency);
 
-            while (due <= to.Date)
+            var ceiling = finalDate.HasValue && finalDate.Value < to.Date ? finalDate.Value : to.Date;
+            while (due <= ceiling)
             {
                 if (!IsBillOccurrencePaid(bill, due))
                     result.Add(new BillOccurrencePreview(bill, due));
@@ -1611,13 +1640,43 @@ public class AppState(IndexedDbService db, SyncService sync)
         var earliest = DateTime.Today.AddDays(-lookbackDays);
         foreach (var bill in Bills)
         {
+            // For installment bills, compute the final payment date from the linked
+            // Debt so we don't surface occurrences past the last instalment.
+            DateTime? finalDate = null;
+            if (bill.DebtId is { } debtId)
+            {
+                var debt = Debts.FirstOrDefault(d => d.Id == debtId);
+                if (debt is not null && debt.OriginalBalanceCents > 0 && bill.AmountCents > 0)
+                {
+                    var numPayments = (int)Math.Ceiling((decimal)debt.OriginalBalanceCents / bill.AmountCents);
+                    var fd = bill.DueDate.Date;
+                    for (var i = 1; i < numPayments; i++)
+                        fd = AdvanceDueDate(fd, bill.Frequency);
+                    finalDate = fd;
+                }
+            }
+
             var due = bill.DueDate.Date;
             while (due < earliest)
                 due = AdvanceDueDate(due, bill.Frequency);
 
             var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
-            while (due <= current.Date)
+            var ceiling = finalDate.HasValue && finalDate.Value < current.Date ? finalDate.Value : current.Date;
+            while (due <= ceiling)
             {
+                // For installment bills, skip past occurrences with no explicit
+                // status — these are auto-debits that happened before tracking
+                // started and should not appear as phantom unpaid rows.
+                if (bill.DebtId is not null && due.Date < DateTime.Today)
+                {
+                    var hasStatus = BillStatuses.Any(s => s.BillId == bill.Id && s.DueDate.Date == due.Date);
+                    if (!hasStatus)
+                    {
+                        due = AdvanceDueDate(due, bill.Frequency);
+                        continue;
+                    }
+                }
+
                 if (!IsBillOccurrencePaid(bill, due))
                     result.Add(new BillOccurrencePreview(bill, due));
                 due = AdvanceDueDate(due, bill.Frequency);
@@ -4310,12 +4369,6 @@ public class AppState(IndexedDbService db, SyncService sync)
                     _                         => b.DueDate.AddDays(-7  * (numPayments - 1))
                 };
             }
-            // If earlier payments already auto-debited before tracking started,
-            // the walk-back can land in the past. Advance to the current-cycle
-            // occurrence so GetOutstandingBillOccurrences doesn't surface phantom
-            // unpaid rows for those earlier auto-debits.
-            while (b.DueDate.Date < DateTime.Today)
-                b.DueDate = AdvanceDueDate(b.DueDate, b.Frequency);
         }
         await AddBillAsync(b);
 
@@ -5149,7 +5202,7 @@ public class AppState(IndexedDbService db, SyncService sync)
             bill.IsPaid = paid;
             await db.PutAsync("bills", bill);
             // Persist the override so it survives sync's clearAll and app restarts
-            await db.SetBillOverrideAsync(billId, paid);
+            await db.SetBillOverrideAsync(billId, paid, dueDate);
         }
 
         await ApplyBillDebtPaymentAsync(bill, status.DueDate, paid);

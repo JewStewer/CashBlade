@@ -298,8 +298,8 @@ public class IndexedDbService(IJSRuntime js)
     public Task<List<PendingBillOverride>> GetPendingBillOverridesAsync() =>
         GetAllAsync<PendingBillOverride>("pendingBillOverrides");
 
-    public Task SetBillOverrideAsync(int billId, bool isPaid) =>
-        PutAsync("pendingBillOverrides", new PendingBillOverride { Id = billId, IsPaid = isPaid });
+    public Task SetBillOverrideAsync(int billId, bool isPaid, DateTime cycleDate) =>
+        PutAsync("pendingBillOverrides", new PendingBillOverride { Id = billId, IsPaid = isPaid, CycleDate = cycleDate });
 
     public Task ClearBillOverrideAsync(int billId) =>
         DeleteAsync("pendingBillOverrides", billId);
@@ -776,6 +776,7 @@ public class PendingBillOverride
 {
     public int Id { get; set; }   // = BillId (unique per bill)
     public bool IsPaid { get; set; }
+    public DateTime CycleDate { get; set; }
 }
 
 public class PendingBillDelete
