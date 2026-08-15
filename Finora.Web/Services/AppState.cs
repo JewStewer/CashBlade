@@ -5440,13 +5440,7 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private static bool SameDebtDelete(Debt debt, PendingDebtDelete deleted)
     {
-        if (debt.Id > 0 && deleted.Id > 0 && debt.Id == deleted.Id
-            && (string.Equals(debt.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)
-                || debt.BalanceCents == deleted.BalanceCents
-                || debt.OriginalBalanceCents == deleted.OriginalBalanceCents))
-        {
-            return true;
-        }
+        if (debt.Id > 0 && deleted.Id > 0 && debt.Id == deleted.Id) return true;
 
         if (!string.Equals(debt.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
         if (deleted.OriginalBalanceCents > 0 && debt.OriginalBalanceCents > 0)
