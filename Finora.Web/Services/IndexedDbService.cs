@@ -817,13 +817,15 @@ public class PendingDebtDelete
     public string Name { get; set; } = string.Empty;
     public int BalanceCents { get; set; }
     public int OriginalBalanceCents { get; set; }
+    public DateTime CreatedAt { get; set; }
 
     public static PendingDebtDelete FromDebt(Debt debt) => new()
     {
         Id = debt.Id,
         Name = debt.Name,
         BalanceCents = debt.BalanceCents,
-        OriginalBalanceCents = debt.OriginalBalanceCents
+        OriginalBalanceCents = debt.OriginalBalanceCents,
+        CreatedAt = DateTime.UtcNow
     };
 }
 

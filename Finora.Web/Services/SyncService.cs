@@ -269,7 +269,20 @@ public class SyncService(HttpClient http, IndexedDbService db)
             }
             if (!stillExistsInIncomingSnapshot)
             {
-                await db.ClearDebtDeleteAsync(deleted.Id);
+                // Keep the tombstone alive for 72 hours so that a stale PC
+                // snapshot pushed to finance_sync after the phone's merged
+                // write can't restore the debt before the PC reconciles
+                // phone_push. The phone may have just written a version
+                // without the debt; if the PC overwrites it before this pull
+                // the tombstone catches it — but if the PC overwrites AFTER
+                // this pull (and the tombstone has been cleared), the next
+                // pull has no defense. Legacy tombstones (CreatedAt == default)
+                // are cleared immediately to preserve prior behaviour.
+                var tombstoneAge = deleted.CreatedAt == default
+                    ? TimeSpan.MaxValue
+                    : DateTime.UtcNow - deleted.CreatedAt;
+                if (tombstoneAge >= TimeSpan.FromHours(72))
+                    await db.ClearDebtDeleteAsync(deleted.Id);
             }
         }
 
