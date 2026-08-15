@@ -1544,17 +1544,33 @@ public class AppState(IndexedDbService db, SyncService sync)
     /// Required because Up Bank auto-payment matching records a BillOccurrenceStatus
     /// without advancing bill.DueDate; this compensates on the phone side.
     /// </summary>
-    private static DateTime GetEffectiveDueDate(Bill bill)
+    private DateTime GetEffectiveDueDate(Bill bill)
     {
         var dueDate = bill.DueDate.Date;
         var today   = DateTime.Today;
+        var finalDue = GetInstallmentFinalDueDate(bill);
         // Advance until we reach the current or next upcoming occurrence.
         // We deliberately advance PAST today — we want the upcoming cycle, not
         // the most-recently-passed one, so unpaid June bills aren't hidden behind
         // a "paid in May" status.
-        while (dueDate < today)
+        while (dueDate < today && (finalDue is null || dueDate < finalDue.Value.Date))
             dueDate = AdvanceDueDate(dueDate, bill.Frequency);
+        if (finalDue is not null && dueDate > finalDue.Value.Date)
+            dueDate = finalDue.Value.Date;
         return dueDate;
+    }
+
+    private DateTime? GetInstallmentFinalDueDate(Bill bill)
+    {
+        if (bill.DebtId is not { } debtId) return null;
+        var debt = Debts.FirstOrDefault(d => d.Id == debtId);
+        if (debt is null || debt.OriginalBalanceDollars <= 0 || bill.AmountDollars <= 0) return null;
+
+        var paymentCount = Math.Max((int)Math.Ceiling(debt.OriginalBalanceDollars / bill.AmountDollars), 1);
+        var due = bill.DueDate.Date;
+        for (var i = 1; i < paymentCount; i++)
+            due = AdvanceDueDate(due, bill.Frequency);
+        return due;
     }
 
     private static DateTime AdvanceDueDate(DateTime d, BillFrequency f) => f switch
@@ -1587,28 +1603,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         var result = new List<BillOccurrencePreview>();
         foreach (var bill in Bills)
         {
-            // For installment bills, cap at the final payment date so occurrences
-            // don't keep generating past the last instalment.
-            DateTime? finalDate = null;
-            if (bill.DebtId is { } debtId)
-            {
-                var debt = Debts.FirstOrDefault(d => d.Id == debtId);
-                if (debt is not null && debt.OriginalBalanceCents > 0 && bill.AmountCents > 0)
-                {
-                    var numPayments = (int)Math.Ceiling((decimal)debt.OriginalBalanceCents / bill.AmountCents);
-                    var fd = bill.DueDate.Date;
-                    for (var i = 1; i < numPayments; i++)
-                        fd = AdvanceDueDate(fd, bill.Frequency);
-                    finalDate = fd;
-                }
-            }
-
             var due = bill.EffectiveDueDate == default ? bill.DueDate.Date : bill.EffectiveDueDate.Date;
+            var finalDue = GetInstallmentFinalDueDate(bill);
             while (due < from.Date)
                 due = AdvanceDueDate(due, bill.Frequency);
 
-            var ceiling = finalDate.HasValue && finalDate.Value < to.Date ? finalDate.Value : to.Date;
-            while (due <= ceiling)
+            while (due <= to.Date && (finalDue is null || due <= finalDue.Value.Date))
             {
                 if (!IsBillOccurrencePaid(bill, due))
                     result.Add(new BillOccurrencePreview(bill, due));
@@ -1640,29 +1640,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         var earliest = DateTime.Today.AddDays(-lookbackDays);
         foreach (var bill in Bills)
         {
-            // For installment bills, compute the final payment date from the linked
-            // Debt so we don't surface occurrences past the last instalment.
-            DateTime? finalDate = null;
-            if (bill.DebtId is { } debtId)
-            {
-                var debt = Debts.FirstOrDefault(d => d.Id == debtId);
-                if (debt is not null && debt.OriginalBalanceCents > 0 && bill.AmountCents > 0)
-                {
-                    var numPayments = (int)Math.Ceiling((decimal)debt.OriginalBalanceCents / bill.AmountCents);
-                    var fd = bill.DueDate.Date;
-                    for (var i = 1; i < numPayments; i++)
-                        fd = AdvanceDueDate(fd, bill.Frequency);
-                    finalDate = fd;
-                }
-            }
-
             var due = bill.DueDate.Date;
+            var finalDue = GetInstallmentFinalDueDate(bill);
             while (due < earliest)
                 due = AdvanceDueDate(due, bill.Frequency);
 
             var current = bill.EffectiveDueDate == default ? GetEffectiveDueDate(bill) : bill.EffectiveDueDate;
-            var ceiling = finalDate.HasValue && finalDate.Value < current.Date ? finalDate.Value : current.Date;
-            while (due <= ceiling)
+            while (due <= current.Date && (finalDue is null || due <= finalDue.Value.Date))
             {
                 // For installment bills, skip past occurrences with no explicit
                 // status — these are auto-debits that happened before tracking
@@ -1779,10 +1763,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         var prevCycleStart = ReverseDueDate(current.Date, bill.Frequency);
         var earliest = prevCycleStart < today.AddDays(-lookbackDays) ? prevCycleStart : today.AddDays(-lookbackDays);
         var dueDate = bill.DueDate.Date;
+        var finalDue = GetInstallmentFinalDueDate(bill);
         while (dueDate < earliest)
             dueDate = AdvanceDueDate(dueDate, bill.Frequency);
         decimal required = 0m;
-        while (dueDate <= current.Date)
+        while (dueDate <= current.Date && (finalDue is null || dueDate <= finalDue.Value.Date))
         {
             if (!IsBillOccurrencePaid(bill, dueDate))
             {
