@@ -437,6 +437,17 @@ public class IndexedDbService(IJSRuntime js)
         }
     }
 
+    // Single atomic IndexedDB transaction: deletes the debt record, clears its
+    // override, and writes its tombstone. If the process is killed mid-way,
+    // IndexedDB rolls back the entire transaction so no partial state is left.
+    public async Task DeleteDebtAtomicAsync(int debtId, Debt? deletedDebt)
+    {
+        var tombstone = (deletedDebt is not null && debtId > 0)
+            ? (object)PendingDebtDelete.FromDebt(deletedDebt)
+            : (object?)null;
+        await js.InvokeVoidAsync("db.deleteDebt", debtId, tombstone);
+    }
+
     public async Task ClearDebtDeleteAsync(int debtId)
     {
         try

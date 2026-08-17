@@ -137,6 +137,28 @@ window.db = {
         });
     },
 
+    // Atomically deletes a debt, writes its tombstone, and clears its override
+    // in a single IndexedDB transaction. If the process is killed mid-way,
+    // IndexedDB rolls back the whole transaction — no partial state is possible.
+    async deleteDebt(id, tombstone) {
+        const db = await openDb();
+        const needed = ['debts', 'debtOverrides'];
+        if (tombstone !== null && tombstone !== undefined) needed.push('debtDeletes');
+        const stores = existingStores(db, needed);
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(stores, 'readwrite');
+            tx.oncomplete = () => resolve();
+            tx.onerror = e => reject(e.target.error ?? new Error('deleteDebt failed'));
+            tx.onabort  = () => reject(tx.error  ?? new Error('deleteDebt aborted'));
+            if (stores.includes('debts'))
+                tx.objectStore('debts').delete(id);
+            if (stores.includes('debtOverrides'))
+                tx.objectStore('debtOverrides').delete(id);
+            if (tombstone !== null && tombstone !== undefined && stores.includes('debtDeletes'))
+                tx.objectStore('debtDeletes').put(tombstone);
+        });
+    },
+
     async clear(store) {
         const db = await ensureStore(store);
         return new Promise((resolve, reject) => {

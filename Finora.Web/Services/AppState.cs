@@ -4065,10 +4065,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
 
         if (id > 0) _pendingDeletedDebtIds.Add(id);
-        if (deletedDebt is not null && id > 0)
-            await db.SetDebtDeleteAsync(deletedDebt);
-        await db.DeleteAsync("debts", id);
-        await db.ClearDebtOverrideAsync(id);
+        // Single atomic transaction: deletes the debt record, clears its override,
+        // and writes the tombstone. If iOS kills the app mid-way, IndexedDB rolls
+        // back automatically — no partial state where the tombstone is missing but
+        // the override survives (or vice versa), which was the root cause of
+        // resurrection bugs.
+        await db.DeleteDebtAtomicAsync(id, deletedDebt);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
