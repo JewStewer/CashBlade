@@ -100,6 +100,21 @@ public class IndexedDbService(IJSRuntime js)
             await ClearBillOverrideAsync(stale.Id);
         }
 
+        // Filter out debts the user already deleted on this device (tombstones in
+        // debtDeletes). replaceAll would otherwise restore them from the server
+        // snapshot on every sync pull, making deletions appear to come back until
+        // the deletion successfully pushes to the server.
+        var debtTombstones = await GetPendingDebtDeletesAsync();
+        if (debtTombstones.Count > 0)
+        {
+            p.Debts = p.Debts
+                .Where(d => !debtTombstones.Any(t => IsSameDebtDelete(d, t)))
+                .ToList();
+            p.DebtPayments = p.DebtPayments
+                .Where(pay => p.Debts.Any(d => d.Id == pay.DebtId))
+                .ToList();
+        }
+
         // Single atomic IndexedDB transaction via db.replaceAll:
         //   • clears all sync-managed stores
         //   • writes new records for every store
@@ -226,6 +241,15 @@ public class IndexedDbService(IJSRuntime js)
             // Never actually reached the server yet — keep it so it isn't lost.
             p.SavingsGoals.Add(local);
         }
+    }
+
+    private static bool IsSameDebtDelete(Debt debt, PendingDebtDelete deleted)
+    {
+        if (debt.Id > 0 && deleted.Id > 0 && debt.Id == deleted.Id) return true;
+        if (!string.Equals(debt.Name.Trim(), deleted.Name.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        if (deleted.OriginalBalanceCents > 0 && debt.OriginalBalanceCents > 0)
+            return debt.OriginalBalanceCents == deleted.OriginalBalanceCents;
+        return debt.BalanceCents == deleted.BalanceCents;
     }
 
     private static bool IsTripRicher(Trip local, Trip incoming)
