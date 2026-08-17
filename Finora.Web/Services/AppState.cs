@@ -974,9 +974,19 @@ public class AppState(IndexedDbService db, SyncService sync)
     private async Task ApplyPersistedDebtOverridesAsync()
     {
         var overrides = await db.GetPendingDebtOverridesAsync();
+        var tombstones = await db.GetPendingDebtDeletesAsync();
         foreach (var ov in overrides)
         {
             var debt = ov.Debt;
+            // Skip (and clean up) overrides for debts the user already deleted — without
+            // this guard the override re-adds the debt to both memory and IndexedDB, where
+            // it survives every app restart even though ApplyPersistedDebtDeletesAsync
+            // removes it from the in-memory list each time.
+            if (tombstones.Any(t => SameDebtDelete(debt, t)))
+            {
+                await db.ClearDebtOverrideAsync(debt.Id);
+                continue;
+            }
             var existing = Debts.FirstOrDefault(d => d.Id == debt.Id)
                 ?? Debts.FirstOrDefault(d => SameDebtSnapshot(d, debt));
             if (existing is null && debt.Id < 0)
@@ -1200,11 +1210,18 @@ public class AppState(IndexedDbService db, SyncService sync)
             {
                 bill.DebtId = null;
             }
-            foreach (var id in removedIds.Where(id => id > 0))
+            foreach (var id in removedIds)
             {
-                _pendingDeletedDebtIds.RemoveAll(x => x == id);
-                _pendingDeletedDebtIds.Add(id);
-                await db.ClearDebtOverrideAsync(id);
+                // Also remove from IndexedDB — overrides or stale replaceAll data can
+                // write the debt back to the "debts" store even after filtering at the
+                // replaceAll stage, causing it to reload on every app restart.
+                await db.DeleteAsync("debts", id);
+                if (id > 0)
+                {
+                    _pendingDeletedDebtIds.RemoveAll(x => x == id);
+                    _pendingDeletedDebtIds.Add(id);
+                    await db.ClearDebtOverrideAsync(id);
+                }
             }
         }
     }
