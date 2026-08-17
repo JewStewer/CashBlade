@@ -176,7 +176,7 @@ else
                             {
                                 <span class="badge badge-gray" style="margin-left:4px">Auto</span>
                             }
-                            @if (bill.DebtId is not null && occ.DueDate.Date > DateTime.Today && occ.DueDate.Date <= DateTime.Today.AddDays(14))
+                            @if ((bill.DebtId is not null || bill.TotalInstallmentAmountCents > 0) && occ.DueDate.Date > DateTime.Today && occ.DueDate.Date <= DateTime.Today.AddDays(14))
                             {
                                 <span class="badge badge-teal" style="margin-left:4px">Pay early</span>
                             }

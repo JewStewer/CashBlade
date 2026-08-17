@@ -8,6 +8,15 @@ public class Bill
     public string Name { get; set; } = string.Empty;
     public int AccountId { get; set; }
     public int? DebtId { get; set; }
+    // Total purchase price for installment bills (e.g. $89.12 for 4×$22.28).
+    // Stored directly so it survives sync even when DebtId can't be reconciled
+    // server-side. Zero means "not an installment bill."
+    public int TotalInstallmentAmountCents { get; set; }
+    public decimal TotalInstallmentAmountDollars
+    {
+        get => TotalInstallmentAmountCents / 100m;
+        set => TotalInstallmentAmountCents = (int)Math.Round(value * 100m);
+    }
     public int AmountCents { get; set; }
     public decimal AmountDollars
     {

@@ -1605,15 +1605,34 @@ public class AppState(IndexedDbService db, SyncService sync)
 
     private DateTime? GetInstallmentFinalDueDate(Bill bill)
     {
-        if (bill.DebtId is not { } debtId) return null;
-        var debt = Debts.FirstOrDefault(d => d.Id == debtId);
-        if (debt is null || debt.OriginalBalanceDollars <= 0 || bill.AmountDollars <= 0) return null;
+        if (bill.AmountDollars <= 0) return null;
 
-        var paymentCount = Math.Max((int)Math.Ceiling(debt.OriginalBalanceDollars / bill.AmountDollars), 1);
-        var due = bill.DueDate.Date;
-        for (var i = 1; i < paymentCount; i++)
-            due = AdvanceDueDate(due, bill.Frequency);
-        return due;
+        // Prefer the linked Debt's OriginalBalance (most authoritative when available)
+        if (bill.DebtId is { } debtId)
+        {
+            var debt = Debts.FirstOrDefault(d => d.Id == debtId);
+            if (debt is not null && debt.OriginalBalanceDollars > 0)
+            {
+                var paymentCount = Math.Max((int)Math.Ceiling(debt.OriginalBalanceDollars / bill.AmountDollars), 1);
+                var due = bill.DueDate.Date;
+                for (var i = 1; i < paymentCount; i++)
+                    due = AdvanceDueDate(due, bill.Frequency);
+                return due;
+            }
+        }
+
+        // Fall back to the total stored on the bill itself — survives sync even
+        // when the server can't resolve the negative-ID DebtId reference.
+        if (bill.TotalInstallmentAmountCents > 0)
+        {
+            var paymentCount = Math.Max((int)Math.Ceiling(bill.TotalInstallmentAmountDollars / bill.AmountDollars), 1);
+            var due = bill.DueDate.Date;
+            for (var i = 1; i < paymentCount; i++)
+                due = AdvanceDueDate(due, bill.Frequency);
+            return due;
+        }
+
+        return null;
     }
 
     // Returns true when dueDate is the final scheduled payment for an installment
@@ -1702,7 +1721,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 // For installment bills, skip past occurrences with no explicit
                 // status — these are auto-debits that happened before tracking
                 // started and should not appear as phantom unpaid rows.
-                if (bill.DebtId is not null && due.Date < DateTime.Today)
+                if ((bill.DebtId is not null || bill.TotalInstallmentAmountCents > 0) && due.Date < DateTime.Today)
                 {
                     var hasStatus = BillStatuses.Any(s => s.BillId == bill.Id && s.DueDate.Date == due.Date);
                     if (!hasStatus)
@@ -4398,9 +4417,10 @@ public class AppState(IndexedDbService db, SyncService sync)
     {
         // The user-entered DueDate is the LAST (final) payment. Walk it back to
         // the first payment so the occurrence generators start from the right anchor.
+        var numPayments = 1;
         if (b.AmountDollars > 0)
         {
-            var numPayments = (int)Math.Ceiling(totalAmountDollars / b.AmountDollars);
+            numPayments = (int)Math.Ceiling(totalAmountDollars / b.AmountDollars);
             if (numPayments > 1)
             {
                 b.DueDate = b.Frequency switch
@@ -4414,6 +4434,10 @@ public class AppState(IndexedDbService db, SyncService sync)
                 };
             }
         }
+
+        // Store the total on the bill itself so final-date and installment-skip
+        // logic work even after sync clears the DebtId reference.
+        b.TotalInstallmentAmountDollars = totalAmountDollars;
         await AddBillAsync(b);
 
         var alreadyPaid      = Math.Max(0, paymentsAlreadyMade) * b.AmountDollars;
@@ -4438,6 +4462,31 @@ public class AppState(IndexedDbService db, SyncService sync)
 
         b.DebtId = debt.Id;
         await db.PutAsync("bills", b);
+
+        // Mark the first N occurrences as already paid so they don't show up as
+        // overdue phantom rows. Status records are synced, so they survive replaceAll.
+        var clampedAlreadyMade = Math.Min(Math.Max(0, paymentsAlreadyMade), numPayments);
+        if (clampedAlreadyMade > 0)
+        {
+            var due = b.DueDate.Date;
+            for (var i = 0; i < clampedAlreadyMade; i++)
+            {
+                var status = new BillOccurrenceStatus
+                {
+                    Id = NextLocalId(BillStatuses.Select(s => s.Id)),
+                    BillId = b.Id,
+                    DueDate = due,
+                    IsPaid = true,
+                    PaidOn = due
+                };
+                BillStatuses.Add(status);
+                _pendingBillStatuses.RemoveAll(s => s.BillId == b.Id && s.DueDate.Date == due);
+                _pendingBillStatuses.Add(status);
+                await db.PutAsync("billOccurrenceStatuses", status);
+                due = AdvanceDueDate(due, b.Frequency);
+            }
+        }
+
         Compute();
         OnChange?.Invoke();
         return b;
