@@ -1003,6 +1003,15 @@ public class AppState(IndexedDbService db, SyncService sync)
                     await db.ClearDebtOverrideAsync(debt.Id);
                     continue;
                 }
+
+                // Debt is absent from both the main debts store (Debts was just loaded
+                // from IndexedDB) and from any positive-ID name match. The most likely
+                // cause is that DeleteDebtAsync ran db.DeleteAsync("debts") but the app
+                // was suspended by iOS before db.ClearDebtOverrideAsync could complete,
+                // leaving this stale override in place. Re-adding the debt would
+                // resurrect it. Clear the orphaned override instead.
+                await db.ClearDebtOverrideAsync(debt.Id);
+                continue;
             }
             if (existing is null)
             {
@@ -6579,6 +6588,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var d in push.NewDebts)
         {
             if (debtTombstonesForReapply.Any(t => SameDebtDelete(d, t))) continue;
+            // Temp-ID debts not in _pendingNewDebts were either (a) deleted without
+            // a tombstone (negative IDs never get tombstones, so the tombstone check
+            // above can't protect them) or (b) already adopted by a positive server
+            // ID after the confirmed push — both mean the stale NewDebts entry from
+            // MergeConfirmedPush must not be re-added here.
+            if (d.Id < 0 && !_pendingNewDebts.Any(x => x.Id == d.Id)) continue;
             if (!Debts.Any(x => x.Id == d.Id))
             {
                 Debts.Add(d);
