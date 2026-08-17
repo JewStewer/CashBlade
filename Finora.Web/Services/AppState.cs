@@ -1205,24 +1205,14 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .ToHashSet();
             if (removedIds.Count == 0)
             {
-                // Debt is absent from IndexedDB — either SaveSyncPayloadAsync
-                // correctly filtered it from the last server pull (server still
-                // has the debt) or the server has already reconciled the delete.
-                // Either way the tombstone must NOT be cleared here, because if the
-                // server still has the debt, removing the tombstone would let the
-                // next pull write it back to IndexedDB unfiltered.
-                //
-                // However, _pendingDeletedDebtIds is in-memory only and is lost on
-                // every app restart. Without re-seeding it here, HasPendingChanges
-                // stays false after a restart, no push fires, and the server keeps
-                // the debt forever even though the tombstone correctly blocks it
-                // from appearing locally. Re-add the ID so the next sync cycle
-                // pushes the deletion to the server again (harmless no-op if the
-                // server has already processed it; effective if it hasn't).
-                if (deleted.Id > 0 && !IsDeleteTombstoneExpired(deleted.CreatedAt)
-                    && !_pendingDeletedDebtIds.Contains(deleted.Id))
+                if (deleted.Id > 0 && !IsDeleteTombstoneExpired(deleted.CreatedAt))
                 {
-                    _pendingDeletedDebtIds.Add(deleted.Id);
+                    // Debt absent from Debts but may still be in IndexedDB: belt-and-suspenders
+                    // removes from memory without touching db, leaving an orphaned IndexedDB copy
+                    // that the next GetDebtsAsync would reload. No-op if the key is already gone.
+                    await db.DeleteAsync("debts", deleted.Id);
+                    if (!_pendingDeletedDebtIds.Contains(deleted.Id))
+                        _pendingDeletedDebtIds.Add(deleted.Id);
                 }
                 if (IsDeleteTombstoneExpired(deleted.CreatedAt))
                     await db.ClearDebtDeleteAsync(deleted.Id);
@@ -6633,10 +6623,12 @@ public class AppState(IndexedDbService db, SyncService sync)
         foreach (var id in push.DeletedDebtIds)
         {
             if (Debts.RemoveAll(x => x.Id == id) > 0)
-            {
-                await db.DeleteAsync("debts", id);
                 changed = true;
-            }
+            // Always clean IndexedDB — belt-and-suspenders may have already removed
+            // the debt from memory without touching db, leaving an orphaned copy.
+            // db.DeleteAsync is a no-op on a missing key.
+            if (id > 0)
+                await db.DeleteAsync("debts", id);
             foreach (var payment in DebtPayments.Where(p => p.DebtId == id).ToList())
             {
                 DebtPayments.Remove(payment);
