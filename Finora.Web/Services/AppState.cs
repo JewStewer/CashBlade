@@ -1189,16 +1189,25 @@ public class AppState(IndexedDbService db, SyncService sync)
                 .ToHashSet();
             if (removedIds.Count == 0)
             {
-                // Debt is absent from IndexedDB — but we must NOT clear the
-                // tombstone here. The absence means ApplyLocalIntentsAsync
-                // already filtered it from the last server pull (Supabase still
-                // has the debt), not that the server confirmed the deletion.
-                // ApplyLocalIntentsAsync clears the tombstone itself once a fresh
-                // snapshot actually confirms the debt is gone; clearing it here
-                // leaves the next Supabase pull completely undefended and brings
-                // the debt back. When the server truly has reconciled the delete,
-                // ApplyLocalIntentsAsync will have cleared the tombstone before
-                // this code even runs, so we'll never reach this branch for it.
+                // Debt is absent from IndexedDB — either SaveSyncPayloadAsync
+                // correctly filtered it from the last server pull (server still
+                // has the debt) or the server has already reconciled the delete.
+                // Either way the tombstone must NOT be cleared here, because if the
+                // server still has the debt, removing the tombstone would let the
+                // next pull write it back to IndexedDB unfiltered.
+                //
+                // However, _pendingDeletedDebtIds is in-memory only and is lost on
+                // every app restart. Without re-seeding it here, HasPendingChanges
+                // stays false after a restart, no push fires, and the server keeps
+                // the debt forever even though the tombstone correctly blocks it
+                // from appearing locally. Re-add the ID so the next sync cycle
+                // pushes the deletion to the server again (harmless no-op if the
+                // server has already processed it; effective if it hasn't).
+                if (deleted.Id > 0 && !IsDeleteTombstoneExpired(deleted.CreatedAt)
+                    && !_pendingDeletedDebtIds.Contains(deleted.Id))
+                {
+                    _pendingDeletedDebtIds.Add(deleted.Id);
+                }
                 if (IsDeleteTombstoneExpired(deleted.CreatedAt))
                     await db.ClearDebtDeleteAsync(deleted.Id);
                 continue;
