@@ -6570,9 +6570,15 @@ public class AppState(IndexedDbService db, SyncService sync)
             changed = true;
         }
 
-        // Re-add phone-created debts the server doesn't know about yet
+        // Re-add phone-created debts the server doesn't know about yet.
+        // Guard against debts deleted within the ConfirmedPushGrace window:
+        // MergeConfirmedPush carries an earlier NewDebts entry forward even
+        // after the debt was subsequently deleted, so without this check the
+        // debt would be silently re-added here with its old temp ID.
+        var debtTombstonesForReapply = await db.GetPendingDebtDeletesAsync();
         foreach (var d in push.NewDebts)
         {
+            if (debtTombstonesForReapply.Any(t => SameDebtDelete(d, t))) continue;
             if (!Debts.Any(x => x.Id == d.Id))
             {
                 Debts.Add(d);

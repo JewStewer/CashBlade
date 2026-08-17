@@ -2,5 +2,5 @@ namespace Finora.Web;
 
 public static class AppInfo
 {
-    public const string DisplayVersion = "1.0.79 (build 2026.08.17.5)";
+    public const string DisplayVersion = "1.0.80 (build 2026.08.17.6)";
 }
