@@ -1599,6 +1599,14 @@ public class AppState(IndexedDbService db, SyncService sync)
         return due;
     }
 
+    // Returns true when dueDate is the final scheduled payment for an installment
+    // bill — used to show "· Final payment" in the Bills list row subtitle.
+    public bool IsInstallmentFinalPayment(Bill bill, DateTime dueDate)
+    {
+        var finalDue = GetInstallmentFinalDueDate(bill);
+        return finalDue.HasValue && dueDate.Date == finalDue.Value.Date;
+    }
+
     private static DateTime AdvanceDueDate(DateTime d, BillFrequency f) => f switch
     {
         BillFrequency.Weekly      => d.AddDays(7),
@@ -3929,6 +3937,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
+        // Cascade-delete the linked installment Debt so it doesn't survive sync
+        if (deletedBill?.DebtId is { } linkedDebtId)
+            await DeleteDebtAsync(linkedDebtId);
     }
 
     public async Task<Debt> AddDebtAsync(Debt d)
@@ -4361,10 +4372,15 @@ public class AppState(IndexedDbService db, SyncService sync)
     // installment-plan flow: also create a matching Debt so the remaining
     // balance shows progress as installments are paid off, same as other
     // bill-linked debts.
-    public async Task<Bill> AddInstallmentBillAsync(Bill b, decimal totalAmountDollars)
+    // paymentsAlreadyMade: how many instalments auto-debited before the user
+    // started tracking (e.g. 2 of 4 fortnightly payments already taken).
+    // The debt's initial remaining balance is adjusted accordingly; past
+    // occurrences are suppressed by the "no status = skip" rule in
+    // GetOutstandingBillOccurrences so no phantom unpaid rows appear.
+    public async Task<Bill> AddInstallmentBillAsync(Bill b, decimal totalAmountDollars, int paymentsAlreadyMade = 0)
     {
         // The user-entered DueDate is the LAST (final) payment. Walk it back to
-        // the first payment so GetUpcomingBillOccurrences advances forward correctly.
+        // the first payment so the occurrence generators start from the right anchor.
         if (b.AmountDollars > 0)
         {
             var numPayments = (int)Math.Ceiling(totalAmountDollars / b.AmountDollars);
@@ -4383,10 +4399,13 @@ public class AppState(IndexedDbService db, SyncService sync)
         }
         await AddBillAsync(b);
 
+        var alreadyPaid      = Math.Max(0, paymentsAlreadyMade) * b.AmountDollars;
+        var remainingBalance = Math.Max(0, totalAmountDollars - alreadyPaid);
+
         var debt = await AddDebtAsync(new Debt
         {
             Name = b.Name,
-            BalanceDollars = totalAmountDollars,
+            BalanceDollars = remainingBalance,
             OriginalBalanceDollars = totalAmountDollars,
             MinimumPaymentDollars = b.AmountDollars,
             PaymentPeriod = b.Frequency switch

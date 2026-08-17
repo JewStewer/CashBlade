@@ -160,7 +160,7 @@ else
                 </div>
                 <div class="row-main" style="cursor:pointer" @onclick="() => StartEdit(bill)">
                     <div class="row-title" style="@(isPaid?"opacity:0.5;text-decoration:line-through":"")">@bill.Name</div>
-                    <div class="row-sub">@bill.AccountName · @bill.Frequency · @occ.DueDate.ToString("dd MMM")@(occ.DueDate.Date < DateTime.Today && !isPaid ? " · Overdue" : "")</div>
+                    <div class="row-sub">@bill.AccountName · @bill.Frequency · @occ.DueDate.ToString("dd MMM")@(occ.DueDate.Date < DateTime.Today && !isPaid ? " · Overdue" : "")@(State.IsInstallmentFinalPayment(bill, occ.DueDate) ? " · Final payment" : "")</div>
                     @if (!isPaid)
                     {
                         <div style="margin-top:4px">

@@ -91,6 +91,11 @@
                         <label class="form-label">Total installment balance ($)</label>
                         <input class="form-input" type="number" step="0.01" @bind="installmentTotal" placeholder="0.00" />
                     </div>
+                    <div>
+                        <label class="form-label">Payments already made</label>
+                        <input class="form-input" type="number" step="1" min="0" @bind="paymentsAlreadyMade" placeholder="0" />
+                        <div style="font-size:11px;color:var(--text3);margin-top:3px">How many instalments have already auto-debited</div>
+                    </div>
                 }
             }
         </div>
@@ -128,6 +133,7 @@
     private int accountId;
     private bool isAutoPay;
     private bool isInstallment;
+    private int paymentsAlreadyMade;
     private string budgetCategory = "Bills";
     private bool _showNewCatInput;
     private string _newCatName = "";
@@ -152,6 +158,7 @@
         {
             isInstallment = InstallmentTotalDollars is > 0;
             installmentTotal = InstallmentTotalDollars ?? 0;
+            paymentsAlreadyMade = 0;
             budgetCategory = "Bills";
         }
     }
@@ -167,10 +174,12 @@
 
         saving = true;
 
-        // For new bills, ensure the anchor date is the NEXT upcoming occurrence so
-        // there are no phantom unpaid past occurrences in the accrual calculation.
+        // For regular new bills, advance the date to the next upcoming occurrence
+        // to avoid phantom unpaid past rows. For installment bills the user enters
+        // the FINAL payment date, which AddInstallmentBillAsync walks back to the
+        // first payment — advancing it here would produce a wrong final date.
         var anchorDate = dueDate;
-        if (IsNew)
+        if (IsNew && !isInstallment)
         {
             while (anchorDate.Date < DateTime.Today)
                 anchorDate = frequency switch
@@ -197,7 +206,7 @@
         if (IsNew)
         {
             if (isInstallment)
-                await State.AddInstallmentBillAsync(b, installmentTotal);
+                await State.AddInstallmentBillAsync(b, installmentTotal, paymentsAlreadyMade);
             else
                 await State.AddBillAsync(b);
         }
