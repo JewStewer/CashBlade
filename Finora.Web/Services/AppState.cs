@@ -635,6 +635,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         Bills = await db.GetBillsAsync();
         BillStatuses = await db.GetBillStatusesAsync();
         Debts = await db.GetDebtsAsync();
+        // Belt-and-suspenders: if a deletion is mid-flight (tombstone not yet written),
+        // purge those IDs immediately so they can't reappear before ApplyPersistedDebtDeletesAsync runs.
+        if (_pendingDeletedDebtIds.Count > 0)
+            Debts.RemoveAll(d => d.Id > 0 && _pendingDeletedDebtIds.Contains(d.Id));
         DebtPayments = await db.GetDebtPaymentsAsync();
         SavingsGoals = await db.GetSavingsGoalsAsync();
         foreach (var g in SavingsGoals) LogGoal($"LOAD {GoalSnapshot(g)}");
@@ -4044,6 +4048,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         Debts.RemoveAll(d => d.Id == id);
         _pendingNewDebts.RemoveAll(d => d.Id == id);
         _pendingUpdatedDebts.RemoveAll(d => d.Id == id);
+        // Add to pending deletes immediately — before any async yields — so that
+        // background sync resuming during the payment/bill loops sees the delete
+        // in _pendingDeletedDebtIds and won't resurrect the debt.
+        if (id > 0) _pendingDeletedDebtIds.Add(id);
 
         foreach (var payment in DebtPayments.Where(p => p.DebtId == id).ToList())
         {
@@ -4064,7 +4072,6 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
-        if (id > 0) _pendingDeletedDebtIds.Add(id);
         // Single atomic transaction: deletes the debt record, clears its override,
         // and writes the tombstone. If iOS kills the app mid-way, IndexedDB rolls
         // back automatically — no partial state where the tombstone is missing but
