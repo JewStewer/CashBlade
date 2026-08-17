@@ -1015,10 +1015,13 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
             if (existing is null)
             {
-                Debts.Add(debt);
-                await db.PutAsync("debts", debt);
-                if (debt.Id < 0 && !_pendingNewDebts.Any(d => d.Id == debt.Id))
-                    _pendingNewDebts.Add(debt);
+                // Positive-ID debt absent from the main debts store: it was deleted by the
+                // user or is genuinely gone from the server snapshot. ClearDebtOverrideAsync
+                // may have failed silently (iOS suspend between DeleteAsync and ClearDebtOverrideAsync),
+                // leaving this override stranded. Once the 72-hour tombstone expires there is
+                // nothing else to block this path — re-adding would permanently resurrect the
+                // debt. Clear the stale override and skip.
+                await db.ClearDebtOverrideAsync(debt.Id);
                 continue;
             }
 
