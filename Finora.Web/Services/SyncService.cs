@@ -354,7 +354,15 @@ public class SyncService(HttpClient http, IndexedDbService db)
                 ?? payload.Debts.FirstOrDefault(d => SameDebtSnapshot(d, updated));
             if (debt is null)
             {
-                if (IsLocalOverrideExpired(ov.CreatedAt))
+                // Positive-ID debt absent from server snapshot: the server no longer has
+                // this debt — it was removed via push or deleted server-side. Re-adding
+                // it here permanently resurrects it, especially when tombstone creation
+                // failed silently (iOS suspend between DeleteAsync and SetDebtDeleteAsync).
+                // Positive-ID means the server originally assigned this ID, so its absence
+                // from the server payload is authoritative — clear the stale override.
+                // Only negative-ID (phone-created, not yet synced) debts should be
+                // re-added when absent from the server payload.
+                if (IsLocalOverrideExpired(ov.CreatedAt) || updated.Id > 0)
                     await db.ClearDebtOverrideAsync(ov.Id);
                 else
                     payload.Debts.Add(updated);
