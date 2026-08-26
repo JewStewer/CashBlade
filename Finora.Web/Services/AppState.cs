@@ -264,6 +264,10 @@ public class AppState(IndexedDbService db, SyncService sync)
     private readonly List<Debt> _pendingNewDebts = new();
     private readonly List<Debt> _pendingUpdatedDebts = new();
     private readonly List<int> _pendingDeletedDebtIds = new();
+    // In-memory mirror of every debtDeletes tombstone ID seen this session.
+    // Populated by DeleteDebtAsync and ApplyPersistedDebtDeletesAsync; never
+    // cleared — allows LoadStoresAsync to filter without an extra IndexedDB await.
+    private readonly HashSet<int> _durableDeletedDebtIds = new();
     private readonly List<DebtPayment> _pendingNewDebtPayments = new();
     private readonly List<int> _pendingDeletedDebtPaymentIds = new();
     private readonly List<Account> _pendingUpdatedAccounts = new();
@@ -635,19 +639,16 @@ public class AppState(IndexedDbService db, SyncService sync)
         Bills = await db.GetBillsAsync();
         BillStatuses = await db.GetBillStatusesAsync();
         Debts = await db.GetDebtsAsync();
-        // Belt-and-suspenders layer 1: in-memory pending deletes. Catches the case where
-        // DeleteDebtAtomicAsync hasn't committed its tombstone yet (delete mid-flight).
+        // Filter deleted debts immediately — BEFORE the next await — using two
+        // synchronous in-memory sets so a user tap (macrotask) that fires between
+        // GetDebtsAsync() and ApplyPersistedDebtDeletesAsync() never sees a stale list.
+        // Layer 1: debts deleted this session (cleared by pushedToCanonicalStore on push).
         if (_pendingDeletedDebtIds.Count > 0)
             Debts.RemoveAll(d => d.Id > 0 && _pendingDeletedDebtIds.Contains(d.Id));
-        // Belt-and-suspenders layer 2: durable tombstones. Catches the case where
-        // _pendingDeletedDebtIds was cleared (push confirmed) but replaceAll has put the
-        // debt back in IndexedDB from a server snapshot that still had it. Without this,
-        // a user tap between GetDebtsAsync() and ApplyPersistedDebtDeletesAsync() would
-        // trigger a Blazor StateHasChanged() that re-renders the full list with deleted
-        // debts visible — the window is small but real on every sync that follows a delete.
-        var _earlyTombstones = await db.GetPendingDebtDeletesAsync();
-        if (_earlyTombstones.Count > 0)
-            Debts.RemoveAll(d => _earlyTombstones.Any(t => SameDebtDelete(d, t)));
+        // Layer 2: durable tombstone mirror — survives pushedToCanonicalStore; populated
+        // by DeleteDebtAsync and ApplyPersistedDebtDeletesAsync, no extra await needed.
+        if (_durableDeletedDebtIds.Count > 0)
+            Debts.RemoveAll(d => d.Id > 0 && _durableDeletedDebtIds.Contains(d.Id));
         DebtPayments = await db.GetDebtPaymentsAsync();
         SavingsGoals = await db.GetSavingsGoalsAsync();
         foreach (var g in SavingsGoals) LogGoal($"LOAD {GoalSnapshot(g)}");
@@ -1222,6 +1223,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                     await db.DeleteAsync("debts", deleted.Id);
                     if (!_pendingDeletedDebtIds.Contains(deleted.Id))
                         _pendingDeletedDebtIds.Add(deleted.Id);
+                    _durableDeletedDebtIds.Add(deleted.Id);
                 }
                 if (IsDeleteTombstoneExpired(deleted.CreatedAt))
                     await db.ClearDebtDeleteAsync(deleted.Id);
@@ -1244,6 +1246,7 @@ public class AppState(IndexedDbService db, SyncService sync)
                 {
                     _pendingDeletedDebtIds.RemoveAll(x => x == id);
                     _pendingDeletedDebtIds.Add(id);
+                    _durableDeletedDebtIds.Add(id);
                     await db.ClearDebtOverrideAsync(id);
                 }
             }
@@ -4051,6 +4054,7 @@ public class AppState(IndexedDbService db, SyncService sync)
         // background sync resuming during the payment/bill loops sees the delete
         // in _pendingDeletedDebtIds and won't resurrect the debt.
         if (id > 0) _pendingDeletedDebtIds.Add(id);
+        if (id > 0) _durableDeletedDebtIds.Add(id);
 
         foreach (var payment in DebtPayments.Where(p => p.DebtId == id).ToList())
         {
