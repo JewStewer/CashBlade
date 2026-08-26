@@ -4059,7 +4059,11 @@ public class AppState(IndexedDbService db, SyncService sync)
         Debts.RemoveAll(d => d.Id == id);
         _pendingNewDebts.RemoveAll(d => d.Id == id);
         _pendingUpdatedDebts.RemoveAll(d => d.Id == id);
-        if (id > 0) _pendingDeletedDebtIds.Add(id);
+        if (id > 0)
+        {
+            _pendingDeletedDebtIds.RemoveAll(x => x == id);
+            _pendingDeletedDebtIds.Add(id);
+        }
         if (id > 0) _durableDeletedDebtIds.Add(id);
 
         // Tombstone write is the FIRST await — before any payment/bill cleanup loops.
@@ -6633,6 +6637,9 @@ public class AppState(IndexedDbService db, SyncService sync)
         // Re-apply debt edits made on phone
         foreach (var ud in push.UpdatedDebts)
         {
+            if (push.DeletedDebtIds.Contains(ud.Id) || debtTombstonesForReapply.Any(t => SameDebtDelete(ud, t)))
+                continue;
+
             var debt = Debts.FirstOrDefault(x => x.Id == ud.Id);
             if (debt is null) continue;
             debt.Name = ud.Name;
