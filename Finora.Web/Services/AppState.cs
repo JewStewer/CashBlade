@@ -4059,11 +4059,22 @@ public class AppState(IndexedDbService db, SyncService sync)
         Debts.RemoveAll(d => d.Id == id);
         _pendingNewDebts.RemoveAll(d => d.Id == id);
         _pendingUpdatedDebts.RemoveAll(d => d.Id == id);
-        // Add to pending deletes immediately — before any async yields — so that
-        // background sync resuming during the payment/bill loops sees the delete
-        // in _pendingDeletedDebtIds and won't resurrect the debt.
         if (id > 0) _pendingDeletedDebtIds.Add(id);
         if (id > 0) _durableDeletedDebtIds.Add(id);
+
+        // Tombstone write is the FIRST await — before any payment/bill cleanup loops.
+        // iOS can evict the WASM runtime at any await point; if eviction happens during
+        // the loops below, in-memory state is gone but any IDB writes already committed
+        // survive. By writing the tombstone and running the atomic delete first, we
+        // guarantee that a restart after eviction finds the tombstone in IDB and Layer 3
+        // filtering blocks resurrection — even though the payment/bill cleanup may not
+        // have completed. The loops only clean up derived data and are idempotent on
+        // next sync.
+        if (id > 0 && deletedDebt is not null)
+            await db.SetDebtDeleteAsync(deletedDebt);
+        else if (id < 0)
+            await db.ClearDebtOverrideAsync(id);
+        await db.DeleteDebtAtomicAsync(id, deletedDebt);
 
         foreach (var payment in DebtPayments.Where(p => p.DebtId == id).ToList())
         {
@@ -4083,21 +4094,6 @@ public class AppState(IndexedDbService db, SyncService sync)
                 _pendingUpdatedBills.Add(CloneBill(bill));
             }
         }
-
-        // Write the tombstone (positive ID) or clear the override (negative ID) in a
-        // separate operation BEFORE the atomic transaction. If the atomic transaction
-        // later rolls back (e.g. iOS quota error), the pre-write ensures the defense
-        // still exists: for positive IDs the tombstone survives and prevents replaceAll
-        // from restoring the debt on the next sync; for negative IDs the override is
-        // already gone so ApplyPersistedDebtOverridesAsync can't re-add the debt on
-        // restart. The atomic transaction then redundantly repeats these writes, which
-        // is idempotent.
-        if (id > 0 && deletedDebt is not null)
-            await db.SetDebtDeleteAsync(deletedDebt);
-        else if (id < 0)
-            await db.ClearDebtOverrideAsync(id);
-        // Full atomic transaction: debt record + override + tombstone in one shot.
-        await db.DeleteDebtAtomicAsync(id, deletedDebt);
         Compute();
         OnChange?.Invoke();
         ScheduleSyncSoon();
