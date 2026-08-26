@@ -635,10 +635,19 @@ public class AppState(IndexedDbService db, SyncService sync)
         Bills = await db.GetBillsAsync();
         BillStatuses = await db.GetBillStatusesAsync();
         Debts = await db.GetDebtsAsync();
-        // Belt-and-suspenders: if a deletion is mid-flight (tombstone not yet written),
-        // purge those IDs immediately so they can't reappear before ApplyPersistedDebtDeletesAsync runs.
+        // Belt-and-suspenders layer 1: in-memory pending deletes. Catches the case where
+        // DeleteDebtAtomicAsync hasn't committed its tombstone yet (delete mid-flight).
         if (_pendingDeletedDebtIds.Count > 0)
             Debts.RemoveAll(d => d.Id > 0 && _pendingDeletedDebtIds.Contains(d.Id));
+        // Belt-and-suspenders layer 2: durable tombstones. Catches the case where
+        // _pendingDeletedDebtIds was cleared (push confirmed) but replaceAll has put the
+        // debt back in IndexedDB from a server snapshot that still had it. Without this,
+        // a user tap between GetDebtsAsync() and ApplyPersistedDebtDeletesAsync() would
+        // trigger a Blazor StateHasChanged() that re-renders the full list with deleted
+        // debts visible — the window is small but real on every sync that follows a delete.
+        var _earlyTombstones = await db.GetPendingDebtDeletesAsync();
+        if (_earlyTombstones.Count > 0)
+            Debts.RemoveAll(d => _earlyTombstones.Any(t => SameDebtDelete(d, t)));
         DebtPayments = await db.GetDebtPaymentsAsync();
         SavingsGoals = await db.GetSavingsGoalsAsync();
         foreach (var g in SavingsGoals) LogGoal($"LOAD {GoalSnapshot(g)}");
