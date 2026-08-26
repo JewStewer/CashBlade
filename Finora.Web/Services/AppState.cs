@@ -4075,11 +4075,19 @@ public class AppState(IndexedDbService db, SyncService sync)
             }
         }
 
-        // Single atomic transaction: deletes the debt record, clears its override,
-        // and writes the tombstone. If iOS kills the app mid-way, IndexedDB rolls
-        // back automatically — no partial state where the tombstone is missing but
-        // the override survives (or vice versa), which was the root cause of
-        // resurrection bugs.
+        // Write the tombstone (positive ID) or clear the override (negative ID) in a
+        // separate operation BEFORE the atomic transaction. If the atomic transaction
+        // later rolls back (e.g. iOS quota error), the pre-write ensures the defense
+        // still exists: for positive IDs the tombstone survives and prevents replaceAll
+        // from restoring the debt on the next sync; for negative IDs the override is
+        // already gone so ApplyPersistedDebtOverridesAsync can't re-add the debt on
+        // restart. The atomic transaction then redundantly repeats these writes, which
+        // is idempotent.
+        if (id > 0 && deletedDebt is not null)
+            await db.SetDebtDeleteAsync(deletedDebt);
+        else if (id < 0)
+            await db.ClearDebtOverrideAsync(id);
+        // Full atomic transaction: debt record + override + tombstone in one shot.
         await db.DeleteDebtAtomicAsync(id, deletedDebt);
         Compute();
         OnChange?.Invoke();
