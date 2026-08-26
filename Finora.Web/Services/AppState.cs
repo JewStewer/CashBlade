@@ -638,10 +638,15 @@ public class AppState(IndexedDbService db, SyncService sync)
         Transactions = await db.GetTransactionsAsync();
         Bills = await db.GetBillsAsync();
         BillStatuses = await db.GetBillStatusesAsync();
+        // Read tombstones BEFORE GetDebtsAsync so they're available for synchronous
+        // Layer 3 filtering immediately after — closes the intermediate render window
+        // that exists on app restart (iOS WASM eviction) when layers 1+2 are both
+        // empty because all in-memory state was cleared by the eviction.
+        var debtTombstonesForLoad = await db.GetPendingDebtDeletesAsync();
         Debts = await db.GetDebtsAsync();
-        // Filter deleted debts immediately — BEFORE the next await — using two
-        // synchronous in-memory sets so a user tap (macrotask) that fires between
-        // GetDebtsAsync() and ApplyPersistedDebtDeletesAsync() never sees a stale list.
+        // Filter deleted debts immediately — BEFORE the next await — so a user tap
+        // (macrotask) firing between GetDebtsAsync() and ApplyPersistedDebtDeletesAsync()
+        // never sees a resurrection.
         // Layer 1: debts deleted this session (cleared by pushedToCanonicalStore on push).
         if (_pendingDeletedDebtIds.Count > 0)
             Debts.RemoveAll(d => d.Id > 0 && _pendingDeletedDebtIds.Contains(d.Id));
@@ -649,6 +654,10 @@ public class AppState(IndexedDbService db, SyncService sync)
         // by DeleteDebtAsync and ApplyPersistedDebtDeletesAsync, no extra await needed.
         if (_durableDeletedDebtIds.Count > 0)
             Debts.RemoveAll(d => d.Id > 0 && _durableDeletedDebtIds.Contains(d.Id));
+        // Layer 3: IndexedDB tombstones fetched above — handles restart where layers 1+2
+        // are empty; applied synchronously so no macrotask/render can slip in between.
+        if (debtTombstonesForLoad.Count > 0)
+            Debts.RemoveAll(d => debtTombstonesForLoad.Any(t => SameDebtDelete(d, t)));
         DebtPayments = await db.GetDebtPaymentsAsync();
         SavingsGoals = await db.GetSavingsGoalsAsync();
         foreach (var g in SavingsGoals) LogGoal($"LOAD {GoalSnapshot(g)}");
