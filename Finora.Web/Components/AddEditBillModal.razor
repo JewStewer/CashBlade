@@ -213,8 +213,10 @@
         else
             await State.UpdateBillAsync(b);
 
-        // Save per-item budget category (b.Id is set by AddBillAsync for new bills)
-        if (!string.Equals(budgetCategory, "Bills", StringComparison.Ordinal))
+        // Save per-item budget category (b.Id is set by AddBillAsync for new bills).
+        // Always save — even when the selection is "Bills" — so an explicit change to
+        // the default correctly overwrites any previously stored custom category.
+        if (b.Id != 0)
             await State.SaveSettingAsync($"BillItemBudgetCategory:{b.Id}", budgetCategory);
 
         saving = false;
