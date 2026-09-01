@@ -470,7 +470,7 @@
                         {
                             var grpCat = State.GetBillAccountBudgetCategory(account);
                             var (grpColor, grpBg) = CatColors(grpCat);
-                            <!-- Account header â€” pill sets the default for all unoverridden bills in this group -->
+                            <!-- Account header — pill sets the default for all unoverridden bills in this group -->
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;padding:5px 8px;background:var(--surface2);border-radius:7px">
                                 <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
                                     <span style="font-size:12px;font-weight:700;color:var(--text2)">@account</span>
@@ -578,9 +578,9 @@
         var projectionRate = elapsedDays >= 4
             ? recentDailyRate * 0.6m + currentDailyAverage * 0.4m
             : currentDailyAverage;
-        // Today's spend â€” needed before projectedSpend so we can exclude it from the
+        // Today's spend — needed before projectedSpend so we can exclude it from the
         // projection base (today is already counted in daysRemaining, so projecting
-        // from "spend excluding today" Ã— daysRemaining avoids a double-count).
+        // from "spend excluding today" × daysRemaining avoids a double-count).
         var todaySpend = State.GetDiscretionarySpendingForPeriod(DateTime.Today, DateTime.Today);
         var projectedSpend = Math.Round((spendToDate - todaySpend) + projectionRate * daysRemaining, 2);
         var projectedDelta = projectedSpend - PeriodBudget;
@@ -965,7 +965,7 @@
                 var account = State.AffordabilityGoalAccount;
                 var currentBalance = account is not null ? State.GetAccountBalance(account.Id) : 0m;
                 // The entered amount is the TOTAL you want sitting in the account, not
-                // extra on top of what's already there â€” if it already has $350 and you
+                // extra on top of what's already there — if it already has $350 and you
                 // enter $700, only the remaining $350 needs to be saved.
                 var amountStillNeeded = account is not null ? Math.Max(_affordAmount - currentBalance, 0m) : _affordAmount;
                 var cycleNeeded = Math.Round(amountStillNeeded / cycles, 2);
@@ -1104,7 +1104,7 @@
                     <div style="font-size:14px;font-weight:700;color:@verdictColor;margin-bottom:10px;display:flex;align-items:center;gap:6px"><Icon Name="@verdictIcon" Size="16" /> @verdict</div>
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
                         <span style="color:var(--text3)">Repayments</span>
-                        <span style="font-weight:600">@count Ã— @perInstallment.ToString("C") / @freq wk@(freq == 1 ? "" : "s")</span>
+                        <span style="font-weight:600">@count × @perInstallment.ToString("C") / @freq wk@(freq == 1 ? "" : "s")</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;font-size:13px">
                         <span style="color:var(--text3)">Adds to your spending</span>
@@ -2013,7 +2013,7 @@ else if (_tab == "Holiday")
     private DateTime GoalTargetDate => State.NthPaydayFromNow(Math.Max(_goalWeeks, 1) + 1);
     private string CycleLabel => State.PayIntervalDays switch { 14 => "fn", 28 => "4wk", _ => "wk" };
 
-    // Multipliers applied to the user's chosen "Over how many weeks?" value â€”
+    // Multipliers applied to the user's chosen "Over how many weeks?" value —
     // Aggressive halves it, Balanced matches it, Passive doubles it, so all
     // three cards recalculate live as weeks/amount change.
     private static readonly (string Label, decimal Multiplier, string Color)[] PaceOptions =
@@ -2781,11 +2781,11 @@ else if (_tab == "Holiday")
     }
 
 
-    // The actual lump sum that lands each payday â€” NOT State.WeeklyIncome, which
+    // The actual lump sum that lands each payday — NOT State.WeeklyIncome, which
     // is a weekly-normalized figure used for budgeting math elsewhere. Injecting
     // WeeklyIncome here (as this used to) understates the real deposit for
     // anyone not paid weekly (fortnightly/4-weekly), since it's roughly a
-    // quarter to a half of what actually arrives â€” that made the forecast
+    // quarter to a half of what actually arrives — that made the forecast
     // between real paydays look like it was dropping far more than it really
     // will, because the simulated "raises" were too small to offset real bills.
     private decimal ForecastPayAmount =>
@@ -2809,7 +2809,7 @@ else if (_tab == "Holiday")
     {
         if (ForecastPayAmount <= 0) return false;
 
-        // Must advance by the user's actual pay interval, not a hardcoded 7 â€”
+        // Must advance by the user's actual pay interval, not a hardcoded 7 —
         // otherwise a fortnightly/4-weekly earner gets a fake payday injected
         // every single week, which desyncs the projected balance from the real
         // one more and more the further out the forecast runs.
