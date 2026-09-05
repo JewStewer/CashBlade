@@ -2636,7 +2636,10 @@ else if (_tab == "Holiday")
         var accrualRequired = categoryBillsInSavers.Sum(b => State.GetBillRequiredToDate(b));
         var fullRequired    = categoryBillsInSavers.Sum(b => b.AmountDollars);
         var balance         = saverAccountIds.Sum(id => planByAccount[id].Balance);
-        var needed          = Math.Max(0m, accrualRequired - balance);
+        // Cap at fullRequired - balance: lapsed cycles can inflate accrualRequired
+        // beyond the bill amount, but the saver can never need more than what's
+        // still missing for the current bill total.
+        var needed          = Math.Max(0m, Math.Min(accrualRequired, fullRequired) - balance);
         var nextDue         = categoryBillsInSavers
             .Where(b => b.EffectiveDueDate != default)
             .Select(b => (DateTime?)b.EffectiveDueDate)
@@ -2671,7 +2674,7 @@ else if (_tab == "Holiday")
                 var accrualRequired = bills.Sum(b => State.GetBillRequiredToDate(b));
                 var fullRequired    = bills.Sum(b => b.AmountDollars);
                 var balance         = State.GetAccountBalance(a.Id);
-                var remaining       = Math.Max(0m, accrualRequired - balance);
+                var remaining       = Math.Max(0m, Math.Min(accrualRequired, fullRequired) - balance);
                 return (Entry: new TransferPlanEntry(a.Id, accrualRequired, fullRequired, balance, remaining, balance >= fullRequired), HasBills: bills.Count > 0);
             })
             .Where(x => x.HasBills)
