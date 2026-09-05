@@ -167,18 +167,14 @@
                             </div>
                             <div style="display:flex;gap:8px;flex-wrap:wrap">
                                 <button class="btn btn-sm btn-secondary" @onclick="() => StartEdit(localT)" @onclick:stopPropagation="true">Edit</button>
-                                <button class="btn btn-sm btn-secondary" @onclick="() => _moreActionsForId = localT.Id" @onclick:stopPropagation="true">&bull;&bull;&bull;</button>
                                 <button class="btn btn-sm btn-danger" @onclick="() => DoDelete(localT)" @onclick:stopPropagation="true">Delete</button>
                                 <button class="btn btn-sm btn-secondary" style="margin-left:auto" @onclick="() => selectedId = 0" @onclick:stopPropagation="true"><Icon Name="x" Size="13" /></button>
                             </div>
-                        </div>
-                        @if (_moreActionsForId == localT.Id)
-                        {
-                            <RowActionSheet Title="More Actions" OnClose="() => _moreActionsForId = 0">
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
                                 @if (sameNameCount > 1)
                                 {
-                                    <button class="btn btn-sm btn-secondary" @onclick="() => DoApplyCategoryToSameName(localT)">
-                                        Apply this category to @sameNameCount matching names
+                                    <button class="btn btn-sm btn-secondary" @onclick="() => DoApplyCategoryToSameName(localT)" @onclick:stopPropagation="true">
+                                        Apply to @sameNameCount matching
                                     </button>
                                 }
                                 @if (!string.IsNullOrWhiteSpace(_bulkCategoryStatus) && _bulkCategoryStatusId == localT.Id)
@@ -189,7 +185,7 @@
                                 {
                                     <button class="btn btn-sm @(localT.IsUnnecessary ? "btn-primary" : "btn-secondary")"
                                             style="@(localT.IsUnnecessary ? "background:rgba(245,158,11,0.2);color:var(--amber);border:1px solid var(--amber)" : "")"
-                                            @onclick="() => DoToggleUnnecessary(localT)">
+                                            @onclick="() => DoToggleUnnecessary(localT)" @onclick:stopPropagation="true">
                                         @if (localT.IsUnnecessary)
                                         {
                                             <span style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="13" /> Unnecessary</span>
@@ -207,11 +203,11 @@
                                             <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap">
                                                 <span style="font-size:12px;color:#818CF8">@outstanding.ToString("C") owed</span>
                                                 <button class="btn btn-sm btn-secondary"
-                                                        @onclick="() => DoRecordRepayment(localT.Id, outstanding * 0.5m)">
+                                                        @onclick="() => DoRecordRepayment(localT.Id, outstanding * 0.5m)" @onclick:stopPropagation="true">
                                                     50%
                                                 </button>
                                                 <button class="btn btn-sm btn-secondary"
-                                                        @onclick="() => DoMarkRepaid(localT.Id)">
+                                                        @onclick="() => DoMarkRepaid(localT.Id)" @onclick:stopPropagation="true">
                                                     Full
                                                 </button>
                                                 @if (_repayPickId == localT.Id)
@@ -219,20 +215,20 @@
                                                     <input class="form-input" style="width:90px;height:32px;font-size:13px" type="number" min="0" step="0.01"
                                                            @bind="_repayAmount" />
                                                     <button class="btn btn-sm btn-primary"
-                                                            @onclick="() => DoRecordRepayment(localT.Id, _repayAmount)">Save</button>
+                                                            @onclick="() => DoRecordRepayment(localT.Id, _repayAmount)" @onclick:stopPropagation="true">Save</button>
                                                     <button class="btn btn-sm btn-secondary"
-                                                            @onclick="CancelRepayPick"><Icon Name="x" Size="13" /></button>
+                                                            @onclick="CancelRepayPick" @onclick:stopPropagation="true"><Icon Name="x" Size="13" /></button>
                                                 }
                                                 else
                                                 {
                                                     <button class="btn btn-sm btn-secondary"
-                                                            @onclick="() => StartRepayPick(localT.Id, outstanding)">Custom</button>
+                                                            @onclick="() => StartRepayPick(localT.Id, outstanding)" @onclick:stopPropagation="true">Custom</button>
                                                 }
                                             </div>
                                         }
                                         <button class="btn btn-sm"
                                                 style="background:rgba(99,102,241,0.15);color:#818CF8;border:1px solid #818CF8;display:inline-flex;align-items:center;gap:5px"
-                                                @onclick="() => DoUnmarkLent(localT.Id)">
+                                                @onclick="() => DoUnmarkLent(localT.Id)" @onclick:stopPropagation="true">
                                             <Icon Name="users" Size="13" /> @(isUnrepaid ? "Awaiting repayment" : "Repaid") <Icon Name="x" Size="11" />
                                         </button>
                                     }
@@ -242,15 +238,15 @@
                                             <input class="form-input" style="flex:1;height:32px;font-size:13px" placeholder="Who? (optional)"
                                                    @bind="_lentNote" @bind:event="oninput" />
                                             <button class="btn btn-sm btn-primary"
-                                                    @onclick="() => DoMarkLent(localT.Id)">Confirm</button>
+                                                    @onclick="() => DoMarkLent(localT.Id)" @onclick:stopPropagation="true">Confirm</button>
                                             <button class="btn btn-sm btn-secondary"
-                                                    @onclick="CancelLentPick"><Icon Name="x" Size="13" /></button>
+                                                    @onclick="CancelLentPick" @onclick:stopPropagation="true"><Icon Name="x" Size="13" /></button>
                                         </div>
                                     }
                                     else
                                     {
                                         <button class="btn btn-sm btn-secondary"
-                                                @onclick="() => StartLentPick(localT.Id)" style="display:inline-flex;align-items:center;gap:5px">
+                                                @onclick="() => StartLentPick(localT.Id)" @onclick:stopPropagation="true" style="display:inline-flex;align-items:center;gap:5px">
                                             <Icon Name="users" Size="13" /> Lent out
                                         </button>
                                     }
@@ -259,7 +255,7 @@
                                 {
                                     <button class="btn btn-sm @(localT.IsReimbursement ? "btn-primary" : "btn-secondary")"
                                             style="@(localT.IsReimbursement ? "background:rgba(59,130,246,0.2);color:var(--blue);border:1px solid var(--blue)" : "")"
-                                            @onclick="() => DoToggleReimbursement(localT)">
+                                            @onclick="() => DoToggleReimbursement(localT)" @onclick:stopPropagation="true">
                                         @if (localT.IsReimbursement)
                                         {
                                             <span style="display:inline-flex;align-items:center;gap:4px"><Icon Name="check" Size="13" /> Repayment</span>
@@ -270,8 +266,8 @@
                                         }
                                     </button>
                                 }
-                            </RowActionSheet>
-                        }
+                            </div>
+                        </div>
                     }
                 </div>
             }
@@ -296,7 +292,6 @@
     private int filterCategoryId;
     private int selectedId;
     private Transaction? editingTxn;
-    private int _moreActionsForId;
     private int _lentPickId;
     private string _lentNote = string.Empty;
     private int _repayPickId;
