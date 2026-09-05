@@ -389,6 +389,10 @@
         if (_isOffline) return ("offline", "badge-red");
         if (State.IsSyncing || UpSync.IsSyncing) return ("syncing", "badge-teal");
         if (State.HasPendingChanges || State.HasUnconfirmedSettingOverrides) return ("unsync'd", "badge-amber");
+        // Show a warning when the Up Bank direct sync last failed — the Supabase
+        // sync can succeed while Up Bank is broken, leaving the badge green and
+        // hiding the problem from the user.
+        if (!string.IsNullOrEmpty(UpSync.LastError)) return ("bank error", "badge-red");
         if (Sync.LastSyncedAt is not null) return ("synced", "badge-green");
         return null;
     }
